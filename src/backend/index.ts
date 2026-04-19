@@ -40,99 +40,87 @@ app.get('/api/model-details', async (c) => {
   return c.json({ model, ...details });
 });
 
-// Chat proxy with Tool Support
+// Chat proxy with Tool Support (OpenAI Compatible)
 app.post('/api/chat', async (c) => {
   const body = await c.req.json();
   const ollamaUrl = OllamaService.getBaseUrl();
 
   try {
-    // 1. Initial request to Ollama (checking for tools)
     const clientWantsStreaming = body.stream !== false;
-    const tools = [
-      {
-        type: 'function',
-        function: {
-          name: 'search_web',
-          description: 'Search the web for real-time information using DuckDuckGo',
-          parameters: {
-            type: 'object',
-            properties: {
-              query: {
-                type: 'string',
-                description: 'The search query'
-              }
-            },
-            required: ['query']
-          }
-        }
-      }
+    const tools = ToolService.getToolDefinitions();
+
+    // System prompt based on user search preference
+    let systemPrompt = 'You are a helpful assistant.';
+    if (body.search) {
+      systemPrompt += ' Web search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
+    }
+    systemPrompt += ' You can also read local project files using read_file.';
+
+    let messages = [
+      { role: 'system', content: systemPrompt },
+      ...body.messages 
     ];
 
-    const initialBody = { ...body, stream: false, tools };
+    let currentTurn = 0;
+    const maxTurns = 5;
+    let lastData: any = null;
 
-    const response = await fetch(`${ollamaUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initialBody),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return c.json({ error: errorText }, response.status as any);
-    }
-
-    const data: any = await response.json();
-    const message = data.message;
-
-    // 2. Handle Tool Calls
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      const toolResults = [];
-      for (const call of message.tool_calls) {
-        const result = await ToolService.executeTool(call.function.name, call.function.arguments);
-        toolResults.push({
-          role: 'tool',
-          content: result,
-        });
-      }
-
-      // Re-prompt with tool results
-      const finalBody = {
-        ...body,
-        messages: [...body.messages, message, ...toolResults],
-        tools,
-        stream: clientWantsStreaming
-      };
-
-      const finalResponse = await fetch(`${ollamaUrl}/api/chat`, {
+    while (currentTurn < maxTurns) {
+      const response = await fetch(`${ollamaUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalBody),
+        body: JSON.stringify({
+          ...body,
+          stream: false,
+          tools,
+          messages
+        }),
       });
 
-      if (clientWantsStreaming) {
-        return c.body(finalResponse.body as any, {
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-          }
-        });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const data: any = await response.json();
+      lastData = data;
+      lastMessage = data.choices[0].message;
+      messages.push(lastMessage);
+
+      if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
+        for (const call of lastMessage.tool_calls) {
+          const result = await ToolService.executeTool(call.function.name, JSON.parse(call.function.arguments));
+          messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            name: call.function.name,
+            content: result,
+          });
+        }
+        currentTurn++;
       } else {
-        const finalData = await finalResponse.json();
-        return c.json(finalData);
+        break; // No more tool calls
       }
     }
 
-    // 3. Normal response
+    // 3. Final response handling
     if (clientWantsStreaming) {
-        // Wrap single JSON into SSE for consistency if client expected stream
-        return c.body(`data: ${JSON.stringify(data)}\n\n`, {
+        const sseContent = `data: ${JSON.stringify({
+            message: { role: 'assistant', content: lastMessage.content },
+            usage: lastData?.usage,
+            done: true
+        })}\n\n`;
+        
+        return c.body(sseContent, {
             headers: { 'Content-Type': 'text/event-stream' }
         });
     }
-    return c.json(data);
+    return c.json({ 
+      choices: [{ message: lastMessage }],
+      usage: lastData?.usage 
+    });
 
   } catch (err: any) {
+    console.error(`[CHAT ERROR] ${err.message}`);
     return c.json({ error: err.message }, 500);
   }
 });

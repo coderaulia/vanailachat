@@ -48,6 +48,7 @@ interface Chat {
   createdAt: number;
   updatedAt: number;
   model: string | null;
+  usage?: number;
 }
 
 const App: React.FC = () => {
@@ -65,6 +66,7 @@ const App: React.FC = () => {
   });
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string }[]>([]);
   const [prompt, setPrompt] = useState('');
+  const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<{ current: number; total: number }>({ current: 0, total: 32768 });
 
   const chatLogRef = useRef<HTMLDivElement>(null);
@@ -157,6 +159,7 @@ const App: React.FC = () => {
     setAttachedFiles([]);
     setPrompt('');
     setIsSidebarOpen(false);
+    setContextWindow(prev => ({ ...prev, current: 0 }));
   };
 
   const persistHistories = (newHistories: Record<string, Chat>) => {
@@ -169,13 +172,22 @@ const App: React.FC = () => {
     if (!files) return;
 
     for (const file of Array.from(files)) {
-      if (file.size > 2 * 1024 * 1024) {
-        setStatusText(`File ${file.name} is too large (max 2MB)`);
+      if (file.size > 10 * 1024 * 1024) { // Increased to 10MB for images
+        setStatusText(`File ${file.name} is too large (max 10MB)`);
         continue;
       }
       try {
-        const text = await file.text();
-        setAttachedFiles(prev => [...prev, { name: file.name, content: text }]);
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const base64 = e.target?.result as string;
+            setAttachedFiles(prev => [...prev, { name: file.name, content: base64, type: 'image' }]);
+          };
+          reader.readAsDataURL(file);
+        } else {
+          const text = await file.text();
+          setAttachedFiles(prev => [...prev, { name: file.name, content: text, type: 'text' }]);
+        }
       } catch (err) {
         setStatusText(`Error reading ${file.name}`);
       }
@@ -191,11 +203,19 @@ const App: React.FC = () => {
     if (e) e.preventDefault();
     if ((!prompt.trim() && attachedFiles.length === 0) || isSending) return;
 
-    let finalPrompt = prompt;
-    if (attachedFiles.length > 0) {
-      const fileContext = attachedFiles.map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``).join("\n\n");
-      finalPrompt = `${fileContext}\n\n${prompt}`.trim();
-      setAttachedFiles([]);
+    const messageContent: any[] = [{ type: 'text', text: prompt }];
+    attachedFiles.filter(f => f.type === 'image').forEach(f => {
+      messageContent.push({ type: 'image_url', image_url: { url: f.content } });
+    });
+
+    const fileContext = attachedFiles
+      .filter(f => (f as any).type === 'text')
+      .map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``)
+      .join("\n\n");
+
+    const finalPrompt = fileContext ? `${fileContext}\n\n${prompt}` : prompt;
+    if (fileContext) {
+      messageContent[0].text = finalPrompt;
     }
 
     const userMessage: Message = {
@@ -208,6 +228,7 @@ const App: React.FC = () => {
     const newConversation = [...conversation, userMessage];
     setConversation(newConversation);
     setPrompt('');
+    setAttachedFiles([]);
     setIsSending(true);
     setStatusText('Thinking…');
 
@@ -217,8 +238,12 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          messages: newConversation.map(m => ({ role: m.role, content: m.content })),
+          messages: [
+            ...conversation.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: messageContent }
+          ],
           stream: true,
+          search: isSearchEnabled,
         }),
       });
 
@@ -237,6 +262,7 @@ const App: React.FC = () => {
       if (!reader) throw new Error("No reader");
 
       let fullContent = "";
+      let finalUsage = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -251,6 +277,12 @@ const App: React.FC = () => {
               const data = JSON.parse(jsonStr);
               const delta = data.message?.content || "";
               fullContent += delta;
+              
+              if (data.usage) {
+                finalUsage = data.usage.total_tokens || data.usage.prompt_tokens + data.usage.completion_tokens || 0;
+                setContextWindow(prev => ({ ...prev, current: finalUsage }));
+              }
+
               setConversation(prev => {
                 const updated = [...prev];
                 updated[updated.length - 1].content = fullContent;
@@ -270,6 +302,7 @@ const App: React.FC = () => {
         createdAt: chatHistories[chatId]?.createdAt || Date.now(),
         updatedAt: Date.now(),
         model: selectedModel,
+        usage: finalUsage,
       };
 
       const nextHistories = { ...chatHistories, [chatId]: updatedChat };
@@ -292,6 +325,7 @@ const App: React.FC = () => {
       setConversation(chat.conversation);
       setCurrentChatId(id);
       setSelectedModel(chat.model || selectedModel);
+      setContextWindow(prev => ({ ...prev, current: chat.usage || 0 }));
       setIsSidebarOpen(false);
     } else {
       console.warn(`[HISTORY] Chat ${id} not found in history`);
@@ -400,28 +434,28 @@ const App: React.FC = () => {
               {Object.entries(chatHistories)
                 .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
                 .map(([id, chat]) => (
-                <div
-                  key={id}
-                  className={`history-item ${currentChatId === id ? 'active' : ''}`}
-                  onClick={() => handleSelectChat(id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSelectChat(id)}
-                >
-                  <div className="history-item__content">
-                    <span className="history-item__title">{chat.title || "Untitled chat"}</span>
-                    <span className="history-item__meta">{DATE_FORMATTER.format(chat.updatedAt)}</span>
-                  </div>
-                  <button
-                    className="history-item__delete"
-                    type="button"
-                    aria-label="Delete chat"
-                    onClick={(e) => handleDeleteChat(e, id)}
+                  <div
+                    key={id}
+                    className={`history-item ${currentChatId === id ? 'active' : ''}`}
+                    onClick={() => handleSelectChat(id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSelectChat(id)}
                   >
-                    &times;
-                  </button>
-                </div>
-              ))}
+                    <div className="history-item__content">
+                      <span className="history-item__title">{chat.title || "Untitled chat"}</span>
+                      <span className="history-item__meta">{DATE_FORMATTER.format(chat.updatedAt)}</span>
+                    </div>
+                    <button
+                      className="history-item__delete"
+                      type="button"
+                      aria-label="Delete chat"
+                      onClick={(e) => handleDeleteChat(e, id)}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
@@ -430,18 +464,7 @@ const App: React.FC = () => {
       <main className="main-content">
         <header className="app-header">
           <div className="header-main">
-            <button 
-              id="sidebarToggleBtn"
-              className="icon-btn sidebar-toggle" 
-              onClick={() => setIsSidebarOpen(true)}
-              aria-label="Open sidebar"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
+            <div className="header-left"></div>
             <div className="header-title">
               <div className="title-stack">
                 <p className="header-eyebrow">Local AI Assistant</p>
@@ -450,17 +473,19 @@ const App: React.FC = () => {
             </div>
 
             <div className="header-summary">
-              <div className="summary-pill">
-                <span className="summary-label">Model</span>
-                <span className="summary-value">{selectedModel || 'Loading…'}</span>
+              <div className="status-group">
+                <div className="status-pill">
+                  <span className="status-pill__label">Model</span>
+                  <span className="status-pill__value">{selectedModel || 'Loading…'}</span>
+                </div>
+                <div className="status-pill">
+                  <span className="status-pill__label">Ollama</span>
+                  <span className="status-pill__value">{statusText === 'Ready' ? 'Connected' : statusText}</span>
+                </div>
               </div>
-              <div className="summary-pill">
-                <span className="summary-label">Ollama</span>
-                <span className="summary-value">{statusText === 'Ready' ? 'Connected' : statusText}</span>
-              </div>
-              <button 
-                className="icon-btn theme-toggle" 
-                type="button" 
+              <button
+                className="icon-btn theme-toggle"
+                type="button"
                 aria-label="Toggle Dark Mode"
                 onClick={toggleTheme}
               >
@@ -520,12 +545,16 @@ const App: React.FC = () => {
           <form className="chat-form" onSubmit={handleSend}>
             <div className="composer">
               <label className="composer-label">Message</label>
-              
+
               {attachedFiles.length > 0 && (
                 <div className="attachment-tray">
                   {attachedFiles.map((file, i) => (
-                    <div key={i} className="attachment-pill">
-                      <span>{file.name}</span>
+                    <div key={i} className={`attachment-pill ${file.type === 'image' ? 'has-image' : ''}`}>
+                      {file.type === 'image' ? (
+                        <img src={file.content} alt={file.name} className="attachment-image-preview" />
+                      ) : (
+                        <span>{file.name}</span>
+                      )}
                       <button type="button" className="attachment-remove" onClick={() => removeAttachment(i)}>&times;</button>
                     </div>
                   ))}
@@ -554,8 +583,8 @@ const App: React.FC = () => {
                 <div className="input-actions">
                   <div className="composer-model">
                     <label>Model</label>
-                    <select 
-                      className="select composer-select" 
+                    <select
+                      className="select composer-select"
                       value={selectedModel}
                       onChange={(e) => setSelectedModel(e.target.value)}
                     >
@@ -579,14 +608,26 @@ const App: React.FC = () => {
                     Clear
                   </button>
 
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleAttach} 
-                    multiple 
-                    hidden 
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleAttach}
+                    multiple
+                    hidden
                     accept=".txt,.md,.js,.py,.html,.css,.json,.csv,.log,.sh,.ts,.tsx,.jsx,.rs,.go,.cpp,.c,.h,.hpp,.java,.php"
                   />
+                  <button
+                    type="button"
+                    className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''}`}
+                    onClick={() => setIsSearchEnabled(!isSearchEnabled)}
+                    title="Enable Web Search"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </button>
+
                   <button type="button" className="btn btn-secondary icon-btn" onClick={() => fileInputRef.current?.click()}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
