@@ -81,6 +81,15 @@
   background: #333;
 }
 
+[data-theme="dark"] .summary-pill {
+  background: var(--bg-surface-strong);
+  border-color: var(--border-soft);
+}
+
+[data-theme="dark"] .summary-value {
+  color: var(--text-primary);
+}
+
 * {
   box-sizing: border-box;
 }
