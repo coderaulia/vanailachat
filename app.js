@@ -15,6 +15,9 @@ const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
 const sidebarBackdrop = document.getElementById("sidebarBackdrop");
 const contextWindowText = document.getElementById("contextWindowText");
 const contextWindowMeter = document.getElementById("contextWindowMeter");
+const attachBtn = document.getElementById("attachBtn");
+const fileInput = document.getElementById("fileInput");
+const attachmentTray = document.getElementById("attachmentTray");
 
 const MOBILE_SIDEBAR_BREAKPOINT = window.matchMedia("(max-width: 860px)");
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -48,6 +51,7 @@ let currentContextWindow = null;
 let isSending = false;
 let currentChatId = null;
 let chatHistories = loadChatHistories();
+let attachedFiles = [];
 
 function generateMessageId() {
 	return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -815,14 +819,22 @@ async function fetchModels() {
 
 chatForm.addEventListener("submit", async (event) => {
 	event.preventDefault();
-	const prompt = promptInput.value.trim();
-	if (!prompt) {
-		setStatus("Enter a message first.", true);
+	let prompt = promptInput.value.trim();
+	
+	if (!prompt && attachedFiles.length === 0) {
+		setStatus("Enter a message or attach a file.", true);
 		return;
 	}
 	if (!currentModel) {
 		setStatus("Select a model before sending.", true);
 		return;
+	}
+
+	if (attachedFiles.length > 0) {
+		const fileContext = attachedFiles.map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``).join("\n\n");
+		prompt = `${fileContext}\n\n${prompt}`.trim();
+		attachedFiles = [];
+		renderAttachmentTray();
 	}
 
 	const userMessage = createMessage("user", prompt);
@@ -851,6 +863,60 @@ modelSelect.addEventListener("change", async () => {
 		saveCurrentChat();
 	}
 });
+
+if (attachBtn && fileInput) {
+	attachBtn.addEventListener("click", () => {
+		fileInput.click();
+	});
+
+	fileInput.addEventListener("change", async (event) => {
+		const files = event.target.files;
+		for (const file of files) {
+			if (file.size > 2 * 1024 * 1024) {
+				setStatus(`File ${file.name} is too large (max 2MB)`, true);
+				continue;
+			}
+			try {
+				const text = await file.text();
+				attachedFiles.push({ name: file.name, content: text });
+			} catch (err) {
+				setStatus(`Error reading ${file.name}`, true);
+			}
+		}
+		fileInput.value = ""; // Reset
+		renderAttachmentTray();
+	});
+}
+
+function renderAttachmentTray() {
+	attachmentTray.innerHTML = "";
+	if (attachedFiles.length === 0) {
+		attachmentTray.hidden = true;
+		return;
+	}
+	attachmentTray.hidden = false;
+
+	attachedFiles.forEach((file, index) => {
+		const pill = document.createElement("div");
+		pill.className = "attachment-pill";
+		
+		const nameSpan = document.createElement("span");
+		nameSpan.textContent = file.name;
+		
+		const removeBtn = document.createElement("button");
+		removeBtn.type = "button";
+		removeBtn.className = "attachment-remove";
+		removeBtn.innerHTML = "&times;";
+		removeBtn.setAttribute("aria-label", `Remove ${file.name}`);
+		removeBtn.addEventListener("click", () => {
+			attachedFiles.splice(index, 1);
+			renderAttachmentTray();
+		});
+
+		pill.append(nameSpan, removeBtn);
+		attachmentTray.append(pill);
+	});
+}
 
 clearBtn.addEventListener("click", () => {
 	clearConversation();
