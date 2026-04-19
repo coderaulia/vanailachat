@@ -18,6 +18,7 @@ const contextWindowMeter = document.getElementById("contextWindowMeter");
 const attachBtn = document.getElementById("attachBtn");
 const fileInput = document.getElementById("fileInput");
 const attachmentTray = document.getElementById("attachmentTray");
+const searchToggle = document.getElementById("searchToggle");
 
 const MOBILE_SIDEBAR_BREAKPOINT = window.matchMedia("(max-width: 860px)");
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -647,10 +648,35 @@ async function sendPrompt() {
 		model: currentModel,
 		messages: conversation
 			.filter((m) => m.id !== pendingMsg.id)
-			.map(({ role, content }) => ({ role, content })),
+			.map(({ role, content, images }) => {
+				const msg = { role, content };
+				if (images) msg.images = images;
+				return msg;
+			}),
 		temperature: 0.7,
-		stream: true,
 	};
+
+	if (searchToggle && searchToggle.checked) {
+		payload.tools = [{
+			type: "function",
+			function: {
+				name: "search_web",
+				description: "Search the web for real-time information, news, or documentation.",
+				parameters: {
+					type: "object",
+					properties: {
+						query: {
+							type: "string",
+							description: "The search query to look up on the web"
+						}
+					},
+					required: ["query"]
+				}
+			}
+		}];
+	}
+	
+	payload.stream = true; 
 
 	setWorking(true);
 	setStatus("Sending request…");
@@ -677,32 +703,44 @@ async function sendPrompt() {
 			updateMessageInDom(pendingMsg.id);
 		}
 
-		const reader = response.body.getReader();
-		const decoder = new TextDecoder();
-		let buffer = "";
+		if (!payload.stream) {
+			// Buffered response handling (for tool calls)
+			const data = await response.json();
+			fullText = data.choices[0].message.content || "";
+			const assistantMsg = conversation.find((m) => m.id === pendingMsg.id);
+			if (assistantMsg) {
+				assistantMsg.content = fullText;
+				assistantMsg.state = "done";
+				updateMessageInDom(pendingMsg.id);
+			}
+		} else {
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = "";
 
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
 
-			buffer += decoder.decode(value, { stream: true });
-			const lines = buffer.split("\n");
-			buffer = lines.pop(); // Hold the last incomplete line
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split("\n");
+				buffer = lines.pop(); // Hold the last incomplete line
 
-			for (const line of lines) {
-				if (!line.startsWith("data: ")) continue;
-				const data = line.slice(6).trim();
-				if (data === "[DONE]") continue;
-				try {
-					const parsed = JSON.parse(data);
-					const chunk = parsed?.choices?.[0]?.delta?.content;
-					if (chunk) {
-						fullText += chunk;
-						if (streamingMsg) streamingMsg.content = fullText;
-						updateStreamingMessage(pendingMsg.id, fullText);
+				for (const line of lines) {
+					if (!line.startsWith("data: ")) continue;
+					const dataStr = line.slice(6).trim();
+					if (dataStr === "[DONE]") continue;
+					try {
+						const parsed = JSON.parse(dataStr);
+						// Support both streaming (delta) and final message (message) formats
+						const chunk = parsed?.choices?.[0]?.delta?.content || parsed?.choices?.[0]?.message?.content;
+						if (chunk) {
+							fullText += chunk;
+							updateStreamingMessage(pendingMsg.id, fullText);
+						}
+					} catch (e) {
+						console.warn("Error parsing SSE chunk:", e);
 					}
-				} catch {
-					// Partial or non-JSON line — safe to skip
 				}
 			}
 		}
@@ -831,14 +869,26 @@ chatForm.addEventListener("submit", async (event) => {
 	}
 
 	if (attachedFiles.length > 0) {
-		const fileContext = attachedFiles.map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``).join("\n\n");
-		prompt = `${fileContext}\n\n${prompt}`.trim();
+		const textFiles = attachedFiles.filter(f => f.type === "text");
+		const images = attachedFiles.filter(f => f.type === "image").map(f => f.content);
+		
+		if (textFiles.length > 0) {
+			const fileContext = textFiles.map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``).join("\n\n");
+			prompt = `${fileContext}\n\n${prompt}`.trim();
+		}
+		
+		const userMessage = createMessage("user", prompt);
+		if (images.length > 0) {
+			userMessage.images = images;
+		}
+		
 		attachedFiles = [];
 		renderAttachmentTray();
+		conversation.push(userMessage);
+	} else {
+		const userMessage = createMessage("user", prompt);
+		conversation.push(userMessage);
 	}
-
-	const userMessage = createMessage("user", prompt);
-	conversation.push(userMessage);
 	promptInput.value = "";
 	renderConversation();
 	saveCurrentChat();
@@ -872,13 +922,24 @@ if (attachBtn && fileInput) {
 	fileInput.addEventListener("change", async (event) => {
 		const files = event.target.files;
 		for (const file of files) {
-			if (file.size > 2 * 1024 * 1024) {
-				setStatus(`File ${file.name} is too large (max 2MB)`, true);
+			if (file.size > 5 * 1024 * 1024) {
+				setStatus(`File ${file.name} is too large (max 5MB)`, true);
 				continue;
 			}
 			try {
-				const text = await file.text();
-				attachedFiles.push({ name: file.name, content: text });
+				const isImage = file.type.startsWith("image/");
+				if (isImage) {
+					const base64 = await new Promise((resolve, reject) => {
+						const reader = new FileReader();
+						reader.onload = () => resolve(reader.result.split(",")[1]);
+						reader.onerror = reject;
+						reader.readAsDataURL(file);
+					});
+					attachedFiles.push({ name: file.name, type: "image", content: base64 });
+				} else {
+					const text = await file.text();
+					attachedFiles.push({ name: file.name, type: "text", content: text });
+				}
 			} catch (err) {
 				setStatus(`Error reading ${file.name}`, true);
 			}

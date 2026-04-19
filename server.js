@@ -3,8 +3,9 @@ const { Readable } = require("stream");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
-const readline = require("readline");
 const { URL } = require("url");
+const { safeSearch } = require("duck-duck-scrape");
+const axios = require("axios");
 
 const APP_HOST = "127.0.0.1";
 const APP_PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -124,58 +125,7 @@ async function getModelDetails(modelName) {
 	}
 }
 
-function askQuestion(promptText) {
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-	return new Promise((resolve) => {
-		rl.question(promptText, (answer) => {
-			rl.close();
-			resolve(answer.trim());
-		});
-	});
-}
 
-async function chooseModel(models) {
-	if (!Array.isArray(models) || models.length === 0) {
-		throw new Error("No local Ollama models were found.");
-	}
-
-	if (models.length === 1) {
-		log(`Using the only installed model: ${models[0]}`);
-		return models[0];
-	}
-
-	log("Installed local Ollama models:");
-	models.forEach((modelName, index) => {
-		log(`  ${index + 1}. ${modelName}`);
-	});
-
-	let choice = null;
-	while (!choice) {
-		const answer = await askQuestion("Choose a model by number or name: ");
-		if (!answer) {
-			continue;
-		}
-
-		const numeric = Number(answer);
-		if (!Number.isNaN(numeric) && numeric >= 1 && numeric <= models.length) {
-			choice = models[numeric - 1];
-			break;
-		}
-
-		if (models.includes(answer)) {
-			choice = answer;
-			break;
-		}
-
-		log("Invalid selection. Please enter a number or a valid model name.");
-	}
-
-	log(`Selected model: ${choice}`);
-	return choice;
-}
 
 async function startOllamaServer() {
 	const alreadyRunning = await isPortOpen(OLLAMA_PORT);
@@ -266,15 +216,38 @@ function readRequestBody(req) {
 	});
 }
 
+async function executeTool(name, args) {
+	if (name === "search_web") {
+		const query = args.query;
+		log("Executing web search:", query);
+		try {
+			const results = await safeSearch(query, { safeSearch: 1 });
+			return JSON.stringify(results.results.slice(0, 5).map(r => ({
+				title: r.title,
+				url: r.url,
+				description: r.description
+			})));
+		} catch (err) {
+			error("Search error:", err.message);
+			return `Search failed: ${err.message}`;
+		}
+	}
+	return `Unknown tool: ${name}`;
+}
+
 async function proxyChatRequest(req, res) {
 	try {
 		const bodyText = await readRequestBody(req);
-
 		let body;
 		try { body = JSON.parse(bodyText); } catch { body = {}; }
-		body.stream = true; // Always stream so the browser gets live chunks
+		
+		const clientWantsStreaming = body.stream !== false;
+		// We FORCE stream: false for the initial request to Ollama 
+		// so we can easily check for tool_calls in a single JSON response.
+		body.stream = false;
 
-		const ollamaRes = await fetch(`${LOCAL_OLLAMA_URL}/v1/chat/completions`, {
+		// 1. Initial request to check for tool calls
+		let ollamaRes = await fetch(`${LOCAL_OLLAMA_URL}/v1/chat/completions`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
@@ -287,19 +260,68 @@ async function proxyChatRequest(req, res) {
 			return;
 		}
 
-		res.writeHead(200, {
-			"Content-Type": "text/event-stream",
-			"Cache-Control": "no-cache",
-			"Connection": "keep-alive",
-			"X-Accel-Buffering": "no",
-		});
+		let responseData = await ollamaRes.json();
+		let message = responseData.choices[0].message;
 
-		const nodeStream = Readable.fromWeb(ollamaRes.body);
-		nodeStream.pipe(res);
-		nodeStream.on("error", (err) => {
-			error("Stream error:", err.message);
-			res.end();
-		});
+		// 2. If the model wants to use tools, execute them and re-prompt
+		if (message.tool_calls && message.tool_calls.length > 0) {
+			const toolResults = [];
+			for (const call of message.tool_calls) {
+				const result = await executeTool(call.function.name, JSON.parse(call.function.arguments));
+				toolResults.push({
+					role: "tool",
+					tool_call_id: call.id,
+					name: call.function.name,
+					content: result,
+				});
+			}
+
+			// Add history and tool results to the conversation
+			body.messages.push(message);
+			body.messages.push(...toolResults);
+			
+			// We can now stream the final response if the client wants it
+			body.stream = clientWantsStreaming;
+
+			ollamaRes = await fetch(`${LOCAL_OLLAMA_URL}/v1/chat/completions`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+
+			if (clientWantsStreaming) {
+				res.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					"Connection": "keep-alive",
+					"X-Accel-Buffering": "no",
+				});
+				const nodeStream = Readable.fromWeb(ollamaRes.body);
+				nodeStream.pipe(res);
+			} else {
+				const finalJson = await ollamaRes.json();
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify(finalJson));
+			}
+		} else {
+			// 3. No tool call, return the original response
+			// If the client wanted streaming, we convert this single JSON response 
+			// into a single data: SSE chunk for compatibility.
+			if (clientWantsStreaming) {
+				res.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					"Connection": "keep-alive",
+				});
+				res.write(`data: ${JSON.stringify(responseData)}\n\n`);
+				res.write(`data: [DONE]\n\n`);
+				res.end();
+			} else {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify(responseData));
+			}
+		}
+
 	} catch (err) {
 		error("Chat proxy error:", err.message);
 		if (!res.headersSent) {
@@ -404,9 +426,14 @@ function serveStaticFile(req, res) {
 
 async function main() {
 	try {
-		const models = await getInstalledModels();
-		selectedModel = await chooseModel(models);
 		await startOllamaServer();
+		
+		// Note: selectedModel will be set by the frontend during its first fetch.
+		// If needed, we could default it to the first available model here:
+		const models = await getInstalledModels().catch(() => []);
+		if (models.length > 0) {
+			selectedModel = models[0];
+		}
 
 		const server = http.createServer(async (req, res) => {
 			const url = new URL(req.url, `http://${req.headers.host}`);

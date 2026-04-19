@@ -1,46 +1,57 @@
-# VanailaChat Local WebUI
+# VanailaChat Local WebUI 🍦
 
-A local browser interface for Ollama that starts the Ollama server, lets you choose a local model, and opens your browser automatically. Features chat history for continuing conversations across sessions.
+A premium, high-performance local browser interface for Ollama. VanailaChat transforms your local AI into a production-grade experience with real-time streaming, markdown support, and file/vision capabilities.
 
-## Setup
+## 🚀 Quick Start
 
-1. Open a terminal in this folder:
+### 1. Prerequisites
+- **Node.js**: Version 18 or higher.
+- **Ollama**: Must be installed on your system. [Download Ollama here](https://ollama.com/download).
+
+### 2. Ollama Configuration
+Before running the WebUI, ensure you have at least one model downloaded. You can pull models via your terminal:
+```bash
+ollama pull llama3.1       # Recommended for general chat
+ollama pull llava          # Recommended for Vision/Image support
+```
+
+### 3. Project Setup
+1. **Clone or open the project folder**:
    ```bash
-   cd /home/asw/Documents/dev/web-ui
+   cd /home/asw/Documents/dev/vanaila-chat
    ```
-2. Run the start command:
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Launch the app**:
    ```bash
    npm start
    ```
 
-## What happens
+## ✨ Core Features
 
-- The script detects installed Ollama models.
-- You choose one of the local models in the terminal.
-- It starts `ollama serve` on `http://127.0.0.1:11434` if not already running.
-- It starts the WebUI at `http://127.0.0.1:3000`.
-- Your default browser opens automatically.
+- **Real-time SSE Streaming**: Zero-latency responses as the model generates text.
+- **Markdown & Code Highlighting**: Beautiful rendering with syntax highlighting and one-click "Copy" for code blocks.
+- **File & Vision Support**: 
+  - **Context**: Attach code or text files (`.js`, `.py`, `.md`) to your prompt.
+  - **Vision**: Attach images (`.jpg`, `.png`, `.webp`) for multimodal reasoning (requires a vision model like `llava`).
+- **Modern Sidebar**: Manage conversation history with auto-save, model metadata, and one-click deletion.
+- **Dark Mode**: Fully adaptive UI with system preference detection and manual toggle.
+- **No-Config Launch**: Automatically detects and manages your local Ollama server on port `11434`.
 
-## Usage
+## 🛠️ Development
 
-- Type a prompt in the text area.
-- Click **Send** or press **Ctrl+Enter** to send.
-- The app sends the request through the local proxy server and shows the assistant response.
-- Chat history is saved automatically in your browser's local storage.
-- Use the sidebar to view and load previous chats.
-- Click **New Chat** to start a fresh conversation.
-- Click **Clear** to delete the current chat.
+If you are modifying the code, use the development mode to enable hot-reloading:
+```bash
+npm run dev
+```
 
-## Features
+## 📝 Tech Stack
+- **Frontend**: Vanilla HTML5, CSS3 (Modern Flex/Grid), JavaScript (ES6+).
+- **Backend**: Node.js (Raw HTTP Proxy with Streaming).
+- **Markdown**: `marked.js` + `highlight.js`.
+- **Infrastructure**: Proxied API to bypass CORS, `localStorage` for history persistence.
 
-- **Chat History**: Conversations are saved locally and can be resumed later.
-- **Model Selection**: Choose from installed Ollama models.
-- **Keyboard Shortcuts**: Ctrl+Enter to send messages.
-- **Responsive Layout**: Fixed window layout with scrollable chat.
-- **Auto-save**: Chats are saved after each response.
-
-## Notes
-
-- The WebUI proxies requests through the local Node server, so browser CORS issues are avoided.
-- Chat history is stored in browser localStorage and persists across sessions.
-- If `ollama` is not installed or the model list cannot be read, the start command will display an error.
+---
+*Created with ❤️ by Vanaila for the local AI community.*
