@@ -281,17 +281,22 @@ textarea {
 }
 
 .main-content {
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   padding: 18px 18px 16px 0;
+  margin-left: 10px;
+  overflow: hidden;
 }
 
 .app-header,
 .chat-container,
 .app-footer {
-  width: min(var(--content-max), calc(100vw - var(--sidebar-width) - 42px));
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .app-header {
@@ -390,11 +395,14 @@ textarea {
 }
 
 .chat-container {
+  display: flex;
   min-height: 0;
-  padding-bottom: 18px;
+  overflow: hidden;
+  padding-bottom: 12px;
 }
 
 .chat-log {
+  flex: 1;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
@@ -581,11 +589,14 @@ textarea {
 }
 
 .app-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   padding-bottom: 0;
 }
 
 .chat-form {
-  padding-bottom: 16px;
+  padding-bottom: 0;
 }
 
 .composer {
@@ -795,7 +806,7 @@ textarea {
   .app-header,
   .chat-container,
   .app-footer {
-    width: min(100%, 100%);
+    width: 100%;
   }
 
   .header-main {

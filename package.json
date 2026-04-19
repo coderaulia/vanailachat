@@ -1,5 +1,5 @@
 {
-	"name": "ollama-local-webui",
+	"name": "ollama-vanaila-webui",
 	"version": "0.1.0",
 	"private": true,
 	"type": "commonjs",

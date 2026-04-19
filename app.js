@@ -527,7 +527,9 @@ function setSidebarOpen(isOpen) {
 	sidebar.classList.toggle("is-open", shouldOpen);
 	sidebarBackdrop.classList.toggle("is-visible", shouldOpen);
 	sidebarBackdrop.hidden = !shouldOpen;
-	sidebarToggleBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+	if (sidebarToggleBtn) {
+		sidebarToggleBtn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+	}
 }
 
 function formatOllamaStatus(url) {
@@ -644,9 +646,11 @@ newChatBtn.addEventListener("click", () => {
 	newChat();
 });
 
-sidebarToggleBtn.addEventListener("click", () => {
-	setSidebarOpen(!sidebar.classList.contains("is-open"));
-});
+if (sidebarToggleBtn) {
+	sidebarToggleBtn.addEventListener("click", () => {
+		setSidebarOpen(!sidebar.classList.contains("is-open"));
+	});
+}
 
 sidebarBackdrop.addEventListener("click", () => {
 	setSidebarOpen(false);
