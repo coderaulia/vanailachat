@@ -64,6 +64,7 @@ app.post('/api/chat', async (c) => {
     let currentTurn = 0;
     const maxTurns = 5;
     let lastData: any = null;
+    let lastMessage: any = null;
 
     while (currentTurn < maxTurns) {
       const response = await fetch(`${ollamaUrl}/v1/chat/completions`, {
@@ -83,12 +84,19 @@ app.post('/api/chat', async (c) => {
 
       const data: any = await response.json();
       lastData = data;
-      lastMessage = data.choices[0].message;
+      const candidateMessage = data?.choices?.[0]?.message;
+      if (!candidateMessage) {
+        throw new Error('Invalid response from Ollama: missing assistant message');
+      }
+      lastMessage = candidateMessage;
       messages.push(lastMessage);
 
       if (lastMessage.tool_calls && lastMessage.tool_calls.length > 0) {
         for (const call of lastMessage.tool_calls) {
-          const result = await ToolService.executeTool(call.function.name, JSON.parse(call.function.arguments));
+          const result = await ToolService.executeTool(
+            call.function.name,
+            JSON.parse(call.function.arguments || '{}')
+          );
           messages.push({
             role: 'tool',
             tool_call_id: call.id,
@@ -103,6 +111,10 @@ app.post('/api/chat', async (c) => {
     }
 
     // 3. Final response handling
+    if (!lastMessage) {
+      throw new Error('No assistant response generated');
+    }
+
     if (clientWantsStreaming) {
         const sseContent = `data: ${JSON.stringify({
             message: { role: 'assistant', content: lastMessage.content },

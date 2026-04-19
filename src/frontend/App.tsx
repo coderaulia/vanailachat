@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
@@ -57,7 +57,7 @@ const App: React.FC = () => {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [isSending, setIsSending] = useState(false);
+  const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
   const [statusText, setStatusText] = useState('Ready');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -71,6 +71,11 @@ const App: React.FC = () => {
 
   const chatLogRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentChatIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentChatIdRef.current = currentChatId;
+  }, [currentChatId]);
   // Initialize
   useEffect(() => {
     // History Data Repair: ensure all items have an id matching their key
@@ -153,18 +158,49 @@ const App: React.FC = () => {
     }
   }, [selectedModel]);
 
+  useEffect(() => {
+    if (statusText !== 'Thinking…' && statusText !== 'Background response running…' && statusText !== 'Ready') {
+      return;
+    }
+
+    const nextStatus =
+      currentChatId && sendingChatIds[currentChatId]
+        ? 'Thinking…'
+        : Object.keys(sendingChatIds).length > 0
+          ? 'Background response running…'
+          : 'Ready';
+
+    if (nextStatus !== statusText) {
+      setStatusText(nextStatus);
+    }
+  }, [currentChatId, sendingChatIds, statusText]);
+
   const handleNewChat = () => {
     setConversation([]);
     setCurrentChatId(null);
+    currentChatIdRef.current = null;
     setAttachedFiles([]);
     setPrompt('');
     setIsSidebarOpen(false);
     setContextWindow(prev => ({ ...prev, current: 0 }));
+    setStatusText(Object.keys(sendingChatIds).length > 0 ? 'Background response running…' : 'Ready');
+  };
+
+  const updateHistories = (
+    updater: (prev: Record<string, Chat>) => Record<string, Chat>,
+    persist = false
+  ) => {
+    setChatHistories(prev => {
+      const next = updater(prev);
+      if (persist) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
   };
 
   const persistHistories = (newHistories: Record<string, Chat>) => {
-    setChatHistories(newHistories);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistories));
+    updateHistories(() => newHistories, true);
   };
 
   const handleAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,7 +237,10 @@ const App: React.FC = () => {
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if ((!prompt.trim() && attachedFiles.length === 0) || isSending) return;
+    const activeChatId = currentChatId;
+    if ((!prompt.trim() && attachedFiles.length === 0) || (activeChatId ? sendingChatIds[activeChatId] : false)) {
+      return;
+    }
 
     const messageContent: any[] = [{ type: 'text', text: prompt }];
     attachedFiles.filter(f => f.type === 'image').forEach(f => {
@@ -218,19 +257,55 @@ const App: React.FC = () => {
       messageContent[0].text = finalPrompt;
     }
 
+    const startedAt = Date.now();
+    const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).substring(2, 11)}`;
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `${startedAt}_user_${Math.random().toString(36).slice(2, 8)}`,
       role: 'user',
       content: finalPrompt,
-      timestamp: Date.now(),
+      timestamp: startedAt,
     };
 
-    const newConversation = [...conversation, userMessage];
-    setConversation(newConversation);
+    const assistantMessage: Message = {
+      id: `${startedAt}_assistant_${Math.random().toString(36).slice(2, 8)}`,
+      role: 'assistant',
+      content: '',
+      timestamp: startedAt + 1,
+    };
+
+    const optimisticConversation = [...conversation, userMessage, assistantMessage];
+    setConversation(optimisticConversation);
     setPrompt('');
     setAttachedFiles([]);
-    setIsSending(true);
+    if (!activeChatId) {
+      setCurrentChatId(chatId);
+      currentChatIdRef.current = chatId;
+    }
+    setSendingChatIds(prev => ({ ...prev, [chatId]: true }));
     setStatusText('Thinking…');
+
+    updateHistories(prev => {
+      const existingChat = prev[chatId];
+      const currentTitle =
+        existingChat?.title && existingChat.title.trim() && existingChat.title !== "Untitled chat"
+          ? existingChat.title
+          : finalPrompt.slice(0, 30) || "Untitled chat";
+
+      return {
+        ...prev,
+        [chatId]: {
+          id: chatId,
+          title: currentTitle,
+          conversation: optimisticConversation,
+          createdAt: existingChat?.createdAt || startedAt,
+          updatedAt: startedAt,
+          model: selectedModel,
+          usage: existingChat?.usage || 0,
+        },
+      };
+    }, true);
+
+    let requestFailed = false;
 
     try {
       const res = await fetch('/api/chat', {
@@ -248,15 +323,6 @@ const App: React.FC = () => {
       });
 
       if (!res.ok) throw new Error(await res.text());
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-      };
-
-      setConversation(prev => [...prev, assistantMessage]);
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No reader");
@@ -280,41 +346,117 @@ const App: React.FC = () => {
               
               if (data.usage) {
                 finalUsage = data.usage.total_tokens || data.usage.prompt_tokens + data.usage.completion_tokens || 0;
-                setContextWindow(prev => ({ ...prev, current: finalUsage }));
+                if (currentChatIdRef.current === chatId) {
+                  setContextWindow(prev => ({ ...prev, current: finalUsage }));
+                }
               }
 
-              setConversation(prev => {
-                const updated = [...prev];
-                updated[updated.length - 1].content = fullContent;
-                return updated;
+              updateHistories(prev => {
+                const chat = prev[chatId];
+                if (!chat || chat.conversation.length === 0) return prev;
+
+                const updatedConversation = [...chat.conversation];
+                const lastIndex = updatedConversation.length - 1;
+                if (updatedConversation[lastIndex]?.role === 'assistant') {
+                  updatedConversation[lastIndex] = {
+                    ...updatedConversation[lastIndex],
+                    content: fullContent,
+                  };
+                }
+
+                return {
+                  ...prev,
+                  [chatId]: {
+                    ...chat,
+                    conversation: updatedConversation,
+                    updatedAt: Date.now(),
+                    usage: finalUsage || chat.usage,
+                  },
+                };
               });
+
+              if (currentChatIdRef.current === chatId) {
+                setConversation(prev => {
+                  if (prev.length === 0) return prev;
+                  const updated = [...prev];
+                  const lastIndex = updated.length - 1;
+                  if (updated[lastIndex]?.role === 'assistant') {
+                    updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
+                  }
+                  return updated;
+                });
+              }
             } catch (e) { /* ignore partial json */ }
           }
         }
       }
 
-      // Update history
-      const chatId = currentChatId || `chat_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-      const updatedChat: Chat = {
-        id: chatId,
-        title: conversation[0]?.content.slice(0, 30) || prompt.slice(0, 30) || "Untitled chat",
-        conversation: [...newConversation, { ...assistantMessage, content: fullContent }],
-        createdAt: chatHistories[chatId]?.createdAt || Date.now(),
-        updatedAt: Date.now(),
-        model: selectedModel,
-        usage: finalUsage,
-      };
-
-      const nextHistories = { ...chatHistories, [chatId]: updatedChat };
-      persistHistories(nextHistories);
-      setCurrentChatId(chatId);
+      updateHistories(prev => {
+        const chat = prev[chatId];
+        if (!chat) return prev;
+        return {
+          ...prev,
+          [chatId]: {
+            ...chat,
+            updatedAt: Date.now(),
+            usage: finalUsage || chat.usage,
+          },
+        };
+      }, true);
 
     } catch (err: any) {
+      requestFailed = true;
       console.error(err);
-      setStatusText(`Error: ${err.message}`);
+      const errorText = `Error: ${err.message}`;
+      if (currentChatIdRef.current === chatId) {
+        setStatusText(errorText);
+      }
+
+      updateHistories(prev => {
+        const chat = prev[chatId];
+        if (!chat || chat.conversation.length === 0) return prev;
+
+        const updatedConversation = [...chat.conversation];
+        const lastIndex = updatedConversation.length - 1;
+        if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) {
+          updatedConversation[lastIndex] = {
+            ...updatedConversation[lastIndex],
+            content: errorText,
+          };
+        }
+
+        return {
+          ...prev,
+          [chatId]: {
+            ...chat,
+            conversation: updatedConversation,
+            updatedAt: Date.now(),
+          },
+        };
+      }, true);
+
+      if (currentChatIdRef.current === chatId) {
+        setConversation(prev => {
+          if (prev.length === 0) return prev;
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+          if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) {
+            updated[lastIndex] = { ...updated[lastIndex], content: errorText };
+          }
+          return updated;
+        });
+      }
     } finally {
-      setIsSending(false);
-      setStatusText('Ready');
+      setSendingChatIds(prev => {
+        if (!prev[chatId]) return prev;
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+
+      if (currentChatIdRef.current === chatId && !requestFailed) {
+        setStatusText('Ready');
+      }
     }
   };
 
@@ -324,6 +466,7 @@ const App: React.FC = () => {
     if (chat) {
       setConversation(chat.conversation);
       setCurrentChatId(id);
+      currentChatIdRef.current = id;
       setSelectedModel(chat.model || selectedModel);
       setContextWindow(prev => ({ ...prev, current: chat.usage || 0 }));
       setIsSidebarOpen(false);
@@ -387,6 +530,9 @@ const App: React.FC = () => {
   };
 
   const contextPercentage = Math.min(100, (contextWindow.current / contextWindow.total) * 100);
+  const isCurrentChatSending = currentChatId ? Boolean(sendingChatIds[currentChatId]) : false;
+  const lastMessage = conversation[conversation.length - 1];
+  const showLegacyLoading = isCurrentChatSending && !(lastMessage?.role === 'assistant' && lastMessage.content.length > 0);
 
   return (
     <div className="app-shell">
@@ -506,7 +652,10 @@ const App: React.FC = () => {
               </div>
             ) : (
               conversation.map((msg, index) => (
-                <div key={msg.id} className={`message ${msg.role}`}>
+                <div
+                  key={msg.id}
+                  className={`message ${msg.role} ${isCurrentChatSending && msg.role === 'assistant' && index === conversation.length - 1 ? 'is-typing' : ''}`}
+                >
                   <div className="message__meta">
                     <span className="message__role">{msg.role}</span>
                     <span className="message__time">{DATE_FORMATTER.format(msg.timestamp)}</span>
@@ -517,7 +666,7 @@ const App: React.FC = () => {
                 </div>
               ))
             )}
-            {isSending && (
+            {showLegacyLoading && (
               <div className="message assistant is-loading">
                 <div className="message__meta">
                   <span className="message__role">assistant</span>
@@ -618,9 +767,11 @@ const App: React.FC = () => {
                   />
                   <button
                     type="button"
-                    className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''}`}
+                    className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''} ${isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''}`}
                     onClick={() => setIsSearchEnabled(!isSearchEnabled)}
-                    title="Enable Web Search"
+                    title={isCurrentChatSending && isSearchEnabled ? "Searching web..." : "Enable Web Search"}
+                    aria-busy={isCurrentChatSending && isSearchEnabled}
+                    disabled={isCurrentChatSending}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="11" cy="11" r="8"></circle>
@@ -634,7 +785,7 @@ const App: React.FC = () => {
                     </svg>
                   </button>
 
-                  <button type="submit" className="btn btn-primary" disabled={isSending}>
+                  <button type="submit" className="btn btn-primary" disabled={isCurrentChatSending}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                       <line x1="22" y1="2" x2="11" y2="13"></line>
                       <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
