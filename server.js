@@ -1,4 +1,5 @@
 const { spawn, execFile } = require("child_process");
+const { Readable } = require("stream");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -184,11 +185,9 @@ async function startOllamaServer() {
 	}
 
 	log("Starting local Ollama server...");
-	ollamaChild = spawnCommand("ollama", [
-		"serve",
-		"--port",
-		String(OLLAMA_PORT),
-	]);
+	ollamaChild = spawnCommand("ollama", ["serve"], {
+		env: { ...process.env, OLLAMA_HOST: `${OLLAMA_HOST}:${OLLAMA_PORT}` },
+	});
 	ollamaChild.on("error", (err) => {
 		error("Failed to launch Ollama:", err.message);
 	});
@@ -252,7 +251,16 @@ function getMimeType(filename) {
 function readRequestBody(req) {
 	return new Promise((resolve, reject) => {
 		const chunks = [];
-		req.on("data", (chunk) => chunks.push(chunk));
+		let totalBytes = 0;
+		const MAX_BODY = 4 * 1024 * 1024; // 4 MB limit
+		req.on("data", (chunk) => {
+			totalBytes += chunk.length;
+			if (totalBytes > MAX_BODY) {
+				req.destroy();
+				return reject(new Error("Payload too large"));
+			}
+			chunks.push(chunk);
+		});
 		req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
 		req.on("error", reject);
 	});
@@ -261,24 +269,45 @@ function readRequestBody(req) {
 async function proxyChatRequest(req, res) {
 	try {
 		const bodyText = await readRequestBody(req);
-		const response = await fetch(`${LOCAL_OLLAMA_URL}/v1/chat/completions`, {
+
+		let body;
+		try { body = JSON.parse(bodyText); } catch { body = {}; }
+		body.stream = true; // Always stream so the browser gets live chunks
+
+		const ollamaRes = await fetch(`${LOCAL_OLLAMA_URL}/v1/chat/completions`, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: bodyText,
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
 		});
 
-		const responseBody = await response.text();
-		res.writeHead(response.status, {
-			"Content-Type":
-				response.headers.get("content-type") || "application/json",
+		if (!ollamaRes.ok) {
+			const errBody = await ollamaRes.text();
+			res.writeHead(ollamaRes.status, { "Content-Type": "application/json" });
+			res.end(errBody);
+			return;
+		}
+
+		res.writeHead(200, {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache",
+			"Connection": "keep-alive",
+			"X-Accel-Buffering": "no",
 		});
-		res.end(responseBody);
+
+		const nodeStream = Readable.fromWeb(ollamaRes.body);
+		nodeStream.pipe(res);
+		nodeStream.on("error", (err) => {
+			error("Stream error:", err.message);
+			res.end();
+		});
 	} catch (err) {
 		error("Chat proxy error:", err.message);
-		res.writeHead(500, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ error: err.message }));
+		if (!res.headersSent) {
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: err.message }));
+		} else {
+			res.end();
+		}
 	}
 }
 

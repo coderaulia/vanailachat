@@ -651,6 +651,14 @@ textarea {
   line-height: 1.65;
 }
 
+/* Neutralise hljs theme background — our .code-block already sets it */
+.code-block pre code.hljs {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .app-footer {
   position: sticky;
   bottom: 0;

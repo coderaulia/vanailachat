@@ -28,6 +28,19 @@ const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 });
 const SEND_BUTTON_HTML = sendBtn.innerHTML;
 
+// ---------------------------------------------------------------------------
+// Markdown + Syntax Highlighting (marked + highlight.js loaded via CDN)
+// ---------------------------------------------------------------------------
+marked.use({ gfm: true, breaks: true });
+
+function encodeAttr(str) {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+}
+
 let conversation = [];
 let availableModels = [];
 let currentModel = null;
@@ -180,180 +193,43 @@ function createCopyButton(text) {
 	return button;
 }
 
-function appendInlineContent(target, text) {
-	const tokenPattern =
-		/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\((https?:\/\/[^\s)]+)\))/g;
-	let cursor = 0;
-	let match;
-
-	while ((match = tokenPattern.exec(text)) !== null) {
-		if (match.index > cursor) {
-			target.append(document.createTextNode(text.slice(cursor, match.index)));
-		}
-
-		const token = match[0];
-		if (token.startsWith("`") && token.endsWith("`")) {
-			const code = document.createElement("code");
-			code.textContent = token.slice(1, -1);
-			target.append(code);
-		} else if (token.startsWith("**") && token.endsWith("**")) {
-			const strong = document.createElement("strong");
-			appendInlineContent(strong, token.slice(2, -2));
-			target.append(strong);
-		} else if (token.startsWith("*") && token.endsWith("*")) {
-			const emphasis = document.createElement("em");
-			appendInlineContent(emphasis, token.slice(1, -1));
-			target.append(emphasis);
-		} else if (token.startsWith("[")) {
-			const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
-			if (linkMatch) {
-				const [, label, href] = linkMatch;
-				const link = document.createElement("a");
-				link.href = href;
-				link.target = "_blank";
-				link.rel = "noreferrer";
-				link.textContent = label;
-				target.append(link);
-			} else {
-				target.append(document.createTextNode(token));
-			}
-		}
-
-		cursor = match.index + token.length;
-	}
-
-	if (cursor < text.length) {
-		target.append(document.createTextNode(text.slice(cursor)));
-	}
-}
-
 function renderAssistantContent(text) {
 	const container = document.createElement("div");
 	container.className = "message__prose";
+	container.innerHTML = marked.parse(text);
 
-	const lines = text.replace(/\r\n/g, "\n").split("\n");
-	let index = 0;
+	// Post-process: wrap every <pre><code> in our .code-block shell
+	// and attach copy buttons + syntax highlighting.
+	container.querySelectorAll("pre > code").forEach((codeEl) => {
+		const rawText = codeEl.textContent;
+		const langClass = [...codeEl.classList].find((c) =>
+			c.startsWith("language-"),
+		);
+		const lang = langClass ? langClass.replace("language-", "") : "";
 
-	while (index < lines.length) {
-		const line = lines[index];
-		const trimmed = line.trim();
-
-		if (!trimmed) {
-			index += 1;
-			continue;
+		if (lang && hljs.getLanguage(lang)) {
+			codeEl.innerHTML = hljs.highlight(rawText, { language: lang }).value;
+		} else {
+			const result = hljs.highlightAuto(rawText);
+			codeEl.innerHTML = result.value;
 		}
+		codeEl.classList.add("hljs");
 
-		const codeFence = trimmed.match(/^```([\w-]+)?$/);
-		if (codeFence) {
-			const language = codeFence[1] || "Code";
-			const codeLines = [];
-			index += 1;
+		const pre = codeEl.parentElement;
+		const wrapper = document.createElement("section");
+		wrapper.className = "code-block";
 
-			while (index < lines.length && !lines[index].trim().startsWith("```")) {
-				codeLines.push(lines[index]);
-				index += 1;
-			}
+		const header = document.createElement("div");
+		header.className = "code-block__header";
 
-			if (index < lines.length) {
-				index += 1;
-			}
+		const label = document.createElement("span");
+		label.className = "code-block__label";
+		label.textContent = lang || "code";
 
-			const codeText = codeLines.join("\n");
-			const wrapper = document.createElement("section");
-			wrapper.className = "code-block";
-
-			const header = document.createElement("div");
-			header.className = "code-block__header";
-
-			const label = document.createElement("span");
-			label.className = "code-block__label";
-			label.textContent = language;
-
-			header.append(label, createCopyButton(codeText));
-
-			const pre = document.createElement("pre");
-			const code = document.createElement("code");
-			code.textContent = codeText;
-			pre.append(code);
-
-			wrapper.append(header, pre);
-			container.append(wrapper);
-			continue;
-		}
-
-		const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-		if (heading) {
-			const level = heading[1].length;
-			const element = document.createElement(`h${level}`);
-			appendInlineContent(element, heading[2]);
-			container.append(element);
-			index += 1;
-			continue;
-		}
-
-		if (trimmed.startsWith(">")) {
-			const quoteLines = [];
-			while (index < lines.length && lines[index].trim().startsWith(">")) {
-				quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
-				index += 1;
-			}
-			const quote = document.createElement("blockquote");
-			appendInlineContent(quote, quoteLines.join(" "));
-			container.append(quote);
-			continue;
-		}
-
-		if (/^[-*]\s+/.test(trimmed)) {
-			const list = document.createElement("ul");
-			while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
-				const item = document.createElement("li");
-				appendInlineContent(item, lines[index].trim().replace(/^[-*]\s+/, ""));
-				list.append(item);
-				index += 1;
-			}
-			container.append(list);
-			continue;
-		}
-
-		if (/^\d+\.\s+/.test(trimmed)) {
-			const list = document.createElement("ol");
-			while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
-				const item = document.createElement("li");
-				appendInlineContent(item, lines[index].trim().replace(/^\d+\.\s+/, ""));
-				list.append(item);
-				index += 1;
-			}
-			container.append(list);
-			continue;
-		}
-
-		const paragraphLines = [];
-		while (index < lines.length) {
-			const currentLine = lines[index];
-			const currentTrimmed = currentLine.trim();
-			if (!currentTrimmed) {
-				index += 1;
-				break;
-			}
-			if (
-				/^```/.test(currentTrimmed) ||
-				/^(#{1,3})\s+/.test(currentTrimmed) ||
-				/^>\s?/.test(currentTrimmed) ||
-				/^[-*]\s+/.test(currentTrimmed) ||
-				/^\d+\.\s+/.test(currentTrimmed)
-			) {
-				break;
-			}
-			paragraphLines.push(currentTrimmed);
-			index += 1;
-		}
-
-		if (paragraphLines.length) {
-			const paragraph = document.createElement("p");
-			appendInlineContent(paragraph, paragraphLines.join(" "));
-			container.append(paragraph);
-		}
-	}
+		header.append(label, createCopyButton(rawText));
+		pre.replaceWith(wrapper);
+		wrapper.append(header, pre);
+	});
 
 	if (!container.children.length) {
 		const fallback = document.createElement("p");
@@ -363,6 +239,7 @@ function renderAssistantContent(text) {
 
 	return container;
 }
+
 
 function createLoadingIndicator() {
 	const wrapper = document.createElement("div");
@@ -396,7 +273,13 @@ function renderMessageBody(message, body) {
 			body.append(createLoadingIndicator());
 			return;
 		}
-
+		if (message.state === "streaming") {
+			const pre = document.createElement("pre");
+			pre.className = "message__plain";
+			pre.textContent = message.content;
+			body.append(pre);
+			return;
+		}
 		body.append(renderAssistantContent(message.content));
 		return;
 	}
@@ -494,6 +377,25 @@ function updateMessageInDom(messageId) {
 	scrollConversationToBottom();
 	updateContextStatus();
 }
+
+// Lightweight update during streaming — only patches the <pre> text node,
+// avoids replacing the whole <article> on every chunk.
+function updateStreamingMessage(messageId, text) {
+	const node = chatLog.querySelector(`[data-message-id="${messageId}"]`);
+	if (!node) return;
+	const body = node.querySelector(".message__body");
+	if (!body) return;
+	let pre = body.querySelector(".message__plain");
+	if (!pre) {
+		body.innerHTML = "";
+		pre = document.createElement("pre");
+		pre.className = "message__plain";
+		body.append(pre);
+	}
+	pre.textContent = text;
+	scrollConversationToBottom();
+}
+
 
 function setStatus(text, isError = false) {
 	statusText.textContent = text;
@@ -696,91 +598,91 @@ function removeMessage(messageId) {
 	}
 }
 
-function getTypingChunkSize(textLength) {
-	if (textLength < 120) return 2;
-	if (textLength < 600) return 4;
-	if (textLength < 1600) return 8;
-	return 12;
-}
 
-function delay(ms) {
-	return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-async function animateAssistantResponse(messageId, finalText) {
-	const message = conversation.find((item) => item.id === messageId);
-	if (!message) return;
-
-	message.state = REDUCED_MOTION.matches ? "done" : "typing";
-	message.content = "";
-	updateMessageInDom(messageId);
-
-	if (REDUCED_MOTION.matches) {
-		message.content = finalText;
-		updateMessageInDom(messageId);
-		saveCurrentChat();
-		return;
-	}
-
-	const chunkSize = getTypingChunkSize(finalText.length);
-	let index = 0;
-
-	while (index < finalText.length) {
-		index = Math.min(finalText.length, index + chunkSize);
-		message.content = finalText.slice(0, index);
-		updateMessageInDom(messageId);
-		await delay(16);
-	}
-
-	message.state = "done";
-	message.content = finalText;
-	updateMessageInDom(messageId);
-	saveCurrentChat();
-}
 
 async function sendPrompt() {
-	const pendingAssistantMessage = createPendingAssistantMessage();
-	conversation.push(pendingAssistantMessage);
+	const pendingMsg = createPendingAssistantMessage();
+	conversation.push(pendingMsg);
 	renderConversation();
 
 	const payload = {
 		model: currentModel,
 		messages: conversation
-			.filter((message) => message.id !== pendingAssistantMessage.id)
+			.filter((m) => m.id !== pendingMsg.id)
 			.map(({ role, content }) => ({ role, content })),
 		temperature: 0.7,
+		stream: true,
 	};
 
 	setWorking(true);
-	setStatus("Sending request...");
+	setStatus("Sending request…");
+
+	let fullText = "";
 
 	try {
 		const response = await fetch("/api/chat", {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
+			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(payload),
 		});
 
 		if (!response.ok) {
-			const body = await response.text();
-			throw new Error(`Request failed (${response.status}): ${body}`);
+			const errBody = await response.text();
+			throw new Error(`Request failed (${response.status}): ${errBody}`);
 		}
 
-		const data = await response.json();
-		const assistantMessage =
-			data?.choices?.[0]?.message?.content ??
-			data?.error ??
-			"No response returned.";
+		// Switch message to streaming state so the body shows a <pre>
+		const streamingMsg = conversation.find((m) => m.id === pendingMsg.id);
+		if (streamingMsg) {
+			streamingMsg.state = "streaming";
+			streamingMsg.content = "";
+			updateMessageInDom(pendingMsg.id);
+		}
 
-		await animateAssistantResponse(pendingAssistantMessage.id, assistantMessage);
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = "";
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split("\n");
+			buffer = lines.pop(); // Hold the last incomplete line
+
+			for (const line of lines) {
+				if (!line.startsWith("data: ")) continue;
+				const data = line.slice(6).trim();
+				if (data === "[DONE]") continue;
+				try {
+					const parsed = JSON.parse(data);
+					const chunk = parsed?.choices?.[0]?.delta?.content;
+					if (chunk) {
+						fullText += chunk;
+						if (streamingMsg) streamingMsg.content = fullText;
+						updateStreamingMessage(pendingMsg.id, fullText);
+					}
+				} catch {
+					// Partial or non-JSON line — safe to skip
+				}
+			}
+		}
+
+		// Re-render the completed message with full Markdown
+		if (streamingMsg) {
+			streamingMsg.state = "done";
+			streamingMsg.content = fullText || "No response returned.";
+			updateMessageInDom(pendingMsg.id);
+			saveCurrentChat();
+		}
+
 		setStatus("Response received.");
-	} catch (error) {
-		console.error(error);
-		removeMessage(pendingAssistantMessage.id);
+	} catch (err) {
+		console.error(err);
+		removeMessage(pendingMsg.id);
 		renderConversation();
-		setStatus(`Error: ${error.message}`, true);
+		setStatus(`Error: ${err.message}`, true);
 	} finally {
 		setWorking(false);
 	}
