@@ -60,7 +60,7 @@ const App: React.FC = () => {
   const [statusText, setStatusText] = useState('Ready');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('theme');
+    const saved = localStorage.getItem('vanaila-theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
   const [attachedFiles, setAttachedFiles] = useState<{ name: string; content: string }[]>([]);
@@ -69,13 +69,24 @@ const App: React.FC = () => {
 
   const chatLogRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   // Initialize
   useEffect(() => {
+    // History Data Repair: ensure all items have an id matching their key
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setChatHistories(JSON.parse(saved));
+        const histories = JSON.parse(saved);
+        let repaired = false;
+        Object.keys(histories).forEach(key => {
+          if (!histories[key].id) {
+            histories[key].id = key;
+            repaired = true;
+          }
+        });
+        if (repaired) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(histories));
+        }
+        setChatHistories(histories);
       } catch (e) {
         console.error("Failed to load history", e);
       }
@@ -251,10 +262,10 @@ const App: React.FC = () => {
       }
 
       // Update history
-      const chatId = currentChatId || Date.now().toString();
+      const chatId = currentChatId || `chat_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       const updatedChat: Chat = {
         id: chatId,
-        title: conversation[0]?.content.slice(0, 30) || finalPrompt.slice(0, 30),
+        title: conversation[0]?.content.slice(0, 30) || prompt.slice(0, 30) || "Untitled chat",
         conversation: [...newConversation, { ...assistantMessage, content: fullContent }],
         createdAt: chatHistories[chatId]?.createdAt || Date.now(),
         updatedAt: Date.now(),
@@ -275,22 +286,30 @@ const App: React.FC = () => {
   };
 
   const handleSelectChat = (id: string) => {
+    console.log(`[HISTORY] Selecting chat: ${id}`);
     const chat = chatHistories[id];
     if (chat) {
       setConversation(chat.conversation);
       setCurrentChatId(id);
       setSelectedModel(chat.model || selectedModel);
       setIsSidebarOpen(false);
+    } else {
+      console.warn(`[HISTORY] Chat ${id} not found in history`);
     }
   };
 
   const handleDeleteChat = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    console.log(`[HISTORY] Deleting chat: ${id}`);
     const nextHistories = { ...chatHistories };
-    delete nextHistories[id];
-    persistHistories(nextHistories);
-    if (currentChatId === id) {
-      handleNewChat();
+    if (nextHistories[id]) {
+      delete nextHistories[id];
+      persistHistories(nextHistories);
+      if (currentChatId === id) {
+        handleNewChat();
+      }
+    } else {
+      console.warn(`[HISTORY] Chat ${id} not found in history`);
     }
   };
 
@@ -378,11 +397,16 @@ const App: React.FC = () => {
               <span className="section-meta">{Object.keys(chatHistories).length} chats</span>
             </div>
             <div className="history-list">
-              {Object.values(chatHistories).sort((a, b) => b.updatedAt - a.updatedAt).map(chat => (
-                <button
-                  key={chat.id}
-                  className={`history-item ${currentChatId === chat.id ? 'active' : ''}`}
-                  onClick={() => handleSelectChat(chat.id)}
+              {Object.entries(chatHistories)
+                .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
+                .map(([id, chat]) => (
+                <div
+                  key={id}
+                  className={`history-item ${currentChatId === id ? 'active' : ''}`}
+                  onClick={() => handleSelectChat(id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSelectChat(id)}
                 >
                   <div className="history-item__content">
                     <span className="history-item__title">{chat.title || "Untitled chat"}</span>
@@ -392,11 +416,11 @@ const App: React.FC = () => {
                     className="history-item__delete"
                     type="button"
                     aria-label="Delete chat"
-                    onClick={(e) => handleDeleteChat(e, chat.id)}
+                    onClick={(e) => handleDeleteChat(e, id)}
                   >
                     &times;
                   </button>
-                </button>
+                </div>
               ))}
             </div>
           </div>

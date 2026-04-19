@@ -90,6 +90,14 @@
   color: var(--text-primary);
 }
 
+[data-theme="dark"] .context-status {
+  background: var(--bg-surface-strong);
+}
+
+[data-theme="dark"] .context-status__meter {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 * {
   box-sizing: border-box;
 }
