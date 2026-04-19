@@ -1,4 +1,4 @@
-const { spawnFile, execFile } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -43,7 +43,7 @@ function execCommand(command, args) {
 }
 
 function spawnCommand(command, args, options = {}) {
-	return spawnFile(command, args, { stdio: "inherit", ...options });
+	return spawn(command, args, { stdio: "inherit", ...options });
 }
 
 function isPortOpen(port) {
@@ -88,9 +88,11 @@ async function getInstalledModels() {
 
 		const models = lines.map((line) => line.split(/\s+/)[0]).filter(Boolean);
 		if (models.length === 0) {
-			throw new Error('No Ollama models were found.');
+			throw new Error("No Ollama models were found.");
 		}
 		return models;
+	} catch (err) {
+		throw new Error(`Unable to determine Ollama models: ${err.message}`);
 	}
 }
 
@@ -160,6 +162,14 @@ async function startOllamaServer() {
 		"--port",
 		String(OLLAMA_PORT),
 	]);
+	ollamaChild.on("error", (err) => {
+		error("Failed to launch Ollama:", err.message);
+	});
+	ollamaChild.on("exit", (code, signal) => {
+		if (code !== 0) {
+			error(`Ollama exited unexpectedly with code ${code} ${signal || ""}`);
+		}
+	});
 
 	const opened = await waitForPort(OLLAMA_PORT, 20000);
 	if (!opened) {
@@ -173,16 +183,22 @@ async function startOllamaServer() {
 
 function openBrowser(url) {
 	const platform = process.platform;
-	const opener =
-		platform === "darwin"
-			? "open"
-			: platform === "win32"
-				? "cmd"
-				: "xdg-open";
-	const args = platform === "win32" ? ["/c", "start", ""] : [url];
+	let opener;
+	let args;
+
+	if (platform === "darwin") {
+		opener = "open";
+		args = [url];
+	} else if (platform === "win32") {
+		opener = "cmd";
+		args = ["/c", "start", "", url];
+	} else {
+		opener = "xdg-open";
+		args = [url];
+	}
 
 	try {
-		const child = spawnCommand(opener, args, {
+		const child = spawn(opener, args, {
 			stdio: "ignore",
 			detached: true,
 		});

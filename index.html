@@ -3,46 +3,89 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ollama Local WebUI</title>
+  <title>VanailaChat</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="app-shell">
-    <section class="hero">
-      <div>
-        <h1>VanailaChat</h1>
-        <p>Use local Ollama models directly in your browser.</p>
-      </div>
-      <div class="config-card">
-        <label>
-          Model
-          <select id="modelSelect">
-            <option>Loading models...</option>
-          </select>
-        </label>
-        <p class="helper-text">The selected model is picked during `npm start` and can be changed here.</p>
-      </div>
-    </section>
-
-    <section class="chat-panel">
-      <div class="chat-header">
-        <h2>Chat</h2>
-        <button id="clearBtn" type="button">Clear</button>
-      </div>
-
-      <div id="chatLog" class="chat-log" aria-live="polite"></div>
-
-      <form id="chatForm" class="chat-form">
-        <label class="hidden" for="promptInput">Prompt</label>
-        <textarea id="promptInput" rows="4" placeholder="Type your prompt here..."></textarea>
-        <div class="actions">
-          <button id="sendBtn" type="submit">Send</button>
-          <span id="statusText" class="status-text">Ready</span>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-content">
+        <div class="sidebar-header">
+          <h2 class="sidebar-title">Chat History</h2>
+          <button id="newChatBtn" class="btn btn-primary btn-sm" title="New Chat">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
         </div>
-      </form>
-    </section>
-  </main>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-content">
+          <div class="header-title">
+            <h1>VanailaChat</h1>
+            <p>Local Ollama WebUI</p>
+          </div>
+          <div class="header-config">
+            <div class="config-item">
+              <label for="modelSelect">Model</label>
+              <select id="modelSelect" class="select">
+                <option>Loading models...</option>
+              </select>
+            </div>
+            <div class="config-status">
+              <div class="status-badge">
+                <span class="status-label">Model:</span>
+                <span id="selectedModelText" class="status-value">Loading…</span>
+              </div>
+              <div class="status-badge">
+                <span class="status-label">Ollama:</span>
+                <span id="serverStatusText" class="status-value">Checking…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Chat Area -->
+      <div class="chat-container">
+        <div id="chatLog" class="chat-log" aria-live="polite"></div>
+      </div>
+
+      <!-- Input Area -->
+      <footer class="app-footer">
+        <form id="chatForm" class="chat-form">
+          <div class="textarea-wrapper">
+            <textarea id="promptInput" class="textarea" placeholder="Type your message... (Ctrl+Enter to send)" rows="3"></textarea>
+            <div class="input-actions">
+              <button id="sendBtn" type="submit" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Send
+              </button>
+              <button id="clearBtn" type="button" class="btn btn-secondary">
+                Clear
+              </button>
+            </div>
+          </div>
+          <div class="chat-status">
+            <span id="statusText" class="status-text">Ready</span>
+          </div>
+        </form>
+      </footer>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
 </html>
+
