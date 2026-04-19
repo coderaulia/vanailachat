@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ollama Local WebUI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <h1>VanailaChat</h1>
+        <p>Use local Ollama models directly in your browser.</p>
+      </div>
+      <div class="config-card">
+        <label>
+          Model
+          <select id="modelSelect">
+            <option>Loading models...</option>
+          </select>
+        </label>
+        <p class="helper-text">The selected model is picked during `npm start` and can be changed here.</p>
+      </div>
+    </section>
+
+    <section class="chat-panel">
+      <div class="chat-header">
+        <h2>Chat</h2>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+
+      <div id="chatLog" class="chat-log" aria-live="polite"></div>
+
+      <form id="chatForm" class="chat-form">
+        <label class="hidden" for="promptInput">Prompt</label>
+        <textarea id="promptInput" rows="4" placeholder="Type your prompt here..."></textarea>
+        <div class="actions">
+          <button id="sendBtn" type="submit">Send</button>
+          <span id="statusText" class="status-text">Ready</span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
