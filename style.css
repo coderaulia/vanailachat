@@ -26,6 +26,61 @@
   --sans: "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
+[data-theme="dark"] {
+  --bg-page: #111111;
+  --bg-surface: rgba(30, 30, 30, 0.74);
+  --bg-surface-strong: #1e1e1e;
+  --bg-sidebar: #0a0a0a;
+  --bg-sidebar-soft: #121212;
+  --bg-accent: #c96f3b;
+  --bg-accent-strong: #e18048;
+  --bg-accent-soft: rgba(201, 111, 59, 0.16);
+  --bg-muted: #2a2a2a;
+  --text-primary: #e8e8e8;
+  --text-secondary: #9a9a9a;
+  --text-inverse: #f7f1e8;
+  --text-muted-inverse: rgba(247, 241, 232, 0.72);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-inverse: rgba(255, 255, 255, 0.12);
+  --shadow-soft: 0 20px 60px rgba(0, 0, 0, 0.4);
+  --shadow-strong: 0 22px 60px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(201, 111, 59, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(79, 104, 88, 0.12), transparent 22%),
+    linear-gradient(180deg, #181818 0%, #111111 100%);
+}
+
+[data-theme="dark"] .select,
+[data-theme="dark"] .textarea,
+[data-theme="dark"] .btn:not(.btn-primary),
+[data-theme="dark"] .icon-btn,
+[data-theme="dark"] .code-block {
+  background: var(--bg-surface-strong);
+}
+
+[data-theme="dark"] .message {
+  background: rgba(30, 30, 30, 0.76);
+}
+
+[data-theme="dark"] .code-block__header,
+[data-theme="dark"] .btn-secondary:hover:not(:disabled) {
+  background: var(--bg-muted);
+}
+
+[data-theme="dark"] .copy-code-btn {
+  background: #2a2a2a;
+  color: var(--text-primary);
+  border-color: var(--border-soft);
+}
+
+[data-theme="dark"] .copy-code-btn:hover {
+  background: #333;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -220,10 +275,41 @@ textarea {
   color: inherit;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease,
     transform 0.18s ease;
+}
+
+.history-item__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.history-item__delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted-inverse);
+  font-size: 18px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+  margin-left: 8px;
+}
+
+.history-item:hover .history-item__delete,
+.history-item:focus-within .history-item__delete {
+  opacity: 1;
+}
+
+.history-item__delete:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 .history-item:hover {

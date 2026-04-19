@@ -121,13 +121,24 @@ function loadChatHistories() {
 }
 
 function persistHistories() {
-	localStorage.setItem(
-		HISTORY_STORAGE_KEY,
-		JSON.stringify({
-			version: STORAGE_VERSION,
-			chats: chatHistories,
-		}),
-	);
+	try {
+		localStorage.setItem(
+			HISTORY_STORAGE_KEY,
+			JSON.stringify({
+				version: STORAGE_VERSION,
+				chats: chatHistories,
+			}),
+		);
+	} catch (error) {
+		console.warn("localStorage quota exceeded. Pruning oldest chats...");
+		const chatIds = Object.keys(chatHistories).sort(
+			(a, b) => chatHistories[a].updatedAt - chatHistories[b].updatedAt,
+		);
+		if (chatIds.length > 0) {
+			delete chatHistories[chatIds[0]];
+			persistHistories(); // Retry
+		}
+	}
 }
 
 function estimateTokens(text) {
@@ -563,6 +574,9 @@ function renderHistoryList() {
 		item.className = `history-item ${chat.id === currentChatId ? "active" : ""}`;
 		item.addEventListener("click", () => loadChat(chat.id));
 
+		const contentWrap = document.createElement("div");
+		contentWrap.className = "history-item__content";
+
 		const title = document.createElement("span");
 		title.className = "history-item__title";
 		title.textContent = chat.title || "Untitled chat";
@@ -571,7 +585,27 @@ function renderHistoryList() {
 		meta.className = "history-item__meta";
 		meta.textContent = DATE_FORMATTER.format(chat.updatedAt);
 
-		item.append(title, meta);
+		contentWrap.append(title, meta);
+
+		const deleteBtn = document.createElement("button");
+		deleteBtn.type = "button";
+		deleteBtn.className = "history-item__delete";
+		deleteBtn.setAttribute("aria-label", "Delete chat");
+		deleteBtn.innerHTML = "&times;";
+		deleteBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			delete chatHistories[chat.id];
+			persistHistories();
+			if (currentChatId === chat.id) {
+				conversation = [];
+				currentChatId = null;
+				renderConversation();
+				setStatus("Conversation deleted.");
+			}
+			renderHistoryList();
+		});
+
+		item.append(contentWrap, deleteBtn);
 		fragment.append(item);
 	});
 
@@ -861,7 +895,23 @@ chatLog.addEventListener("click", async (event) => {
 	}
 });
 
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+if (themeToggleBtn) {
+	themeToggleBtn.addEventListener("click", () => {
+		const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+		document.documentElement.setAttribute("data-theme", isDark ? "light" : "dark");
+		localStorage.setItem("vanaila-theme", isDark ? "light" : "dark");
+	});
+}
+
 async function init() {
+	const savedTheme = localStorage.getItem("vanaila-theme");
+	if (savedTheme) {
+		document.documentElement.setAttribute("data-theme", savedTheme);
+	} else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+		document.documentElement.setAttribute("data-theme", "dark");
+	}
+
 	setStatus("Initializing WebUI...");
 	await fetchModelConfig();
 	await fetchModels();
