@@ -530,6 +530,69 @@ textarea {
   font-size: 0.92em;
 }
 
+.message.is-loading,
+.message.is-typing {
+  position: relative;
+}
+
+.message__loading {
+  display: grid;
+  gap: 14px;
+}
+
+.message__loading-dots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.message__loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(201, 111, 59, 0.72);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.message__loading-dot:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.message__loading-dot:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.message__loading-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.message__loading-line {
+  display: block;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(240, 235, 226, 0.6) 0%,
+    rgba(201, 111, 59, 0.18) 50%,
+    rgba(240, 235, 226, 0.6) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.15s linear infinite;
+}
+
+.message__loading-line:nth-child(1) {
+  width: 78%;
+}
+
+.message__loading-line:nth-child(2) {
+  width: 92%;
+}
+
+.message__loading-line:nth-child(3) {
+  width: 58%;
+}
+
 .code-block {
   border: 1px solid rgba(23, 23, 23, 0.08);
   border-radius: 20px;
@@ -670,6 +733,62 @@ textarea {
   min-width: 220px;
 }
 
+.composer-context {
+  min-width: 180px;
+}
+
+.composer-context label {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.context-status {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: #fffdfa;
+}
+
+.context-status__text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.context-status__meter {
+  display: block;
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(23, 23, 23, 0.08);
+  overflow: hidden;
+}
+
+.context-status__meter-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d88a51 0%, #c96f3b 100%);
+  transition: width 0.24s ease, background 0.24s ease;
+}
+
+.context-status__meter-fill.is-warning {
+  background: linear-gradient(90deg, #d6a23c 0%, #c4871f 100%);
+}
+
+.context-status__meter-fill.is-danger {
+  background: linear-gradient(90deg, #d5644b 0%, #b6452f 100%);
+}
+
 .btn,
 .icon-btn {
   display: inline-flex;
@@ -697,6 +816,10 @@ textarea {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
+}
+
+.btn.is-loading svg {
+  animation: spin 0.8s linear infinite;
 }
 
 .btn-primary {
@@ -763,6 +886,37 @@ textarea {
     scroll-behavior: auto !important;
     animation: none !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -879,8 +1033,13 @@ textarea {
   }
 
   .composer-model,
+  .composer-context,
   .composer-select {
     width: 100%;
+    min-width: 0;
+  }
+
+  .context-status {
     min-width: 0;
   }
 

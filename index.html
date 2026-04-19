@@ -100,16 +100,25 @@
                 <span id="statusText" class="status-text">Ready</span>
               </div>
 
-              <div class="input-actions">
-                <div class="composer-model">
-                  <label for="modelSelect">Model</label>
-                  <select id="modelSelect" class="select composer-select" name="model">
-                    <option>Loading models…</option>
-                  </select>
-                </div>
-                <button id="clearBtn" type="button" class="btn btn-secondary">
-                  Clear
-                </button>
+	              <div class="input-actions">
+	                <div class="composer-model">
+	                  <label for="modelSelect">Model</label>
+	                  <select id="modelSelect" class="select composer-select" name="model">
+	                    <option>Loading models…</option>
+	                  </select>
+	                </div>
+	                <div class="composer-context" aria-live="polite">
+	                  <label for="modelSelect">Context</label>
+	                  <div class="context-status">
+	                    <span id="contextWindowText" class="context-status__text">-- / --</span>
+	                    <span class="context-status__meter" aria-hidden="true">
+	                      <span id="contextWindowMeter" class="context-status__meter-fill"></span>
+	                    </span>
+	                  </div>
+	                </div>
+	                <button id="clearBtn" type="button" class="btn btn-secondary">
+	                  Clear
+	                </button>
                 <button id="sendBtn" type="submit" class="btn btn-primary">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <line x1="22" y1="2" x2="11" y2="13"></line>

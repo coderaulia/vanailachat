@@ -13,35 +13,92 @@ const historyCount = document.getElementById("historyCount");
 const sidebar = document.getElementById("sidebar");
 const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
 const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+const contextWindowText = document.getElementById("contextWindowText");
+const contextWindowMeter = document.getElementById("contextWindowMeter");
 
 const MOBILE_SIDEBAR_BREAKPOINT = window.matchMedia("(max-width: 860px)");
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
 const HISTORY_STORAGE_KEY = "chatHistories";
+const STORAGE_VERSION = 2;
 const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 	month: "short",
 	day: "numeric",
 	hour: "numeric",
 	minute: "2-digit",
 });
+const SEND_BUTTON_HTML = sendBtn.innerHTML;
 
 let conversation = [];
 let availableModels = [];
 let currentModel = null;
+let currentContextWindow = null;
 let isSending = false;
 let currentChatId = null;
 let chatHistories = loadChatHistories();
 
+function generateMessageId() {
+	return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeMessage(message) {
+	return {
+		id: typeof message?.id === "string" ? message.id : generateMessageId(),
+		role: message?.role === "assistant" ? "assistant" : "user",
+		content: typeof message?.content === "string" ? message.content : "",
+		timestamp: typeof message?.timestamp === "number" ? message.timestamp : Date.now(),
+		state: "done",
+	};
+}
+
+function normalizeChat(chatId, chat) {
+	const updatedAt =
+		typeof chat?.updatedAt === "number"
+			? chat.updatedAt
+			: typeof chat?.timestamp === "number"
+				? chat.timestamp
+				: Date.now();
+	const createdAt =
+		typeof chat?.createdAt === "number" ? chat.createdAt : updatedAt;
+	const normalizedConversation = Array.isArray(chat?.conversation)
+		? chat.conversation.map(normalizeMessage)
+		: [];
+	const stats = chat?.stats || {};
+
+	return {
+		id: chat?.id || chatId,
+		title: typeof chat?.title === "string" ? chat.title : "Untitled chat",
+		conversation: normalizedConversation,
+		createdAt,
+		updatedAt,
+		timestamp: updatedAt,
+		model: typeof chat?.model === "string" ? chat.model : null,
+		contextWindow:
+			typeof chat?.contextWindow === "number" ? chat.contextWindow : null,
+		stats: {
+			messageCount:
+				typeof stats.messageCount === "number"
+					? stats.messageCount
+					: normalizedConversation.length,
+			estimatedTokens:
+				typeof stats.estimatedTokens === "number"
+					? stats.estimatedTokens
+					: estimateTokensForConversation(normalizedConversation),
+		},
+	};
+}
+
 function loadChatHistories() {
 	try {
 		const parsed = JSON.parse(localStorage.getItem(HISTORY_STORAGE_KEY)) || {};
+		const rawChats =
+			parsed && typeof parsed === "object" && parsed.version === STORAGE_VERSION
+				? parsed.chats || {}
+				: parsed;
+
 		return Object.fromEntries(
-			Object.entries(parsed).map(([chatId, chat]) => [
+			Object.entries(rawChats).map(([chatId, chat]) => [
 				chatId,
-				{
-					...chat,
-					conversation: Array.isArray(chat.conversation)
-						? chat.conversation.map(normalizeMessage)
-						: [],
-				},
+				normalizeChat(chatId, chat),
 			]),
 		);
 	} catch (error) {
@@ -50,24 +107,52 @@ function loadChatHistories() {
 	}
 }
 
-function normalizeMessage(message) {
-	return {
-		role: message?.role === "assistant" ? "assistant" : "user",
-		content: typeof message?.content === "string" ? message.content : "",
-		timestamp: typeof message?.timestamp === "number" ? message.timestamp : Date.now(),
-	};
-}
-
 function persistHistories() {
-	localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(chatHistories));
+	localStorage.setItem(
+		HISTORY_STORAGE_KEY,
+		JSON.stringify({
+			version: STORAGE_VERSION,
+			chats: chatHistories,
+		}),
+	);
 }
 
-function createMessage(role, content) {
+function estimateTokens(text) {
+	if (!text) return 0;
+	return Math.max(1, Math.ceil(text.trim().length / 4));
+}
+
+function estimateTokensForConversation(messages = conversation) {
+	return messages.reduce((total, message) => {
+		if (!message.content) return total;
+		return total + estimateTokens(message.content) + 6;
+	}, 0);
+}
+
+function getPersistableConversation() {
+	return conversation
+		.filter((message) => message.state === "done")
+		.map(({ id, role, content, timestamp }) => ({
+			id,
+			role,
+			content,
+			timestamp,
+			state: "done",
+		}));
+}
+
+function createMessage(role, content, options = {}) {
 	return {
+		id: options.id || generateMessageId(),
 		role,
 		content,
-		timestamp: Date.now(),
+		timestamp: options.timestamp || Date.now(),
+		state: options.state || "done",
 	};
+}
+
+function createPendingAssistantMessage() {
+	return createMessage("assistant", "", { state: "loading" });
 }
 
 function createEmptyState() {
@@ -279,9 +364,59 @@ function renderAssistantContent(text) {
 	return container;
 }
 
+function createLoadingIndicator() {
+	const wrapper = document.createElement("div");
+	wrapper.className = "message__loading";
+
+	const dots = document.createElement("div");
+	dots.className = "message__loading-dots";
+	for (let index = 0; index < 3; index += 1) {
+		const dot = document.createElement("span");
+		dot.className = "message__loading-dot";
+		dots.append(dot);
+	}
+
+	const lines = document.createElement("div");
+	lines.className = "message__loading-lines";
+	for (let index = 0; index < 3; index += 1) {
+		const line = document.createElement("span");
+		line.className = "message__loading-line";
+		lines.append(line);
+	}
+
+	wrapper.append(dots, lines);
+	return wrapper;
+}
+
+function renderMessageBody(message, body) {
+	body.innerHTML = "";
+
+	if (message.role === "assistant") {
+		if (message.state === "loading") {
+			body.append(createLoadingIndicator());
+			return;
+		}
+
+		body.append(renderAssistantContent(message.content));
+		return;
+	}
+
+	const content = document.createElement("pre");
+	content.className = "message__plain";
+	content.textContent = message.content;
+	body.append(content);
+}
+
 function createMessageNode(message) {
 	const wrapper = document.createElement("article");
 	wrapper.className = `message ${message.role}`;
+	if (message.state === "loading") {
+		wrapper.classList.add("is-loading");
+	}
+	if (message.state === "typing") {
+		wrapper.classList.add("is-typing");
+	}
+	wrapper.dataset.messageId = message.id;
 
 	const meta = document.createElement("header");
 	meta.className = "message__meta";
@@ -298,18 +433,30 @@ function createMessageNode(message) {
 
 	const body = document.createElement("div");
 	body.className = "message__body";
-
-	if (message.role === "assistant") {
-		body.append(renderAssistantContent(message.content));
-	} else {
-		const content = document.createElement("pre");
-		content.className = "message__plain";
-		content.textContent = message.content;
-		body.append(content);
-	}
+	renderMessageBody(message, body);
 
 	wrapper.append(meta, body);
 	return wrapper;
+}
+
+function scrollConversationToBottom() {
+	chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function updateContextStatus() {
+	const usedTokens = estimateTokensForConversation(conversation);
+	const totalTokens = currentContextWindow;
+	const percent =
+		totalTokens && totalTokens > 0
+			? Math.min(100, Math.round((usedTokens / totalTokens) * 100))
+			: 0;
+
+	contextWindowText.textContent = totalTokens
+		? `${usedTokens.toLocaleString()} / ${totalTokens.toLocaleString()}`
+		: `${usedTokens.toLocaleString()} / --`;
+	contextWindowMeter.style.width = `${percent}%`;
+	contextWindowMeter.classList.toggle("is-warning", percent >= 70 && percent < 90);
+	contextWindowMeter.classList.toggle("is-danger", percent >= 90);
 }
 
 function renderConversation() {
@@ -317,6 +464,7 @@ function renderConversation() {
 
 	if (conversation.length === 0) {
 		chatLog.append(createEmptyState());
+		updateContextStatus();
 		return;
 	}
 
@@ -325,7 +473,26 @@ function renderConversation() {
 		fragment.append(createMessageNode(message));
 	});
 	chatLog.append(fragment);
-	chatLog.scrollTop = chatLog.scrollHeight;
+	scrollConversationToBottom();
+	updateContextStatus();
+}
+
+function updateMessageInDom(messageId) {
+	const message = conversation.find((item) => item.id === messageId);
+	if (!message) {
+		renderConversation();
+		return;
+	}
+
+	const currentNode = chatLog.querySelector(`[data-message-id="${messageId}"]`);
+	if (!currentNode) {
+		renderConversation();
+		return;
+	}
+
+	currentNode.replaceWith(createMessageNode(message));
+	scrollConversationToBottom();
+	updateContextStatus();
 }
 
 function setStatus(text, isError = false) {
@@ -336,10 +503,12 @@ function setStatus(text, isError = false) {
 function setWorking(value) {
 	isSending = value;
 	sendBtn.disabled = value;
+	clearBtn.disabled = value;
+	modelSelect.disabled = value;
 	promptInput.disabled = value;
-	sendBtn.innerHTML = value
-		? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path></svg>Sending…'
-		: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>Send';
+	sendBtn.classList.toggle("is-loading", value);
+	sendBtn.setAttribute("aria-busy", value ? "true" : "false");
+	sendBtn.innerHTML = SEND_BUTTON_HTML;
 }
 
 function generateChatId() {
@@ -358,18 +527,31 @@ function getChatTitle(messages) {
 }
 
 function saveCurrentChat() {
-	if (conversation.length === 0) return;
+	const persistedConversation = getPersistableConversation();
+	if (persistedConversation.length === 0) return;
+
 	if (!currentChatId) {
 		currentChatId = generateChatId();
 	}
 
-	chatHistories[currentChatId] = {
+	const existing = chatHistories[currentChatId] || {};
+	const updatedAt = Date.now();
+
+	chatHistories[currentChatId] = normalizeChat(currentChatId, {
+		...existing,
 		id: currentChatId,
-		title: getChatTitle(conversation),
-		conversation: conversation.map((message) => ({ ...message })),
-		timestamp: Date.now(),
+		title: getChatTitle(persistedConversation),
+		conversation: persistedConversation,
+		createdAt: existing.createdAt || updatedAt,
+		updatedAt,
+		timestamp: updatedAt,
 		model: currentModel,
-	};
+		contextWindow: currentContextWindow,
+		stats: {
+			messageCount: persistedConversation.length,
+			estimatedTokens: estimateTokensForConversation(persistedConversation),
+		},
+	});
 
 	persistHistories();
 	renderHistoryList();
@@ -381,6 +563,32 @@ function closeSidebarIfNeeded() {
 	}
 }
 
+async function refreshContextWindow(modelName = currentModel) {
+	if (!modelName) {
+		currentContextWindow = null;
+		updateContextStatus();
+		return;
+	}
+
+	try {
+		const response = await fetch(
+			`/api/model-details?model=${encodeURIComponent(modelName)}`,
+		);
+		if (!response.ok) {
+			throw new Error("Unable to load model details.");
+		}
+
+		const details = await response.json();
+		currentContextWindow =
+			typeof details.contextWindow === "number" ? details.contextWindow : null;
+	} catch (error) {
+		console.error(error);
+		currentContextWindow = null;
+	} finally {
+		updateContextStatus();
+	}
+}
+
 function loadChat(chatId) {
 	const chat = chatHistories[chatId];
 	if (!chat) return;
@@ -388,6 +596,7 @@ function loadChat(chatId) {
 	conversation = chat.conversation.map(normalizeMessage);
 	currentChatId = chatId;
 	currentModel = chat.model || currentModel;
+	currentContextWindow = chat.contextWindow || currentContextWindow;
 
 	if (currentModel && availableModels.includes(currentModel)) {
 		modelSelect.value = currentModel;
@@ -398,6 +607,10 @@ function loadChat(chatId) {
 	renderHistoryList();
 	setStatus("Conversation loaded.");
 	closeSidebarIfNeeded();
+
+	if (currentModel && !chat.contextWindow) {
+		refreshContextWindow(currentModel);
+	}
 }
 
 function newChat() {
@@ -418,7 +631,8 @@ function createHistoryEmptyState() {
 	title.textContent = "No saved chats yet.";
 
 	const body = document.createElement("p");
-	body.textContent = "Send your first message and this sidebar will start building a reusable conversation history.";
+	body.textContent =
+		"Send your first message and this sidebar will start building a reusable conversation history.";
 
 	empty.append(title, body);
 	return empty;
@@ -428,7 +642,7 @@ function renderHistoryList() {
 	historyList.innerHTML = "";
 
 	const sortedHistories = Object.values(chatHistories).sort(
-		(a, b) => b.timestamp - a.timestamp,
+		(a, b) => b.updatedAt - a.updatedAt,
 	);
 
 	historyCount.textContent = `${sortedHistories.length} ${
@@ -453,7 +667,7 @@ function renderHistoryList() {
 
 		const meta = document.createElement("span");
 		meta.className = "history-item__meta";
-		meta.textContent = DATE_FORMATTER.format(chat.timestamp);
+		meta.textContent = DATE_FORMATTER.format(chat.updatedAt);
 
 		item.append(title, meta);
 		fragment.append(item);
@@ -475,20 +689,70 @@ function clearConversation() {
 	}
 }
 
-async function sendPrompt(prompt) {
-	if (!currentModel) {
-		setStatus("Select a model before sending.", true);
+function removeMessage(messageId) {
+	const index = conversation.findIndex((message) => message.id === messageId);
+	if (index >= 0) {
+		conversation.splice(index, 1);
+	}
+}
+
+function getTypingChunkSize(textLength) {
+	if (textLength < 120) return 2;
+	if (textLength < 600) return 4;
+	if (textLength < 1600) return 8;
+	return 12;
+}
+
+function delay(ms) {
+	return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function animateAssistantResponse(messageId, finalText) {
+	const message = conversation.find((item) => item.id === messageId);
+	if (!message) return;
+
+	message.state = REDUCED_MOTION.matches ? "done" : "typing";
+	message.content = "";
+	updateMessageInDom(messageId);
+
+	if (REDUCED_MOTION.matches) {
+		message.content = finalText;
+		updateMessageInDom(messageId);
+		saveCurrentChat();
 		return;
 	}
 
+	const chunkSize = getTypingChunkSize(finalText.length);
+	let index = 0;
+
+	while (index < finalText.length) {
+		index = Math.min(finalText.length, index + chunkSize);
+		message.content = finalText.slice(0, index);
+		updateMessageInDom(messageId);
+		await delay(16);
+	}
+
+	message.state = "done";
+	message.content = finalText;
+	updateMessageInDom(messageId);
+	saveCurrentChat();
+}
+
+async function sendPrompt() {
+	const pendingAssistantMessage = createPendingAssistantMessage();
+	conversation.push(pendingAssistantMessage);
+	renderConversation();
+
 	const payload = {
 		model: currentModel,
-		messages: [...conversation],
+		messages: conversation
+			.filter((message) => message.id !== pendingAssistantMessage.id)
+			.map(({ role, content }) => ({ role, content })),
 		temperature: 0.7,
 	};
 
 	setWorking(true);
-	setStatus("Sending request…");
+	setStatus("Sending request...");
 
 	try {
 		const response = await fetch("/api/chat", {
@@ -510,12 +774,12 @@ async function sendPrompt(prompt) {
 			data?.error ??
 			"No response returned.";
 
-		conversation.push(createMessage("assistant", assistantMessage));
-		renderConversation();
+		await animateAssistantResponse(pendingAssistantMessage.id, assistantMessage);
 		setStatus("Response received.");
-		saveCurrentChat();
 	} catch (error) {
 		console.error(error);
+		removeMessage(pendingAssistantMessage.id);
+		renderConversation();
 		setStatus(`Error: ${error.message}`, true);
 	} finally {
 		setWorking(false);
@@ -554,14 +818,19 @@ async function fetchModelConfig() {
 
 		const config = await response.json();
 		currentModel = config.selectedModel || currentModel;
+		currentContextWindow =
+			typeof config.contextWindow === "number" ? config.contextWindow : null;
 		selectedModelText.textContent = currentModel || "No model selected";
 		serverStatusText.textContent = formatOllamaStatus(config.ollamaUrl);
+		updateContextStatus();
 		return config;
 	} catch (error) {
 		console.error(error);
 		setStatus(`Config error: ${error.message}`, true);
 		selectedModelText.textContent = "Unavailable";
 		serverStatusText.textContent = "Unavailable";
+		currentContextWindow = null;
+		updateContextStatus();
 		return null;
 	}
 }
@@ -581,6 +850,8 @@ async function fetchModels() {
 			modelSelect.innerHTML = '<option value="">No installed models found</option>';
 			currentModel = null;
 			selectedModelText.textContent = "No installed models";
+			currentContextWindow = null;
+			updateContextStatus();
 			return;
 		}
 
@@ -601,6 +872,8 @@ async function fetchModels() {
 		console.error(error);
 		modelSelect.innerHTML = '<option value="">Unable to load models</option>';
 		selectedModelText.textContent = "Unavailable";
+		currentContextWindow = null;
+		updateContextStatus();
 	}
 }
 
@@ -611,6 +884,10 @@ chatForm.addEventListener("submit", async (event) => {
 		setStatus("Enter a message first.", true);
 		return;
 	}
+	if (!currentModel) {
+		setStatus("Select a model before sending.", true);
+		return;
+	}
 
 	const userMessage = createMessage("user", prompt);
 	conversation.push(userMessage);
@@ -619,7 +896,7 @@ chatForm.addEventListener("submit", async (event) => {
 	saveCurrentChat();
 	closeSidebarIfNeeded();
 
-	await sendPrompt(prompt);
+	await sendPrompt();
 });
 
 promptInput.addEventListener("keydown", (event) => {
@@ -629,10 +906,11 @@ promptInput.addEventListener("keydown", (event) => {
 	}
 });
 
-modelSelect.addEventListener("change", () => {
+modelSelect.addEventListener("change", async () => {
 	currentModel = modelSelect.value || null;
 	selectedModelText.textContent = currentModel || "No model selected";
 	setStatus(currentModel ? `Using ${currentModel}.` : "No model selected.");
+	await refreshContextWindow(currentModel);
 	if (conversation.length > 0) {
 		saveCurrentChat();
 	}
@@ -682,9 +960,12 @@ chatLog.addEventListener("click", async (event) => {
 });
 
 async function init() {
-	setStatus("Initializing WebUI…");
+	setStatus("Initializing WebUI...");
 	await fetchModelConfig();
 	await fetchModels();
+	if (currentModel) {
+		await refreshContextWindow(currentModel);
+	}
 	renderHistoryList();
 	renderConversation();
 	setStatus("Ready");

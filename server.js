@@ -14,6 +14,7 @@ const STATIC_ROOT = path.resolve(__dirname);
 
 let selectedModel = null;
 let ollamaChild = null;
+const modelDetailsCache = new Map();
 
 function log(...args) {
 	console.log("[webui]", ...args);
@@ -93,6 +94,32 @@ async function getInstalledModels() {
 		return models;
 	} catch (err) {
 		throw new Error(`Unable to determine Ollama models: ${err.message}`);
+	}
+}
+
+async function getModelDetails(modelName) {
+	if (!modelName) {
+		return { contextWindow: null };
+	}
+
+	if (modelDetailsCache.has(modelName)) {
+		return modelDetailsCache.get(modelName);
+	}
+
+	try {
+		const output = await execCommand("ollama", [ "show", modelName, "--verbose" ]);
+		const contextMatch = output.match(/context length\s+(\d+)/i);
+		const parametersMatch = output.match(/parameters\s+([^\n]+)/i);
+		const architectureMatch = output.match(/architecture\s+([^\n]+)/i);
+		const details = {
+			contextWindow: contextMatch ? Number(contextMatch[1]) : null,
+			parameters: parametersMatch ? parametersMatch[1].trim() : null,
+			architecture: architectureMatch ? architectureMatch[1].trim() : null,
+		};
+		modelDetailsCache.set(modelName, details);
+		return details;
+	} catch (err) {
+		throw new Error(`Unable to inspect model details: ${err.message}`);
 	}
 }
 
@@ -269,17 +296,40 @@ async function handleApiRequest(req, res) {
 		return;
 	}
 
-	if (url.pathname === "/api/config" && req.method === "GET") {
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(
-			JSON.stringify({
-				selectedModel,
-				ollamaUrl: LOCAL_OLLAMA_URL,
-				apiUrl: `/api`,
-			}),
-		);
-		return;
-	}
+		if (url.pathname === "/api/config" && req.method === "GET") {
+			const modelDetails = selectedModel
+				? await getModelDetails(selectedModel).catch(() => ({ contextWindow: null }))
+				: { contextWindow: null };
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					selectedModel,
+					ollamaUrl: LOCAL_OLLAMA_URL,
+					apiUrl: `/api`,
+					contextWindow: modelDetails.contextWindow,
+				}),
+			);
+			return;
+		}
+
+		if (url.pathname === "/api/model-details" && req.method === "GET") {
+			const model = url.searchParams.get("model");
+			if (!model) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "Model is required." }));
+				return;
+			}
+
+			try {
+				const details = await getModelDetails(model);
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ model, ...details }));
+			} catch (err) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: err.message }));
+			}
+			return;
+		}
 
 	if (url.pathname === "/api/chat" && req.method === "POST") {
 		await proxyChatRequest(req, res);
