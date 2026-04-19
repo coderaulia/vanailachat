@@ -55,23 +55,9 @@ The routing logic is manual `if/else` on URL pathnames. It works, but it's fragi
 
 ---
 
-### 7. `localStorage` may silently overflow
-**File:** `app.js` L110–L118
+### ~~7. `localStorage` may silently overflow~~ ✅ RESOLVED
 
-`persistHistories()` calls `localStorage.setItem` without a try/catch. When the quota (~5 MB) is exceeded it throws a `QuotaExceededError` which is completely unhandled, so history is silently lost.
-
-**Fix:**
-```js
-function persistHistories() {
-  try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, chats: chatHistories }));
-  } catch (e) {
-    console.warn('localStorage quota exceeded. Pruning oldest chats...');
-    pruneOldestChats();
-    // retry once
-  }
-}
-```
+`persistHistories()` in `app.js` now catches `QuotaExceededError` and recursively prunes the oldest chat to free up space before saving again.
 
 ---
 
@@ -100,21 +86,15 @@ No `<meta name="description">`, no favicon, no `<meta property="og:*">`. Minor, 
 
 ## 🟢 Nice-to-Have Improvements
 
-### 11. Dark mode support
-**File:** `style.css`
+### ~~11. Dark mode support~~ ✅ RESOLVED
 
-The design is light-only. There's no `@media (prefers-color-scheme: dark)` block. Many developer users run dark terminals and expect dark-mode UIs.
-
-**Fix:** Add a `[data-theme="dark"]` CSS variable override + a toggle button in the header.
+Added a `[data-theme="dark"]` override in `style.css` along with a toggle button in the header. Theme preference is persisted via `localStorage` and falls back to system preference.
 
 ---
 
-### 12. Delete individual chat history items
-**File:** `app.js` L641–L677
+### ~~12. Delete individual chat history items~~ ✅ RESOLVED
 
-The `history-item` buttons have no delete action. Users can only "Clear" the active chat; they can't prune stale history entries from the sidebar.
-
-**Fix:** Add a small ✕ button inside each `history-item` with a `stopPropagation` guard.
+Added a `&times;` delete button to each `.history-item` to let users individually remove stale chats from their sidebar.
 
 ---
 
@@ -159,6 +139,6 @@ The `ollama serve` port is now correctly set using the `OLLAMA_HOST` environment
 3. ~~**Fix `ollama serve` port bug**~~ ✅ Done
 4. ~~**Add body size cap** on `readRequestBody`~~ ✅ Done
 5. ~~**Add dev script** + nodemon~~ ✅ Done
-6. **Patch localStorage overflow** guard
-7. **Dark mode** + delete history items
+6. ~~**Patch localStorage overflow** guard~~ ✅ Done
+7. ~~**Dark mode** + delete history items~~ ✅ Done
 8. **Fix duplicate label / favicon**
