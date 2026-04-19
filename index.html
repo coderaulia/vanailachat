@@ -3,89 +3,143 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VanailaChat</title>
+  <title>VanailaChat - Ollama Local Assistant</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-container">
-    <!-- Sidebar -->
-    <aside class="sidebar">
+  <a class="skip-link" href="#chatLog">Skip to Conversation</a>
+
+  <div class="app-shell">
+    <button
+      id="sidebarBackdrop"
+      class="sidebar-backdrop"
+      type="button"
+      aria-label="Close Chat Sidebar"
+      hidden
+    ></button>
+
+    <aside id="sidebar" class="sidebar" aria-label="Chat History">
       <div class="sidebar-content">
-        <div class="sidebar-header">
-          <h2 class="sidebar-title">Chat History</h2>
-          <button id="newChatBtn" class="btn btn-primary btn-sm" title="New Chat">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-          </button>
+        <div class="sidebar-panel">
+          <div class="sidebar-brand">
+            <p class="sidebar-eyebrow">Local Ollama Workspace</p>
+            <h1 class="sidebar-product">VanailaChat</h1>
+            <p class="sidebar-copy">Browse recent chats, jump back into context, and start a fresh thread fast.</p>
+          </div>
+
+          <div class="sidebar-actions">
+            <button
+              id="newChatBtn"
+              class="btn btn-primary btn-block"
+              type="button"
+              aria-label="Start New Chat"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Chat
+            </button>
+          </div>
         </div>
-        <div id="historyList" class="history-list"></div>
+
+        <div class="sidebar-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-eyebrow">Library</p>
+              <h2 class="section-title">Recent Conversations</h2>
+            </div>
+            <span id="historyCount" class="section-meta">0 chats</span>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </div>
       </div>
     </aside>
 
-    <!-- Main Content -->
-    <div class="main-content">
-      <!-- Header -->
+    <main class="main-content">
       <header class="app-header">
-        <div class="header-content">
+        <div class="header-main">
           <div class="header-title">
-            <h1>VanailaChat</h1>
-            <p>Local Ollama WebUI</p>
-          </div>
-          <div class="header-config">
-            <div class="config-item">
-              <label for="modelSelect">Model</label>
-              <select id="modelSelect" class="select">
-                <option>Loading models...</option>
-              </select>
+            <button
+              id="sidebarToggleBtn"
+              class="icon-btn sidebar-toggle"
+              type="button"
+              aria-label="Open Chat Sidebar"
+              aria-controls="sidebar"
+              aria-expanded="false"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="4" y1="6" x2="20" y2="6"></line>
+                <line x1="4" y1="12" x2="20" y2="12"></line>
+                <line x1="4" y1="18" x2="20" y2="18"></line>
+              </svg>
+            </button>
+
+            <div class="title-stack">
+              <p class="header-eyebrow">Local AI Assistant</p>
+              <h2>VanillaChat</h2>
             </div>
-            <div class="config-status">
-              <div class="status-badge">
-                <span class="status-label">Model:</span>
-                <span id="selectedModelText" class="status-value">Loading…</span>
-              </div>
-              <div class="status-badge">
-                <span class="status-label">Ollama:</span>
-                <span id="serverStatusText" class="status-value">Checking…</span>
-              </div>
+          </div>
+
+          <div class="header-summary">
+            <div class="summary-pill">
+              <span class="summary-label">Model</span>
+              <span id="selectedModelText" class="summary-value">Loading…</span>
+            </div>
+            <div class="summary-pill">
+              <span class="summary-label">Ollama</span>
+              <span id="serverStatusText" class="summary-value">Checking…</span>
             </div>
           </div>
         </div>
       </header>
 
-      <!-- Chat Area -->
-      <div class="chat-container">
-        <div id="chatLog" class="chat-log" aria-live="polite"></div>
-      </div>
+      <section class="chat-container">
+        <div id="chatLog" class="chat-log" aria-live="polite" aria-label="Conversation"></div>
+      </section>
 
-      <!-- Input Area -->
       <footer class="app-footer">
         <form id="chatForm" class="chat-form">
-          <div class="textarea-wrapper">
-            <textarea id="promptInput" class="textarea" placeholder="Type your message... (Ctrl+Enter to send)" rows="3"></textarea>
-            <div class="input-actions">
-              <button id="sendBtn" type="submit" class="btn btn-primary">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-                Send
-              </button>
-              <button id="clearBtn" type="button" class="btn btn-secondary">
-                Clear
-              </button>
+          <div class="composer">
+            <label class="composer-label" for="promptInput">Message</label>
+            <textarea
+              id="promptInput"
+              class="textarea"
+              name="prompt"
+              placeholder="Ask for code, debugging help, or a quick explanation…"
+              rows="3"
+            ></textarea>
+
+            <div class="composer-footer">
+              <div class="chat-status" aria-live="polite">
+                <span id="statusText" class="status-text">Ready</span>
+              </div>
+
+              <div class="input-actions">
+                <div class="composer-model">
+                  <label for="modelSelect">Model</label>
+                  <select id="modelSelect" class="select composer-select" name="model">
+                    <option>Loading models…</option>
+                  </select>
+                </div>
+                <button id="clearBtn" type="button" class="btn btn-secondary">
+                  Clear
+                </button>
+                <button id="sendBtn" type="submit" class="btn btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                  Send
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="chat-status">
-            <span id="statusText" class="status-text">Ready</span>
           </div>
         </form>
       </footer>
-    </div>
+    </main>
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
-
