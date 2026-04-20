@@ -28,15 +28,19 @@ A modern, local browser interface for Ollama built with **React 19**, **Vite**, 
 
 ## Usage
 
-- **Chat**: Select a model from the top bar and type your prompt.
-- **Web Search**: The AI can automatically perform web searches if it determines real-time info is needed.
-- **File Context**: Drag and drop text files into the chat area to include their content as context.
-- **History**: Conversations are saved automatically in your browser's local storage. Use the sidebar to navigate them.
+- **Intelligent Selector**: High-performance model picker with capability badges and role-based filtering.
+- **Dynamic Roles**: Pivot between Coding, Vision, and Creative modes for task-specific optimization.
+- **Agentic Suggestions**: Smart detection of vision and creative tasks based on prompts and attachments.
+- **Global Search**: Toggle real-time web awareness via integrated DuckDuckGo search.
+- **Rich Context**: Support for image vision and deep text-file context.
 
 ## Features
 
-- **Tool Execution**: Integrated Web Search using DuckDuckGo via the Hono backend.
-- **Context Management**: Live context window visualization and multi-modal file attachments.
-- **Markdown & Code**: Full markdown rendering with GitHub-style code blocks and one-click copy buttons.
-- **Theme Parity**: Premium dark/light modes with subtle animations and shimmering loading states.
-- **TypeScript**: End-to-end type safety across both frontend and backend environments.
+- **Premium DX**: Metadata-driven model orchestration with role-based filtering and smart detection.
+- **Multi-Modal Native**: Deep integration for vision models and Flux text-to-image workflows.
+- **Search Augmented**: Built-in tool execution for real-time web intelligence.
+- **Visual Excellence**: Premium glassmorphic design with serif typography and micro-animations.
+- **Atomic Precision**: End-to-end TypeScript safety and optimized Hono/React architecture.
+
+---
+Made with ❤️ by **Vanaila** for local AI community

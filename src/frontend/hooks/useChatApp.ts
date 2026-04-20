@@ -10,10 +10,12 @@ import { DEFAULT_MODEL_ROLE } from '../config/constants';
 
 export function useChatApp() {
   const [prompt, setPrompt] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<any[]>([]);
+  const hasImageAttachment = attachedFiles.some(f => f.type === 'image');
 
   const uiState = useUIState();
   const persistence = usePersistence();
-  const modelManager = useModelManager(prompt);
+  const modelManager = useModelManager(prompt, hasImageAttachment);
 
   const {
     setSelectedModel,
@@ -55,6 +57,8 @@ export function useChatApp() {
     setSelectedProjectId,
     prompt,
     setPrompt,
+    attachedFiles,
+    setAttachedFiles,
   });
 
   const { handleNewChat, currentChatIdRef } = chatSession;
@@ -279,6 +283,7 @@ export function useChatApp() {
     systemPrompt: chatSession.systemPrompt,
     projectRoot: chatSession.projectRoot,
     isSearchEnabled: chatSession.isSearchEnabled,
+    setIsSearchEnabled: chatSession.setIsSearchEnabled,
     contextWindow: chatSession.contextWindow,
     sendingChatIds: chatSession.sendingChatIds,
     contextPercentage: chatSession.contextPercentage,

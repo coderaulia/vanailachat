@@ -24,6 +24,8 @@ export function useChatSession(deps: {
   setSelectedProjectId: (id: string | null) => void;
   prompt: string;
   setPrompt: (value: string) => void;
+  attachedFiles: Attachment[];
+  setAttachedFiles: (files: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
 }) {
   const {
     selectedModel,
@@ -44,11 +46,13 @@ export function useChatSession(deps: {
     setSelectedProjectId,
     prompt,
     setPrompt,
+    attachedFiles,
+    setAttachedFiles,
   } = deps;
 
   const [conversation, setConversation] = useState<Message[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
+  // removed local attachedFiles state
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [projectRoot, setProjectRoot] = useState('');
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
@@ -89,7 +93,11 @@ export function useChatSession(deps: {
     if (chat.model) {
       setSelectedModel(chat.model);
     }
-    setSelectedRole(toModelRole(chat.role));
+    
+    if (chat.role) {
+      setSelectedRole(toModelRole(chat.role));
+    }
+    
     setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     setProjectRoot(chat.projectRoot || '');
     setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
@@ -113,23 +121,28 @@ export function useChatSession(deps: {
     })();
   };
 
-  const handleAttach = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleAttach = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        const type = file.type.startsWith('image/') ? 'image' : 'text';
-        setAttachedFiles((prev) => [...prev, { name: file.name, content, type }]);
-      };
-      if (file.type.startsWith('image/')) {
-        reader.readAsDataURL(file);
-      } else {
-        reader.readAsText(file);
-      }
+    const filePromises = Array.from(files).map((file) => {
+      return new Promise<void>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target?.result as string;
+          const type = file.type.startsWith('image/') ? 'image' : 'text';
+          setAttachedFiles((prev) => [...prev, { name: file.name, content, type }]);
+          resolve();
+        };
+        if (file.type.startsWith('image/')) {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
+      });
     });
+
+    await Promise.all(filePromises);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -253,7 +266,7 @@ export function useChatSession(deps: {
         updatedAt: startedAt,
         pinned: existingChat?.pinned ?? false,
         role: existingChat?.role ?? selectedRole,
-        model: selectedModel || null,
+        model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
         projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
         systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
         usage: existingChat?.usage || 0,
@@ -266,7 +279,7 @@ export function useChatSession(deps: {
       title,
       pinned: existingChat?.pinned ?? false,
       role: existingChat?.role ?? selectedRole,
-      model: selectedModel || null,
+      model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
       projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
       systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
       createdAt,
@@ -288,7 +301,7 @@ export function useChatSession(deps: {
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
-          model: selectedModel || null,
+          model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
           chatId,
           messages: [
             ...recentConversation.map(m => ({ role: m.role, content: m.content })),
@@ -461,7 +474,7 @@ export function useChatSession(deps: {
           title,
           pinned: existingChat?.pinned ?? false,
           role: existingChat?.role ?? selectedRole,
-          model: selectedModel || null,
+          model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
           projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
           systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
           createdAt,

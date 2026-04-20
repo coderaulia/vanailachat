@@ -20,6 +20,7 @@ const App = () => {
     conversation,
     currentChatId,
     fileInputRef,
+    filteredAvailableModels,
     handleAttach,
     handleCreateProject,
     handleDeleteChat,
@@ -128,7 +129,7 @@ const App = () => {
 
         <Composer
           attachedFiles={attachedFiles}
-          availableModels={availableModels}
+          availableModels={filteredAvailableModels}
           contextPercentage={contextPercentage}
           contextWindow={contextWindow}
           fileInputRef={fileInputRef}
@@ -151,7 +152,7 @@ const App = () => {
           onSetProjectRoot={handleProjectRootChange}
           onSetSystemPrompt={handleSystemPromptChange}
           onSaveSystemPrompt={handleSaveSystemPrompt}
-          onToggleSearch={() => setIsSearchEnabled((enabled) => !enabled)}
+          onToggleSearch={() => setIsSearchEnabled((enabled: boolean) => !enabled)}
           selectedRole={selectedRole}
           shouldShowRoleSuggestion={shouldShowRoleSuggestion}
           suggestedModelName={suggestedModelName}

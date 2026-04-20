@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { ModelRole, MODEL_ROLE_MAP, MODEL_ROLE_LABELS } from '../config/modelRoles';
 import { MODEL_STORAGE_KEY, DEFAULT_MODEL_ROLE } from '../config/constants';
 
-export function useModelManager(prompt: string) {
+export function useModelManager(prompt: string, hasImageAttachment: boolean = false) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModelState] = useState('');
   const [selectedRole, setSelectedRole] = useState<ModelRole>(DEFAULT_MODEL_ROLE);
@@ -43,22 +43,35 @@ export function useModelManager(prompt: string) {
   }, [availableModels, selectedRole]);
 
   useEffect(() => {
-    if (filteredAvailableModels.length === 0) return;
-    if (!selectedModel || !filteredAvailableModels.includes(selectedModel)) {
-      setSelectedModelState(filteredAvailableModels[0]);
+    if (availableModels.length === 0) return;
+    
+    // If no model selected, or selected model is not in the full list of available models,
+    // then we need to pick a default.
+    if (!selectedModel || !availableModels.includes(selectedModel)) {
+      const defaultModel = filteredAvailableModels.length > 0 
+        ? filteredAvailableModels[0] 
+        : availableModels[0];
+      
+      if (defaultModel) {
+        setSelectedModelState(defaultModel);
+      }
     }
-  }, [filteredAvailableModels, selectedModel]);
+  }, [availableModels, filteredAvailableModels, selectedModel]);
 
-  const getSuggestedRole = (p: string): ModelRole | null => {
+  const getSuggestedRole = (p: string, hasImage: boolean): ModelRole | null => {
+    if (hasImage) return 'vision';
     const lowered = p.toLowerCase();
     const hasCodeFence = lowered.includes('```');
     const hasFileExtension = /\b[\w-]+\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|cs|rb|php|html|css|json)\b/.test(lowered);
-    const hasCodingKeyword = /\b(debug|refactor|write|design)\b/.test(lowered);
+    const hasCodingKeyword = /\b(debug|refactor|write|design|implement|function|class)\b/.test(lowered);
+    const hasImageKeyword = /\b(image|draw|generate|paint|visualize|picture|photo|sketch|flux)\b/.test(lowered);
+    
+    if (hasImageKeyword) return 'creative';
     if (hasCodeFence || hasFileExtension || hasCodingKeyword) return 'coding';
     return null;
   };
 
-  const suggestedRole = useMemo(() => getSuggestedRole(prompt), [prompt]);
+  const suggestedRole = useMemo(() => getSuggestedRole(prompt, hasImageAttachment), [prompt, hasImageAttachment]);
   const shouldShowRoleSuggestion = useMemo(
     () =>
       Boolean(prompt.trim()) &&

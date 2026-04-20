@@ -2,6 +2,7 @@ import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
 import type { Attachment, ContextWindow } from '../types/chat';
+import { ModelSelector } from './ModelSelector';
 
 interface ComposerProps {
   attachedFiles: Attachment[];
@@ -155,17 +156,11 @@ export function Composer({
               <div className="composer-meta">
                 <div className="composer-model">
                   <label>Model</label>
-                  <select
-                    className="select composer-select"
-                    value={selectedModel}
-                    onChange={(event) => onSelectModel(event.target.value)}
-                  >
-                    {availableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
+                  <ModelSelector
+                    availableModels={availableModels}
+                    selectedModel={selectedModel}
+                    onSelectModel={onSelectModel}
+                  />
                 </div>
 
                 <div className="composer-context">
