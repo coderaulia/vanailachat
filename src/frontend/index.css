@@ -271,6 +271,43 @@ textarea {
   margin-top: 20px;
 }
 
+.project-switcher {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.project-switcher label {
+  color: var(--text-muted-inverse);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.project-switcher__controls {
+  display: flex;
+  gap: 8px;
+}
+
+.project-select {
+  min-height: 36px;
+  border-radius: 10px;
+}
+
+.project-input {
+  border: 1px solid var(--border-inverse);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-inverse);
+  border-radius: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.project-input::placeholder {
+  color: var(--text-muted-inverse);
+}
+
 .sidebar-section {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

@@ -20,10 +20,12 @@ const App = () => {
     currentChatId,
     fileInputRef,
     handleAttach,
+    handleCreateProject,
     handleDeleteChat,
     handleRenameChat,
     handleNewChat,
     handleSaveSystemPrompt,
+    handleSelectProject,
     handleSelectChat,
     handleTogglePin,
     handleSystemPromptChange,
@@ -33,7 +35,9 @@ const App = () => {
     isSidebarOpen,
     openSidebar,
     prompt,
+    projects,
     removeAttachment,
+    selectedProjectId,
     selectedModel,
     setIsSearchEnabled,
     setPrompt,
@@ -77,6 +81,10 @@ const App = () => {
         histories={sortedHistories}
         onClose={closeSidebar}
         onNewChat={handleNewChat}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onCreateProject={handleCreateProject}
+        onSelectProject={handleSelectProject}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
         onRenameChat={handleRenameChat}

@@ -1,14 +1,24 @@
 import { useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Chat } from '../types/chat';
+
+interface ProjectOption {
+  id: string;
+  name: string;
+  createdAt: number;
+}
 
 interface SidebarProps {
   isOpen: boolean;
   currentChatId: string | null;
   histories: Array<[string, Chat]>;
+  projects: ProjectOption[];
+  selectedProjectId: string | null;
   onClose: () => void;
   onNewChat: () => void;
+  onSelectProject: (id: string) => void;
+  onCreateProject: (name: string) => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
@@ -19,8 +29,12 @@ export function Sidebar({
   isOpen,
   currentChatId,
   histories,
+  projects,
+  selectedProjectId,
   onClose,
   onNewChat,
+  onSelectProject,
+  onCreateProject,
   onSelectChat,
   onDeleteChat,
   onRenameChat,
@@ -28,6 +42,8 @@ export function Sidebar({
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
 
   const beginRename = (event: MouseEvent, chatId: string, title: string) => {
     event.stopPropagation();
@@ -50,6 +66,31 @@ export function Sidebar({
     setEditingTitle('');
   };
 
+  const commitProjectCreate = () => {
+    if (!newProjectName.trim()) {
+      setIsCreatingProject(false);
+      setNewProjectName('');
+      return;
+    }
+
+    onCreateProject(newProjectName);
+    setIsCreatingProject(false);
+    setNewProjectName('');
+  };
+
+  const handleProjectKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitProjectCreate();
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsCreatingProject(false);
+      setNewProjectName('');
+    }
+  };
+
   return (
     <>
       <button
@@ -68,6 +109,47 @@ export function Sidebar({
               <p className="sidebar-copy">
                 Browse recent chats, jump back into context, and start a fresh thread fast.
               </p>
+            </div>
+
+            <div className="project-switcher">
+              <label htmlFor="project-select">Project</label>
+              <div className="project-switcher__controls">
+                <select
+                  id="project-select"
+                  className="select project-select"
+                  value={selectedProjectId ?? ''}
+                  onChange={(event) => onSelectProject(event.target.value)}
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-secondary icon-btn"
+                  type="button"
+                  aria-label="Create project"
+                  onClick={() => {
+                    setIsCreatingProject(true);
+                    setNewProjectName('');
+                  }}
+                >
+                  +
+                </button>
+              </div>
+
+              {isCreatingProject ? (
+                <input
+                  className="project-input"
+                  autoFocus
+                  value={newProjectName}
+                  onChange={(event) => setNewProjectName(event.target.value)}
+                  onBlur={commitProjectCreate}
+                  onKeyDown={handleProjectKeyDown}
+                  placeholder="New project name"
+                />
+              ) : null}
             </div>
 
             <div className="sidebar-actions">

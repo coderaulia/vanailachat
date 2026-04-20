@@ -9,6 +9,7 @@ export interface Message {
 
 export interface Chat {
   id: string;
+  projectId: string;
   title: string;
   conversation: Message[];
   createdAt: number;

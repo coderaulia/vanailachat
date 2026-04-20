@@ -14,7 +14,7 @@ type SendMessagePart =
 
 interface ApiChat {
   id: string;
-  projectId?: string;
+  projectId: string;
   title: string;
   model: string | null;
   systemPrompt?: string;
@@ -32,6 +32,12 @@ interface ApiMessage {
   content: string;
   promptTokens?: number | null;
   completionTokens?: number | null;
+  createdAt: number;
+}
+
+interface ApiProject {
+  id: string;
+  name: string;
   createdAt: number;
 }
 
@@ -94,6 +100,8 @@ function parseStreamLine(line: string): StreamEvent | null {
 export function useChatApp() {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [chatHistories, setChatHistories] = useState<Record<string, Chat>>({});
+  const [projects, setProjects] = useState<ApiProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModelState] = useState('');
@@ -128,6 +136,7 @@ export function useChatApp() {
 
   const upsertChat = async (chat: {
     id: string;
+    projectId: string;
     title: string;
     model: string | null;
     systemPrompt: string | null;
@@ -232,16 +241,32 @@ export function useChatApp() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const response = await fetch('/api/chats');
-        if (!response.ok) {
-          throw new Error(await response.text());
+        const projectResponse = await fetch('/api/projects');
+        if (!projectResponse.ok) {
+          throw new Error(await projectResponse.text());
         }
 
-        const data = (await response.json()) as { chats?: ApiChat[] };
-        const chats = Array.isArray(data.chats) ? data.chats : [];
+        const projectData = (await projectResponse.json()) as { projects?: ApiProject[] };
+        const loadedProjects = Array.isArray(projectData.projects) ? projectData.projects : [];
+
+        if (loadedProjects.length > 0) {
+          setProjects(loadedProjects);
+          setSelectedProjectId((current) => current || loadedProjects[0].id);
+        }
+
+        const chatsResponse = await fetch('/api/chats');
+        if (!chatsResponse.ok) {
+          throw new Error(await chatsResponse.text());
+        }
+
+        const chatsData = (await chatsResponse.json()) as { chats?: ApiChat[] };
+        const chats = Array.isArray(chatsData.chats) ? chatsData.chats : [];
+        const fallbackProjectId = loadedProjects[0]?.id ?? 'default';
+
         const histories = chats.reduce<Record<string, Chat>>((accumulator, chat) => {
           accumulator[chat.id] = {
             id: chat.id,
+            projectId: chat.projectId || fallbackProjectId,
             title: chat.title || 'Untitled chat',
             conversation: [],
             createdAt: chat.createdAt,
@@ -358,6 +383,48 @@ export function useChatApp() {
     setStatusText('Ready');
   };
 
+  const handleSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
+
+    if (currentChatId) {
+      const activeChat = chatHistories[currentChatId];
+      if (activeChat && activeChat.projectId !== projectId) {
+        handleNewChat();
+      }
+    }
+  };
+
+  const handleCreateProject = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const data = (await response.json()) as { project?: ApiProject };
+      if (!data.project) {
+        throw new Error('Missing project in response');
+      }
+
+      setProjects((previous) => [...previous, data.project!]);
+      setSelectedProjectId(data.project.id);
+      handleNewChat();
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to create project');
+    }
+  };
+
   const handleSelectChat = (id: string) => {
     const chat = chatHistories[id];
     if (!chat) {
@@ -368,6 +435,7 @@ export function useChatApp() {
     setConversation(chat.conversation);
     setCurrentChatId(id);
     currentChatIdRef.current = id;
+    setSelectedProjectId(chat.projectId);
     if (chat.model) {
       setSelectedModelState(chat.model);
     }
@@ -715,6 +783,7 @@ export function useChatApp() {
     const startedAt = Date.now();
     const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).slice(2, 11)}`;
     const existingChat = chatHistories[chatId];
+    const activeProjectId = existingChat?.projectId || selectedProjectId || projects[0]?.id || 'default';
     const createdAt = existingChat?.createdAt || startedAt;
 
     const userMessage: Message = {
@@ -753,6 +822,7 @@ export function useChatApp() {
       ...previous,
       [chatId]: {
         id: chatId,
+        projectId: activeProjectId,
         title,
         conversation: optimisticConversation,
         createdAt,
@@ -766,6 +836,7 @@ export function useChatApp() {
 
     void upsertChat({
       id: chatId,
+      projectId: activeProjectId,
       title,
       pinned: existingChat?.pinned ?? false,
       model: selectedModel || null,
@@ -1044,6 +1115,7 @@ export function useChatApp() {
       try {
         await upsertChat({
           id: chatId,
+          projectId: activeProjectId,
           title,
           pinned: existingChat?.pinned ?? false,
           model: selectedModel || null,
@@ -1097,13 +1169,15 @@ export function useChatApp() {
 
   const sortedHistories = useMemo(
     () =>
-      Object.entries(chatHistories).sort(([, a], [, b]) => {
-        if (a.pinned !== b.pinned) {
-          return a.pinned ? -1 : 1;
-        }
-        return b.updatedAt - a.updatedAt;
-      }),
-    [chatHistories]
+      Object.entries(chatHistories)
+        .filter(([, chat]) => !selectedProjectId || chat.projectId === selectedProjectId)
+        .sort(([, a], [, b]) => {
+          if (a.pinned !== b.pinned) {
+            return a.pinned ? -1 : 1;
+          }
+          return b.updatedAt - a.updatedAt;
+        }),
+    [chatHistories, selectedProjectId]
   );
 
   return {
@@ -1117,9 +1191,11 @@ export function useChatApp() {
     fileInputRef,
     handleAttach,
     handleDeleteChat,
+    handleCreateProject,
     handleRenameChat,
     handleNewChat,
     handleSaveSystemPrompt,
+    handleSelectProject,
     handleSelectChat,
     handleTogglePin,
     handleSend,
@@ -1129,7 +1205,9 @@ export function useChatApp() {
     isSidebarOpen,
     openSidebar,
     prompt,
+    projects,
     removeAttachment,
+    selectedProjectId,
     selectedModel,
     sendingChatIds,
     setIsSearchEnabled,

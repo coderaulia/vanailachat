@@ -41,6 +41,7 @@ export function repairChatHistories(rawValue: unknown): {
 
     histories[key] = {
       id,
+      projectId: typeof value.projectId === 'string' && value.projectId.length > 0 ? value.projectId : 'default',
       title: typeof value.title === 'string' ? value.title : 'Untitled chat',
       conversation: safeConversation,
       createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
