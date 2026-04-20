@@ -31,6 +31,7 @@ interface AppDependencies {
   listProjects: () => ProjectRecord[];
   createProject: (input: CreateProjectInput) => ProjectRecord;
   listChats: (projectId?: string) => ChatRecord[];
+  getChat: (id: string) => ChatRecord | null;
   upsertChat: (input: UpsertChatInput) => ChatRecord;
   deleteChat: (id: string) => boolean;
   listMessages: (chatId: string) => MessageRecord[];
@@ -47,6 +48,7 @@ const defaultDependencies: AppDependencies = {
   listProjects: DatabaseService.listProjects.bind(DatabaseService),
   createProject: DatabaseService.createProject.bind(DatabaseService),
   listChats: DatabaseService.listChats.bind(DatabaseService),
+  getChat: DatabaseService.getChat.bind(DatabaseService),
   upsertChat: DatabaseService.upsertChat.bind(DatabaseService),
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
@@ -221,6 +223,57 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       }
 
       return context.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.patch('/api/chats/:id', async (context) => {
+    try {
+      const id = context.req.param('id');
+      if (!id) {
+        return context.json({ error: 'Chat ID required' }, 400);
+      }
+
+      const existingChat = dependencies.getChat(id);
+      if (!existingChat) {
+        return context.json({ error: 'Chat not found' }, 404);
+      }
+
+      const body = (await context.req.json()) as {
+        projectId?: unknown;
+        title?: unknown;
+        model?: unknown;
+        systemPrompt?: unknown;
+        pinned?: unknown;
+        role?: unknown;
+        updatedAt?: unknown;
+      };
+
+      const chat = dependencies.upsertChat({
+        id,
+        projectId: typeof body.projectId === 'string' ? body.projectId : existingChat.projectId,
+        title: typeof body.title === 'string' ? body.title : existingChat.title,
+        model: typeof body.model === 'string' ? body.model : body.model === null ? null : existingChat.model,
+        systemPrompt:
+          typeof body.systemPrompt === 'string'
+            ? body.systemPrompt
+            : body.systemPrompt === null
+              ? null
+              : existingChat.systemPrompt,
+        pinned:
+          typeof body.pinned === 'boolean'
+            ? body.pinned
+            : typeof body.pinned === 'number'
+              ? body.pinned === 1
+              : existingChat.pinned,
+        role: typeof body.role === 'string' ? body.role : body.role === null ? null : existingChat.role,
+        createdAt: existingChat.createdAt,
+        updatedAt: toOptionalNumber(body.updatedAt) ?? Date.now(),
+      });
+
+      return context.json({ chat });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return context.json({ error: message }, 500);

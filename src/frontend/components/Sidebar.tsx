@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import type { MouseEvent } from 'react';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Chat } from '../types/chat';
 
@@ -9,6 +11,8 @@ interface SidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  onRenameChat: (id: string, title: string) => void;
+  onTogglePin: (id: string) => void;
 }
 
 export function Sidebar({
@@ -19,7 +23,33 @@ export function Sidebar({
   onNewChat,
   onSelectChat,
   onDeleteChat,
+  onRenameChat,
+  onTogglePin,
 }: SidebarProps) {
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+
+  const beginRename = (event: MouseEvent, chatId: string, title: string) => {
+    event.stopPropagation();
+    setEditingChatId(chatId);
+    setEditingTitle(title || 'Untitled chat');
+  };
+
+  const commitRename = (chatId: string) => {
+    if (!editingChatId || editingChatId !== chatId) {
+      return;
+    }
+
+    onRenameChat(chatId, editingTitle);
+    setEditingChatId(null);
+    setEditingTitle('');
+  };
+
+  const cancelRename = () => {
+    setEditingChatId(null);
+    setEditingTitle('');
+  };
+
   return (
     <>
       <button
@@ -88,20 +118,69 @@ export function Sidebar({
                   }}
                 >
                   <div className="history-item__content">
-                    <span className="history-item__title">{chat.title || 'Untitled chat'}</span>
+                    {editingChatId === id ? (
+                      <input
+                        className="history-item__title-input"
+                        value={editingTitle}
+                        autoFocus
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => setEditingTitle(event.target.value)}
+                        onBlur={() => commitRename(id)}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            commitRename(id);
+                          }
+
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className="history-item__title"
+                        onDoubleClick={(event) => beginRename(event, id, chat.title)}
+                        title="Double-click to rename"
+                      >
+                        {chat.title || 'Untitled chat'}
+                      </span>
+                    )}
                     <span className="history-item__meta">{DATE_FORMATTER.format(chat.updatedAt)}</span>
                   </div>
-                  <button
-                    className="history-item__delete"
-                    type="button"
-                    aria-label="Delete chat"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDeleteChat(id);
-                    }}
-                  >
-                    &times;
-                  </button>
+
+                  <div className={`history-item__actions ${chat.pinned ? 'is-pinned' : ''}`}>
+                    <button
+                      className={`history-item__pin ${chat.pinned ? 'is-pinned' : ''}`}
+                      type="button"
+                      aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTogglePin(id);
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 17v5"></path>
+                        <path d="m9 10-3 3"></path>
+                        <path d="m15 10 3 3"></path>
+                        <path d="M8 3h8l-1 7H9L8 3z"></path>
+                      </svg>
+                    </button>
+
+                    <button
+                      className="history-item__delete"
+                      type="button"
+                      aria-label="Delete chat"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteChat(id);
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

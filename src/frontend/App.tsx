@@ -18,8 +18,10 @@ const App = () => {
     fileInputRef,
     handleAttach,
     handleDeleteChat,
+    handleRenameChat,
     handleNewChat,
     handleSelectChat,
+    handleTogglePin,
     handleSend,
     isCurrentChatSending,
     isSearchEnabled,
@@ -46,6 +48,8 @@ const App = () => {
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
+        onTogglePin={handleTogglePin}
       />
 
       <main className="main-content">

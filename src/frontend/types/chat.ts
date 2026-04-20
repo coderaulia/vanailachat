@@ -13,6 +13,7 @@ export interface Chat {
   conversation: Message[];
   createdAt: number;
   updatedAt: number;
+  pinned: boolean;
   model: string | null;
   usage?: number;
 }

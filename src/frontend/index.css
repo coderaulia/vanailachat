@@ -327,24 +327,46 @@ textarea {
   flex: 1;
 }
 
+.history-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.history-item__pin,
 .history-item__delete {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 16px;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  opacity: 0;
   transition: all 0.2s ease;
-  margin-left: 8px;
 }
 
-.history-item:hover .history-item__delete,
-.history-item:focus-within .history-item__delete {
+.history-item:hover .history-item__actions,
+.history-item:focus-within .history-item__actions,
+.history-item__actions.is-pinned {
   opacity: 1;
 }
 
+.history-item__pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+}
+
+.history-item__pin.is-pinned {
+  color: var(--bg-accent);
+}
+
+.history-item__pin:hover,
 .history-item__delete:hover {
   background: var(--bg-surface-strong);
   color: var(--bg-accent);
@@ -369,6 +391,7 @@ textarea {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+:root:not([data-theme="dark"]) .history-item__pin,
 :root:not([data-theme="dark"]) .history-item__delete {
   color: var(--text-muted-inverse);
 }
@@ -384,6 +407,22 @@ textarea {
   white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
+}
+
+.history-item__title-input {
+  width: 100%;
+  border: 1px solid var(--border-medium);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.history-item__title-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--bg-accent) 45%, transparent);
+  border-color: var(--bg-accent);
 }
 
 .history-item__meta {

@@ -127,6 +127,7 @@ export function useChatApp() {
     id: string;
     title: string;
     model: string | null;
+    pinned?: boolean;
     createdAt: number;
     updatedAt: number;
   }) => {
@@ -139,6 +140,28 @@ export function useChatApp() {
     if (!response.ok) {
       throw new Error(await response.text());
     }
+  };
+
+  const patchChat = async (
+    id: string,
+    updates: { title?: string; pinned?: boolean; updatedAt?: number }
+  ): Promise<ApiChat> => {
+    const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = (await response.json()) as { chat?: ApiChat };
+    if (!data.chat) {
+      throw new Error('Missing chat in response');
+    }
+
+    return data.chat;
   };
 
   const saveMessage = async (
@@ -219,6 +242,7 @@ export function useChatApp() {
             conversation: [],
             createdAt: chat.createdAt,
             updatedAt: chat.updatedAt,
+            pinned: Boolean(chat.pinned),
             model: chat.model,
             usage: chat.usage ?? 0,
           };
@@ -404,6 +428,116 @@ export function useChatApp() {
     })();
   };
 
+  const handleTogglePin = (id: string) => {
+    const chat = chatHistories[id];
+    if (!chat) {
+      return;
+    }
+
+    const nextPinned = !chat.pinned;
+    const updatedAt = Date.now();
+
+    updateHistories((previous) => ({
+      ...previous,
+      [id]: {
+        ...previous[id],
+        pinned: nextPinned,
+        updatedAt,
+      },
+    }));
+
+    void patchChat(id, { pinned: nextPinned, updatedAt })
+      .then((updatedChat) => {
+        updateHistories((previous) => {
+          const current = previous[id];
+          if (!current) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [id]: {
+              ...current,
+              title: updatedChat.title || current.title,
+              pinned: Boolean(updatedChat.pinned),
+              updatedAt: updatedChat.updatedAt || current.updatedAt,
+              model: updatedChat.model ?? current.model,
+              usage: updatedChat.usage ?? current.usage,
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        setStatusText('Failed to update pin');
+        updateHistories((previous) => ({
+          ...previous,
+          [id]: {
+            ...previous[id],
+            pinned: chat.pinned,
+            updatedAt: chat.updatedAt,
+          },
+        }));
+      });
+  };
+
+  const handleRenameChat = (id: string, nextTitle: string) => {
+    const chat = chatHistories[id];
+    if (!chat) {
+      return;
+    }
+
+    const trimmedTitle = nextTitle.trim();
+    if (!trimmedTitle || trimmedTitle === chat.title) {
+      return;
+    }
+
+    const updatedAt = Date.now();
+
+    updateHistories((previous) => ({
+      ...previous,
+      [id]: {
+        ...previous[id],
+        title: trimmedTitle,
+        updatedAt,
+      },
+    }));
+
+    void patchChat(id, { title: trimmedTitle, updatedAt })
+      .then((updatedChat) => {
+        updateHistories((previous) => {
+          const current = previous[id];
+          if (!current) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [id]: {
+              ...current,
+              title: updatedChat.title || current.title,
+              pinned: Boolean(updatedChat.pinned),
+              updatedAt: updatedChat.updatedAt || current.updatedAt,
+              model: updatedChat.model ?? current.model,
+              usage: updatedChat.usage ?? current.usage,
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        setStatusText('Failed to rename chat');
+        updateHistories((previous) => ({
+          ...previous,
+          [id]: {
+            ...previous[id],
+            title: chat.title,
+            updatedAt: chat.updatedAt,
+          },
+        }));
+      });
+  };
+
   const removeAttachment = (index: number) => {
     setAttachedFiles((previous) => previous.filter((_, fileIndex) => fileIndex !== index));
   };
@@ -539,6 +673,7 @@ export function useChatApp() {
         conversation: optimisticConversation,
         createdAt,
         updatedAt: startedAt,
+        pinned: existingChat?.pinned ?? false,
         model: selectedModel || null,
         usage: existingChat?.usage || 0,
       },
@@ -547,6 +682,7 @@ export function useChatApp() {
     void upsertChat({
       id: chatId,
       title,
+      pinned: existingChat?.pinned ?? false,
       model: selectedModel || null,
       createdAt,
       updatedAt: startedAt,
@@ -820,6 +956,7 @@ export function useChatApp() {
         await upsertChat({
           id: chatId,
           title,
+          pinned: existingChat?.pinned ?? false,
           model: selectedModel || null,
           createdAt,
           updatedAt: finishedAt,
@@ -869,7 +1006,13 @@ export function useChatApp() {
   );
 
   const sortedHistories = useMemo(
-    () => Object.entries(chatHistories).sort(([, a], [, b]) => b.updatedAt - a.updatedAt),
+    () =>
+      Object.entries(chatHistories).sort(([, a], [, b]) => {
+        if (a.pinned !== b.pinned) {
+          return a.pinned ? -1 : 1;
+        }
+        return b.updatedAt - a.updatedAt;
+      }),
     [chatHistories]
   );
 
@@ -884,8 +1027,10 @@ export function useChatApp() {
     fileInputRef,
     handleAttach,
     handleDeleteChat,
+    handleRenameChat,
     handleNewChat,
     handleSelectChat,
+    handleTogglePin,
     handleSend,
     isCurrentChatSending,
     isDarkMode,
