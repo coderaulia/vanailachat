@@ -4,7 +4,7 @@ interface ChatHeaderProps {
   showTokens: boolean;
   statusText: string;
   thinkingSeconds: number;
-  onOpenSidebar: () => void;
+  onToggleSidebar: () => void;
   onToggleShowTokens: () => void;
   onToggleTheme: () => void;
 }
@@ -15,7 +15,7 @@ export function ChatHeader({
   showTokens,
   statusText,
   thinkingSeconds,
-  onOpenSidebar,
+  onToggleSidebar,
   onToggleShowTokens,
   onToggleTheme,
 }: ChatHeaderProps) {
@@ -26,8 +26,8 @@ export function ChatHeader({
           <button
             className="icon-btn sidebar-toggle"
             type="button"
-            aria-label="Open Chat Sidebar"
-            onClick={onOpenSidebar}
+            aria-label="Toggle Chat Sidebar"
+            onClick={onToggleSidebar}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="6" x2="21" y2="6"></line>

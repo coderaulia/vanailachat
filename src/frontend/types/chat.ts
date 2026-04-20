@@ -36,3 +36,47 @@ export interface ContextWindow {
   current: number;
   total: number;
 }
+
+export interface ApiChat {
+  id: string;
+  projectId: string;
+  title: string;
+  model: string | null;
+  projectRoot?: string | null;
+  systemPrompt?: string | null;
+  pinned?: boolean;
+  role?: string | null;
+  createdAt: number;
+  updatedAt: number;
+  usage?: number;
+}
+
+export interface ApiMessage {
+  id: string;
+  chatId: string;
+  role: string;
+  content: string;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  createdAt: number;
+}
+
+export interface ApiProject {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export type SendMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+export interface StreamEvent {
+  message?: { content?: string };
+  usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
+  done?: boolean;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
+

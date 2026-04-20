@@ -42,6 +42,7 @@ const App = () => {
     isSearchEnabled,
     isSidebarOpen,
     openSidebar,
+    toggleSidebar,
     prompt,
     projectRoot,
     projects,
@@ -87,7 +88,7 @@ const App = () => {
   }, [isCurrentChatSending]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
       <Sidebar
         isOpen={isSidebarOpen}
         currentChatId={currentChatId}
@@ -113,7 +114,7 @@ const App = () => {
           showTokens={showTokens}
           statusText={statusText}
           thinkingSeconds={thinkingSeconds}
-          onOpenSidebar={openSidebar}
+          onToggleSidebar={toggleSidebar}
           onToggleShowTokens={() => setShowTokens((previous) => !previous)}
           onToggleTheme={toggleTheme}
         />
