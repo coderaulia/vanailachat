@@ -15,6 +15,7 @@ export interface Chat {
   updatedAt: number;
   pinned: boolean;
   model: string | null;
+  systemPrompt: string | null;
   usage?: number;
 }
 

@@ -964,6 +964,37 @@ textarea {
   text-transform: uppercase;
 }
 
+.system-prompt-panel {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface-strong) 60%, transparent);
+  overflow: hidden;
+}
+
+.system-prompt-panel summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.system-prompt-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.system-prompt-textarea {
+  min-height: 84px;
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
 .textarea {
   width: 100%;
   min-height: 104px;

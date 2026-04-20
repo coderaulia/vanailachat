@@ -4,6 +4,7 @@ import type { Attachment, Chat, ContextWindow, Message, MessageRole } from '../t
 
 const DEFAULT_CONTEXT_WINDOW: ContextWindow = { current: 0, total: 32768 };
 const MAX_CONVERSATION_HISTORY = 20;
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 const THEME_STORAGE_KEY = 'vanaila-theme';
 const MODEL_STORAGE_KEY = 'vanaila-model';
 
@@ -102,6 +103,7 @@ export function useChatApp() {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme);
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
   const [prompt, setPrompt] = useState('');
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
 
@@ -128,6 +130,7 @@ export function useChatApp() {
     id: string;
     title: string;
     model: string | null;
+    systemPrompt: string | null;
     pinned?: boolean;
     createdAt: number;
     updatedAt: number;
@@ -145,7 +148,7 @@ export function useChatApp() {
 
   const patchChat = async (
     id: string,
-    updates: { title?: string; pinned?: boolean; updatedAt?: number }
+    updates: { title?: string; pinned?: boolean; systemPrompt?: string | null; updatedAt?: number }
   ): Promise<ApiChat> => {
     const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -245,6 +248,7 @@ export function useChatApp() {
             updatedAt: chat.updatedAt,
             pinned: Boolean(chat.pinned),
             model: chat.model,
+            systemPrompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt : null,
             usage: chat.usage ?? 0,
           };
           return accumulator;
@@ -348,6 +352,7 @@ export function useChatApp() {
     currentChatIdRef.current = null;
     setAttachedFiles([]);
     setPrompt('');
+    setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     closeSidebar();
     setContextWindow((previous) => ({ ...previous, current: 0 }));
     setStatusText('Ready');
@@ -366,6 +371,7 @@ export function useChatApp() {
     if (chat.model) {
       setSelectedModelState(chat.model);
     }
+    setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
     closeSidebar();
 
@@ -463,6 +469,10 @@ export function useChatApp() {
               pinned: Boolean(updatedChat.pinned),
               updatedAt: updatedChat.updatedAt || current.updatedAt,
               model: updatedChat.model ?? current.model,
+              systemPrompt:
+                typeof updatedChat.systemPrompt === 'string'
+                  ? updatedChat.systemPrompt
+                  : current.systemPrompt,
               usage: updatedChat.usage ?? current.usage,
             },
           };
@@ -520,6 +530,10 @@ export function useChatApp() {
               pinned: Boolean(updatedChat.pinned),
               updatedAt: updatedChat.updatedAt || current.updatedAt,
               model: updatedChat.model ?? current.model,
+              systemPrompt:
+                typeof updatedChat.systemPrompt === 'string'
+                  ? updatedChat.systemPrompt
+                  : current.systemPrompt,
               usage: updatedChat.usage ?? current.usage,
             },
           };
@@ -534,6 +548,75 @@ export function useChatApp() {
             ...previous[id],
             title: chat.title,
             updatedAt: chat.updatedAt,
+          },
+        }));
+      });
+  };
+
+  const handleSystemPromptChange = (value: string) => {
+    setSystemPrompt(value);
+  };
+
+  const handleSaveSystemPrompt = () => {
+    const chatId = currentChatIdRef.current;
+    if (!chatId) {
+      return;
+    }
+
+    const currentChat = chatHistories[chatId];
+    const normalizedPrompt = systemPrompt.trim() ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
+    const updatedAt = Date.now();
+
+    updateHistories((previous) => {
+      const chat = previous[chatId];
+      if (!chat) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [chatId]: {
+          ...chat,
+          systemPrompt: normalizedPrompt,
+          updatedAt,
+        },
+      };
+    });
+
+    void patchChat(chatId, { systemPrompt: normalizedPrompt, updatedAt })
+      .then((updatedChat) => {
+        updateHistories((previous) => {
+          const chat = previous[chatId];
+          if (!chat) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [chatId]: {
+              ...chat,
+              systemPrompt:
+                typeof updatedChat.systemPrompt === 'string'
+                  ? updatedChat.systemPrompt
+                  : normalizedPrompt,
+              updatedAt: updatedChat.updatedAt || chat.updatedAt,
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        setStatusText('Failed to save system prompt');
+        if (!currentChat) {
+          return;
+        }
+
+        updateHistories((previous) => ({
+          ...previous,
+          [chatId]: {
+            ...previous[chatId],
+            systemPrompt: currentChat.systemPrompt,
+            updatedAt: currentChat.updatedAt,
           },
         }));
       });
@@ -676,6 +759,7 @@ export function useChatApp() {
         updatedAt: startedAt,
         pinned: existingChat?.pinned ?? false,
         model: selectedModel || null,
+        systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
         usage: existingChat?.usage || 0,
       },
     }));
@@ -685,6 +769,7 @@ export function useChatApp() {
       title,
       pinned: existingChat?.pinned ?? false,
       model: selectedModel || null,
+      systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
       createdAt,
       updatedAt: startedAt,
     }).catch((error) => {
@@ -709,6 +794,7 @@ export function useChatApp() {
         signal: abortController.signal,
         body: JSON.stringify({
           model: selectedModel || null,
+          chatId,
           messages: [
             ...recentConversation.map((message) => ({ role: message.role, content: message.content })),
             { role: 'user', content: messageContent },
@@ -961,6 +1047,7 @@ export function useChatApp() {
           title,
           pinned: existingChat?.pinned ?? false,
           model: selectedModel || null,
+          systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
           createdAt,
           updatedAt: finishedAt,
         });
@@ -1032,6 +1119,7 @@ export function useChatApp() {
     handleDeleteChat,
     handleRenameChat,
     handleNewChat,
+    handleSaveSystemPrompt,
     handleSelectChat,
     handleTogglePin,
     handleSend,
@@ -1049,6 +1137,8 @@ export function useChatApp() {
     setSelectedModel,
     sortedHistories,
     statusText,
+    systemPrompt,
     toggleTheme,
+    handleSystemPromptChange,
   };
 }

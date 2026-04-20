@@ -23,8 +23,10 @@ const App = () => {
     handleDeleteChat,
     handleRenameChat,
     handleNewChat,
+    handleSaveSystemPrompt,
     handleSelectChat,
     handleTogglePin,
+    handleSystemPromptChange,
     handleSend,
     isCurrentChatSending,
     isSearchEnabled,
@@ -38,6 +40,7 @@ const App = () => {
     setSelectedModel,
     sortedHistories,
     statusText,
+    systemPrompt,
     toggleTheme,
   } = useChatApp();
 
@@ -114,7 +117,10 @@ const App = () => {
           onSelectModel={setSelectedModel}
           onSend={handleSend}
           onSetPrompt={setPrompt}
+          onSetSystemPrompt={handleSystemPromptChange}
+          onSaveSystemPrompt={handleSaveSystemPrompt}
           onToggleSearch={() => setIsSearchEnabled((enabled) => !enabled)}
+          systemPrompt={systemPrompt}
         />
       </main>
     </div>

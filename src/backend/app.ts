@@ -15,6 +15,7 @@ import { ToolService } from './services/tools.js';
 
 interface ChatRequestBody {
   model?: string;
+  chatId?: string;
   messages?: Array<{ role: string; content: unknown }>;
   stream?: boolean;
   search?: boolean;
@@ -374,7 +375,12 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
 
       const clientWantsStreaming = body.stream !== false;
 
-      let systemPrompt = 'You are a helpful assistant.';
+      const chatPrompt =
+        typeof body.chatId === 'string' && body.chatId
+          ? dependencies.getChat(body.chatId)?.systemPrompt
+          : null;
+
+      let systemPrompt = chatPrompt && chatPrompt.trim() ? chatPrompt : 'You are a helpful assistant.';
       if (body.search) {
         systemPrompt +=
           ' Web search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';

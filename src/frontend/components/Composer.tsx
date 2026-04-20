@@ -12,6 +12,7 @@ interface ComposerProps {
   prompt: string;
   selectedModel: string;
   statusText: string;
+  systemPrompt: string;
   thinkingSeconds: number;
   onAttach: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onNewChat: () => void;
@@ -19,6 +20,8 @@ interface ComposerProps {
   onSelectModel: (model: string) => void;
   onSend: (event?: FormEvent) => Promise<void>;
   onSetPrompt: (value: string) => void;
+  onSetSystemPrompt: (value: string) => void;
+  onSaveSystemPrompt: () => void;
   onToggleSearch: () => void;
 }
 
@@ -33,6 +36,7 @@ export function Composer({
   prompt,
   selectedModel,
   statusText,
+  systemPrompt,
   thinkingSeconds,
   onAttach,
   onNewChat,
@@ -40,6 +44,8 @@ export function Composer({
   onSelectModel,
   onSend,
   onSetPrompt,
+  onSetSystemPrompt,
+  onSaveSystemPrompt,
   onToggleSearch,
 }: ComposerProps) {
   return (
@@ -47,6 +53,18 @@ export function Composer({
       <form className="chat-form" onSubmit={onSend}>
         <div className="composer">
           <label className="composer-label">Message</label>
+
+          <details className="system-prompt-panel">
+            <summary>System Prompt</summary>
+            <textarea
+              className="textarea system-prompt-textarea"
+              rows={3}
+              value={systemPrompt}
+              onChange={(event) => onSetSystemPrompt(event.target.value)}
+              onBlur={onSaveSystemPrompt}
+              placeholder="You are a helpful assistant."
+            ></textarea>
+          </details>
 
           {attachedFiles.length > 0 && (
             <div className="attachment-tray">
