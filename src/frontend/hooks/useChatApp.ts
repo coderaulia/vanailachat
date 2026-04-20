@@ -433,14 +433,6 @@ export function useChatApp() {
   };
 
   const setSelectedModel = (model: string) => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-      setSendingChatIds({});
-      setStatusText('Ready');
-    }
-
     setSelectedModelState(model);
   };
 
@@ -499,13 +491,6 @@ export function useChatApp() {
   const closeSidebar = () => setIsSidebarOpen(false);
 
   const handleNewChat = () => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-      setSendingChatIds({});
-    }
-
     setConversation([]);
     setCurrentChatId(null);
     currentChatIdRef.current = null;

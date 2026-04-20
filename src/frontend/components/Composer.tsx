@@ -74,7 +74,6 @@ export function Composer({
     <footer className="app-footer">
       <form className="chat-form" onSubmit={onSend}>
         <div className="composer">
-          <label className="composer-label">Message</label>
 
           <details className="system-prompt-panel">
             <summary>System Prompt</summary>
@@ -133,12 +132,7 @@ export function Composer({
           ></textarea>
 
           <div className="composer-footer">
-            <div className="chat-status" aria-live="polite">
-              <span className="status-text">{statusText}</span>
-              {isCurrentChatSending ? <span className="thinking-badge">Thinking… {thinkingSeconds}s</span> : null}
-            </div>
-
-            <div className="input-actions">
+            <div className="composer-footer__left">
               <div className="role-picker">
                 {Object.entries(MODEL_ROLE_LABELS).map(([role, label]) => (
                   <button
@@ -151,80 +145,92 @@ export function Composer({
                   </button>
                 ))}
               </div>
-
-              <div className="composer-model">
-                <label>Model</label>
-                <select
-                  className="select composer-select"
-                  value={selectedModel}
-                  onChange={(event) => onSelectModel(event.target.value)}
-                >
-                  {availableModels.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
+              <div className="chat-status" aria-live="polite">
+                <span className="status-text">{statusText}</span>
+                {isCurrentChatSending ? <span className="thinking-badge">Thinking… {thinkingSeconds}s</span> : null}
               </div>
+            </div>
 
-              <div className="composer-context">
-                <label>Context</label>
-                <div className="context-status">
-                  <span className="context-status__text">
-                    {contextWindow.current} / {contextWindow.total}
-                  </span>
-                  <span className="context-status__meter">
-                    <span className="context-status__meter-fill" style={{ width: `${contextPercentage}%` }}></span>
-                  </span>
+            <div className="composer-footer__right">
+              <div className="composer-meta">
+                <div className="composer-model">
+                  <label>Model</label>
+                  <select
+                    className="select composer-select"
+                    value={selectedModel}
+                    onChange={(event) => onSelectModel(event.target.value)}
+                  >
+                    {availableModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="composer-context">
+                  <label>Context</label>
+                  <div className="context-status">
+                    <span className="context-status__text">
+                      {contextWindow.current} / {contextWindow.total}
+                    </span>
+                    <span className="context-status__meter">
+                      <span className="context-status__meter-fill" style={{ width: `${contextPercentage}%` }}></span>
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <button type="button" className="btn btn-secondary" onClick={onNewChat}>
-                Clear
-              </button>
+              <div className="composer-actions">
+                <button type="button" className="btn btn-secondary" onClick={onNewChat}>
+                  Clear
+                </button>
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={onAttach}
-                multiple
-                hidden
-                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php"
-              />
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={onAttach}
+                  multiple
+                  hidden
+                  accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php"
+                />
 
-              <button
-                type="button"
-                className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''} ${
-                  isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''
-                }`}
-                onClick={onToggleSearch}
-                title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Enable Web Search'}
-                aria-busy={isCurrentChatSending && isSearchEnabled}
-                disabled={isCurrentChatSending}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              </button>
+                <div className="icon-group">
+                  <button
+                    type="button"
+                    className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''} ${
+                      isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''
+                    }`}
+                    onClick={onToggleSearch}
+                    title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Enable Web Search'}
+                    aria-busy={isCurrentChatSending && isSearchEnabled}
+                    disabled={isCurrentChatSending}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </button>
 
-              <button
-                type="button"
-                className="btn btn-secondary icon-btn"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                </svg>
-              </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary icon-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                  </button>
+                </div>
 
-              <button type="submit" className="btn btn-primary" disabled={isCurrentChatSending}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-                Send
-              </button>
+                <button type="submit" className="btn btn-primary send-btn" disabled={isCurrentChatSending}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                  <span>Send</span>
+                </button>
+              </div>
             </div>
           </div>
 

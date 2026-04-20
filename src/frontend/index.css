@@ -208,6 +208,7 @@ textarea {
     linear-gradient(180deg, #1a1a1a 0%, #111111 100%);
   color: var(--text-inverse);
   border-right: 1px solid var(--border-inverse);
+  overflow-x: hidden;
 }
 
 .sidebar-content {
@@ -338,6 +339,7 @@ textarea {
 .history-list {
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px;
   display: grid;
   align-content: start;
@@ -352,49 +354,89 @@ textarea {
 }
 
 .history-item {
+  position: relative;
   width: 100%;
-  padding: 14px;
+  padding: 12px 14px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-main);
   text-align: left;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: block;
   transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .history-item__content {
   min-width: 0;
-  flex: 1;
+  padding-right: 80px;
+  position: relative;
 }
 
-.history-item__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 8px;
+.history-item__content::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  background: linear-gradient(to right, transparent, var(--bg-surface));
+  pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
+.history-item.active .history-item__content::after {
+  background: linear-gradient(to right, transparent, var(--bg-accent-soft));
+}
+
+.history-item:hover .history-item__content::after {
+  opacity: 1;
+}
+
+.history-item__actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  z-index: 2;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--bg-surface-strong);
+  padding: 3px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-soft);
+}
+
+.history-item.active .history-item__actions {
+  background: var(--bg-surface);
+  border-color: var(--bg-accent);
+}
+
 .history-item__pin,
-.history-item__delete {
+.history-item__delete,
+.history-item__rename {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 16px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .history-item:hover .history-item__actions,
-.history-item:focus-within .history-item__actions,
-.history-item__actions.is-pinned {
+.history-item:focus-within .history-item__actions {
   opacity: 1;
 }
 
@@ -411,7 +453,8 @@ textarea {
 }
 
 .history-item__pin:hover,
-.history-item__delete:hover {
+.history-item__delete:hover,
+.history-item__rename:hover {
   background: var(--bg-surface-strong);
   color: var(--bg-accent);
 }
@@ -1012,25 +1055,19 @@ textarea {
 }
 
 .composer {
-  padding: 18px;
-  border-radius: 30px;
+  padding: 14px;
+  border-radius: 24px;
 }
 
 .composer-label {
-  display: inline-block;
-  margin-bottom: 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  display: none;
 }
 
 .system-prompt-panel {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-surface-strong) 60%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface-strong) 30%, transparent);
   overflow: hidden;
 }
 
@@ -1083,13 +1120,13 @@ textarea {
 
 .textarea {
   width: 100%;
-  min-height: 104px;
+  min-height: 64px;
   max-height: 200px;
-  padding: 16px 18px;
+  padding: 12px 14px;
   resize: vertical;
   background: #fffdfa;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .textarea::placeholder {
@@ -1098,10 +1135,48 @@ textarea {
 
 .composer-footer {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 14px;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.composer-footer__left {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.composer-footer__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.composer-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.send-btn {
+  padding-left: 18px;
+  padding-right: 22px;
+  height: 40px;
 }
 
 .chat-status {
@@ -1113,7 +1188,8 @@ textarea {
 
 .status-text {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .thinking-badge {
@@ -1139,18 +1215,11 @@ textarea {
   }
 }
 
-.input-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 10px;
-}
 
 .role-picker {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
 }
 
 .role-chip {
@@ -1195,42 +1264,49 @@ textarea {
 }
 
 .composer-model {
-  min-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .composer-model label {
-  display: inline-block;
-  margin-bottom: 8px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .composer-select {
-  min-width: 220px;
+  min-width: 140px;
+  min-height: 36px;
+  font-size: 13px;
+  padding: 0 10px;
 }
 
 .composer-context {
-  min-width: 180px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .composer-context label {
-  display: inline-block;
-  margin-bottom: 8px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .context-status {
-  display: grid;
-  gap: 8px;
-  min-width: 180px;
-  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+  padding: 0 12px;
+  height: 36px;
   border: 1px solid var(--border-strong);
   border-radius: 18px;
   background: #fffdfa;
@@ -1244,8 +1320,8 @@ textarea {
 
 .context-status__meter {
   display: block;
-  width: 100%;
-  height: 7px;
+  width: 60px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(23, 23, 23, 0.08);
   overflow: hidden;
