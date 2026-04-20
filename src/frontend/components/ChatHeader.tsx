@@ -1,18 +1,22 @@
 interface ChatHeaderProps {
   isCurrentChatSending: boolean;
   selectedModel: string;
+  showTokens: boolean;
   statusText: string;
   thinkingSeconds: number;
   onOpenSidebar: () => void;
+  onToggleShowTokens: () => void;
   onToggleTheme: () => void;
 }
 
 export function ChatHeader({
   isCurrentChatSending,
   selectedModel,
+  showTokens,
   statusText,
   thinkingSeconds,
   onOpenSidebar,
+  onToggleShowTokens,
   onToggleTheme,
 }: ChatHeaderProps) {
   return (
@@ -58,6 +62,19 @@ export function ChatHeader({
               </span>
             </div>
           </div>
+
+          <button
+            className={`icon-btn ${showTokens ? 'is-active' : ''}`}
+            type="button"
+            aria-label="Toggle token badges"
+            onClick={onToggleShowTokens}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <path d="M8 10h8"></path>
+              <path d="M8 14h5"></path>
+            </svg>
+          </button>
 
           <button className="icon-btn theme-toggle" type="button" aria-label="Toggle Dark Mode" onClick={onToggleTheme}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

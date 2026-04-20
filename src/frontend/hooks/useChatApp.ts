@@ -246,6 +246,8 @@ export function useChatApp() {
       id: message.id,
       role: toMessageRole(message.role),
       content: message.content,
+      promptTokens: message.promptTokens ?? null,
+      completionTokens: message.completionTokens ?? null,
       timestamp: message.createdAt,
     }));
   };
@@ -1238,7 +1240,54 @@ export function useChatApp() {
       const assistantMessageToPersist: Message = {
         ...assistantMessage,
         content: assistantContentForSave,
+        promptTokens: promptTokens ?? null,
+        completionTokens: completionTokens ?? null,
       };
+
+      updateHistories((previous) => {
+        const chat = previous[chatId];
+        if (!chat || chat.conversation.length === 0) {
+          return previous;
+        }
+
+        const updatedConversation = [...chat.conversation];
+        const lastIndex = updatedConversation.length - 1;
+        if (updatedConversation[lastIndex]?.role === 'assistant') {
+          updatedConversation[lastIndex] = {
+            ...updatedConversation[lastIndex],
+            promptTokens: assistantMessageToPersist.promptTokens,
+            completionTokens: assistantMessageToPersist.completionTokens,
+          };
+        }
+
+        return {
+          ...previous,
+          [chatId]: {
+            ...chat,
+            conversation: updatedConversation,
+          },
+        };
+      });
+
+      if (currentChatIdRef.current === chatId) {
+        setConversation((previous) => {
+          if (previous.length === 0) {
+            return previous;
+          }
+
+          const updated = [...previous];
+          const lastIndex = updated.length - 1;
+          if (updated[lastIndex]?.role === 'assistant') {
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              promptTokens: assistantMessageToPersist.promptTokens,
+              completionTokens: assistantMessageToPersist.completionTokens,
+            };
+          }
+
+          return updated;
+        });
+      }
 
       try {
         await upsertChat({

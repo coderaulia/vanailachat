@@ -10,6 +10,7 @@ const App = () => {
   const renderMarkdown = useMarkdownRenderer();
   const thinkingStart = useRef<number | null>(null);
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
+  const [showTokens, setShowTokens] = useState(false);
   const {
     attachedFiles,
     availableModels,
@@ -102,15 +103,18 @@ const App = () => {
         <ChatHeader
           isCurrentChatSending={isCurrentChatSending}
           selectedModel={selectedModel}
+          showTokens={showTokens}
           statusText={statusText}
           thinkingSeconds={thinkingSeconds}
           onOpenSidebar={openSidebar}
+          onToggleShowTokens={() => setShowTokens((previous) => !previous)}
           onToggleTheme={toggleTheme}
         />
 
         <ChatLog
           conversation={conversation}
           isCurrentChatSending={isCurrentChatSending}
+          showTokens={showTokens}
           renderMarkdown={renderMarkdown}
         />
 

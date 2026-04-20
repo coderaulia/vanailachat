@@ -643,6 +643,12 @@ textarea {
   border-color: var(--border-medium);
 }
 
+.icon-btn.is-active {
+  background: var(--bg-accent-soft);
+  border-color: color-mix(in srgb, var(--bg-accent) 45%, transparent);
+  color: var(--bg-accent-strong);
+}
+
 .status-pill__label {
   color: var(--text-muted);
   font-size: 10px;
@@ -767,6 +773,18 @@ textarea {
 
 .message__body {
   min-width: 0;
+}
+
+.message__tokens {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-surface-strong);
 }
 
 .message__plain {

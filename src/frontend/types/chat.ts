@@ -4,6 +4,8 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
   timestamp: number;
 }
 

@@ -6,10 +6,11 @@ import type { Message } from '../types/chat';
 interface ChatLogProps {
   conversation: Message[];
   isCurrentChatSending: boolean;
+  showTokens: boolean;
   renderMarkdown: (content: string) => string;
 }
 
-export function ChatLog({ conversation, isCurrentChatSending, renderMarkdown }: ChatLogProps) {
+export function ChatLog({ conversation, isCurrentChatSending, showTokens, renderMarkdown }: ChatLogProps) {
   const chatLogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,6 +78,11 @@ export function ChatLog({ conversation, isCurrentChatSending, renderMarkdown }: 
               </div>
               <div className="message__body">
                 <div className="message__prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }} />
+                {showTokens && message.role === 'assistant' ? (
+                  <div className="message__tokens">
+                    ↑ {message.promptTokens ?? 0} ↓ {message.completionTokens ?? 0} tokens
+                  </div>
+                ) : null}
               </div>
             </div>
           ))
