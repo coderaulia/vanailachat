@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Chat } from '../types/chat';
@@ -19,6 +19,8 @@ interface SidebarProps {
   onNewChat: () => void;
   onSelectProject: (id: string) => void;
   onCreateProject: (name: string) => void;
+  onExport: () => void;
+  onImport: (file: File) => void;
   onSelectChat: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
@@ -35,6 +37,8 @@ export function Sidebar({
   onNewChat,
   onSelectProject,
   onCreateProject,
+  onExport,
+  onImport,
   onSelectChat,
   onDeleteChat,
   onRenameChat,
@@ -44,6 +48,7 @@ export function Sidebar({
   const [editingTitle, setEditingTitle] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const beginRename = (event: MouseEvent, chatId: string, title: string) => {
     event.stopPropagation();
@@ -265,6 +270,34 @@ export function Sidebar({
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="sidebar-footer">
+              <button className="btn btn-secondary btn-block" type="button" onClick={onExport}>
+                Export
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                hidden
+                accept=".json,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+
+                  onImport(file);
+                  event.currentTarget.value = '';
+                }}
+              />
+              <button
+                className="btn btn-secondary btn-block"
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+              >
+                Import
+              </button>
             </div>
           </div>
         </div>

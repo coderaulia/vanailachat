@@ -310,7 +310,7 @@ textarea {
 
 .sidebar-section {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   padding: 18px 12px 12px;
 }
@@ -342,6 +342,13 @@ textarea {
   display: grid;
   align-content: start;
   gap: 8px;
+}
+
+.sidebar-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 4px 0;
 }
 
 .history-item {

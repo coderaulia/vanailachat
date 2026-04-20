@@ -23,6 +23,8 @@ const App = () => {
     handleAttach,
     handleCreateProject,
     handleDeleteChat,
+    handleExportData,
+    handleImportData,
     handleRenameChat,
     handleNewChat,
     handleDismissRoleSuggestion,
@@ -92,6 +94,8 @@ const App = () => {
         projects={projects}
         selectedProjectId={selectedProjectId}
         onCreateProject={handleCreateProject}
+        onExport={handleExportData}
+        onImport={handleImportData}
         onSelectProject={handleSelectProject}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}

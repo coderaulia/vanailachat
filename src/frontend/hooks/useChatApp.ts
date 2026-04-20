@@ -279,49 +279,55 @@ export function useChatApp() {
     );
   };
 
+  const loadWorkspaceData = async () => {
+    const projectResponse = await fetch('/api/projects');
+    if (!projectResponse.ok) {
+      throw new Error(await projectResponse.text());
+    }
+
+    const projectData = (await projectResponse.json()) as { projects?: ApiProject[] };
+    const loadedProjects = Array.isArray(projectData.projects) ? projectData.projects : [];
+    setProjects(loadedProjects);
+
+    if (loadedProjects.length > 0) {
+      setSelectedProjectId((current) =>
+        current && loadedProjects.some((project) => project.id === current) ? current : loadedProjects[0].id
+      );
+    }
+
+    const chatsResponse = await fetch('/api/chats');
+    if (!chatsResponse.ok) {
+      throw new Error(await chatsResponse.text());
+    }
+
+    const chatsData = (await chatsResponse.json()) as { chats?: ApiChat[] };
+    const chats = Array.isArray(chatsData.chats) ? chatsData.chats : [];
+    const fallbackProjectId = loadedProjects[0]?.id ?? 'default';
+
+    const histories = chats.reduce<Record<string, Chat>>((accumulator, chat) => {
+      accumulator[chat.id] = {
+        id: chat.id,
+        projectId: chat.projectId || fallbackProjectId,
+        title: chat.title || 'Untitled chat',
+        conversation: [],
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        pinned: Boolean(chat.pinned),
+        role: typeof chat.role === 'string' ? chat.role : DEFAULT_MODEL_ROLE,
+        model: chat.model,
+        systemPrompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt : null,
+        usage: chat.usage ?? 0,
+      };
+      return accumulator;
+    }, {});
+
+    setChatHistories(histories);
+  };
+
   useEffect(() => {
     const initialize = async () => {
       try {
-        const projectResponse = await fetch('/api/projects');
-        if (!projectResponse.ok) {
-          throw new Error(await projectResponse.text());
-        }
-
-        const projectData = (await projectResponse.json()) as { projects?: ApiProject[] };
-        const loadedProjects = Array.isArray(projectData.projects) ? projectData.projects : [];
-
-        if (loadedProjects.length > 0) {
-          setProjects(loadedProjects);
-          setSelectedProjectId((current) => current || loadedProjects[0].id);
-        }
-
-        const chatsResponse = await fetch('/api/chats');
-        if (!chatsResponse.ok) {
-          throw new Error(await chatsResponse.text());
-        }
-
-        const chatsData = (await chatsResponse.json()) as { chats?: ApiChat[] };
-        const chats = Array.isArray(chatsData.chats) ? chatsData.chats : [];
-        const fallbackProjectId = loadedProjects[0]?.id ?? 'default';
-
-        const histories = chats.reduce<Record<string, Chat>>((accumulator, chat) => {
-          accumulator[chat.id] = {
-            id: chat.id,
-            projectId: chat.projectId || fallbackProjectId,
-            title: chat.title || 'Untitled chat',
-            conversation: [],
-            createdAt: chat.createdAt,
-            updatedAt: chat.updatedAt,
-            pinned: Boolean(chat.pinned),
-            role: typeof chat.role === 'string' ? chat.role : DEFAULT_MODEL_ROLE,
-            model: chat.model,
-            systemPrompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt : null,
-            usage: chat.usage ?? 0,
-          };
-          return accumulator;
-        }, {});
-
-        setChatHistories(histories);
+        await loadWorkspaceData();
       } catch (error) {
         console.error(error);
         setStatusText('Failed to load chats');
@@ -547,6 +553,54 @@ export function useChatApp() {
     } catch (error) {
       console.error(error);
       setStatusText('Failed to create project');
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      const response = await fetch('/api/export');
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const backup = await response.json();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateLabel = new Date().toISOString().slice(0, 10);
+      link.href = downloadUrl;
+      link.download = `vanaila-backup-${dateLabel}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to export data');
+    }
+  };
+
+  const handleImportData = async (file: File) => {
+    try {
+      const content = await file.text();
+      const parsed = JSON.parse(content) as unknown;
+
+      const response = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      await loadWorkspaceData();
+      handleNewChat();
+      setStatusText('Import complete');
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to import data');
     }
   };
 
@@ -1372,6 +1426,8 @@ export function useChatApp() {
     handleCreateProject,
     handleRenameChat,
     handleNewChat,
+    handleExportData,
+    handleImportData,
     handleDismissRoleSuggestion,
     handleSaveSystemPrompt,
     handleSelectProject,
