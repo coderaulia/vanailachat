@@ -37,8 +37,12 @@ A modern, local browser interface for Ollama built with **React 19**, **Vite**, 
 ## Features
 
 - **Premium DX**: Metadata-driven model orchestration with role-based filtering and smart detection.
-- **Multi-Modal Native**: Deep integration for vision models and Flux text-to-image workflows.
+- **Multi-Modal Native**: Deep integration for vision models and Flux text-to-image workflows via automatic endpoint routing.
 - **Search Augmented**: Built-in tool execution for real-time web intelligence.
+- **Smart Model Sync**: Automatic real-time refreshing of the model list whenever the selector is opened.
+- **Advanced Control**: Abort/Stop generation with instant prompt restoration for quick edits.
+- **Resilient Memory**: Intelligent detection and human-readable reporting of VRAM/RAM constraints.
+- **Project Awareness**: Automatic injection of project directory structures into the LLM system prompt.
 - **Visual Excellence**: Premium glassmorphic design with serif typography and micro-animations.
 - **Atomic Precision**: End-to-end TypeScript safety and optimized Hono/React architecture.
 

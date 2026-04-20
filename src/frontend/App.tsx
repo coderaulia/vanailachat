@@ -32,6 +32,8 @@ const App = () => {
     handleDismissRoleSuggestion,
     handleProjectRootChange,
     handleSaveProjectRoot,
+    handlePickProjectRoot,
+    handleRefreshModels,
     handleSaveSystemPrompt,
     handleSelectRole,
     handleSelectProject,
@@ -40,6 +42,7 @@ const App = () => {
     handleAcceptRoleSuggestion,
     handleSystemPromptChange,
     handleSend,
+    handleAbort,
     isCurrentChatSending,
     isSearchEnabled,
     isSidebarOpen,
@@ -159,6 +162,7 @@ const App = () => {
               onRoleAcceptSuggestion={handleAcceptRoleSuggestion}
               onRoleDismissSuggestion={handleDismissRoleSuggestion}
               onSaveProjectRoot={handleSaveProjectRoot}
+              onPickProjectRoot={handlePickProjectRoot}
               onSelectRole={handleSelectRole}
               onSelectModel={setSelectedModel}
               onSend={handleSend}
@@ -166,6 +170,8 @@ const App = () => {
               onSetProjectRoot={handleProjectRootChange}
               onSetSystemPrompt={handleSystemPromptChange}
               onSaveSystemPrompt={handleSaveSystemPrompt}
+              onRefreshModels={handleRefreshModels}
+              onAbort={handleAbort}
               onToggleSearch={() => setIsSearchEnabled((enabled: boolean) => !enabled)}
               selectedRole={selectedRole}
               shouldShowRoleSuggestion={shouldShowRoleSuggestion}
@@ -206,6 +212,9 @@ const App = () => {
                   shouldShowRoleSuggestion={shouldShowRoleSuggestion}
                   suggestedModelName={suggestedModelName}
                   suggestedRoleLabel={suggestedRoleLabel}
+                  onPickProjectRoot={handlePickProjectRoot}
+                  onRefreshModels={handleRefreshModels}
+                  onAbort={handleAbort}
                 />
               );
             }

@@ -1190,11 +1190,14 @@ textarea {
 
 .project-root-field {
   margin-bottom: 12px;
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .project-root-field label {
+  width: 100%;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 700;
@@ -1203,13 +1206,20 @@ textarea {
 }
 
 .project-root-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 38px;
   border: 1px solid var(--border-soft);
   border-radius: 10px;
   background: var(--bg-surface);
   color: var(--text-primary);
   padding: 0 12px;
+}
+
+.project-root-picker {
+  height: 38px;
+  width: 38px;
+  border-radius: 10px;
 }
 
 .textarea {
@@ -2019,8 +2029,9 @@ textarea {
 }
 
 .project-detail__header {
+  max-width: 1000px;
   width: 100%;
-  margin-bottom: 48px;
+  margin: 0 auto 48px;
 }
 
 .project-detail__name {
@@ -2042,14 +2053,15 @@ textarea {
 .project-detail__content {
   display: grid;
   grid-template-columns: 1fr 340px;
-  gap: 40px;
+  gap: 60px;
+  max-width: 1000px;
   width: 100%;
+  margin: 0 auto;
 }
 
 .project-card {
-  background: var(--bg-glass);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-soft);
+  background: #242424;
+  border: 1px solid #333;
   border-radius: 16px;
   padding: 24px;
 }
@@ -2187,6 +2199,7 @@ textarea {
   padding: 8px;
   border-radius: 6px;
 }
+
 .project-detail__actions {
   display: flex;
   gap: 8px;

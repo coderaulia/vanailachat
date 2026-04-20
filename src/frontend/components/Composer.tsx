@@ -28,6 +28,7 @@ interface ComposerProps {
   onRoleAcceptSuggestion: () => void;
   onRoleDismissSuggestion: () => void;
   onSaveProjectRoot: () => void;
+  onPickProjectRoot: () => Promise<void>;
   onSelectRole: (role: ModelRole) => void;
   onSelectModel: (model: string) => void;
   onSend: (event?: FormEvent) => Promise<void>;
@@ -36,6 +37,8 @@ interface ComposerProps {
   onSetSystemPrompt: (value: string) => void;
   onSaveSystemPrompt: () => void;
   onToggleSearch: () => void;
+  onRefreshModels?: () => void;
+  onAbort?: () => void;
 }
 
 export function Composer({
@@ -62,6 +65,7 @@ export function Composer({
   onRoleAcceptSuggestion,
   onRoleDismissSuggestion,
   onSaveProjectRoot,
+  onPickProjectRoot,
   onSelectRole,
   onSelectModel,
   onSend,
@@ -70,6 +74,8 @@ export function Composer({
   onSetSystemPrompt,
   onSaveSystemPrompt,
   onToggleSearch,
+  onRefreshModels,
+  onAbort,
 }: ComposerProps) {
   return (
     <footer className="app-footer">
@@ -98,6 +104,16 @@ export function Composer({
                 onBlur={onSaveProjectRoot}
                 placeholder="/absolute/path/to/project"
               />
+              <button
+                type="button"
+                className="btn btn-secondary icon-btn project-root-picker"
+                onClick={onPickProjectRoot}
+                title="Open Folder"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </button>
             </div>
           ) : null}
 
@@ -160,6 +176,7 @@ export function Composer({
                     availableModels={availableModels}
                     selectedModel={selectedModel}
                     onSelectModel={onSelectModel}
+                    onRefresh={onRefreshModels}
                   />
                 </div>
 
@@ -220,13 +237,22 @@ export function Composer({
                   </button>
                 </div>
 
-                <button type="submit" className="btn btn-primary send-btn" disabled={isCurrentChatSending}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                  <span>Send</span>
-                </button>
+                {isCurrentChatSending ? (
+                  <button type="button" className="btn btn-danger send-btn" onClick={onAbort}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <button type="submit" className="btn btn-primary send-btn" disabled={isCurrentChatSending}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    <span>Send</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>

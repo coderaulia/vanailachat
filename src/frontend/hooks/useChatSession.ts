@@ -59,6 +59,7 @@ export function useChatSession(deps: {
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
 
+  const lastSentPromptRef = useRef<string>('');
   const currentChatIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
@@ -67,6 +68,13 @@ export function useChatSession(deps: {
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  const handleAbort = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      setPrompt(lastSentPromptRef.current);
+    }
+  };
 
   const handleNewChat = () => {
     setConversation([]);
@@ -205,10 +213,37 @@ export function useChatSession(deps: {
       });
   };
 
+  const handlePickProjectRoot = async () => {
+    try {
+      const response = await fetch('/api/pick-directory', { method: 'POST' });
+      if (!response.ok) throw new Error('Failed to pick directory');
+      const { path } = await response.json();
+      if (path) {
+        setProjectRoot(path);
+        
+        // Auto-save if there's an active chat
+        const chatId = currentChatIdRef.current;
+        if (chatId) {
+          const updatedAt = Date.now();
+          updateHistories((prev) => {
+            const chat = prev[chatId];
+            if (!chat) return prev;
+            return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
+          });
+          void patchChat(chatId, { projectRoot: path, updatedAt });
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to open directory picker');
+    }
+  };
+
   // handleSend implementation
   const handleSend = async (event?: FormEvent) => {
     if (event) event.preventDefault();
     if (!prompt.trim() && attachedFiles.length === 0) return;
+    lastSentPromptRef.current = prompt;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -411,7 +446,12 @@ export function useChatSession(deps: {
         }
       } else {
         requestFailed = true;
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        let message = error instanceof Error ? error.message : 'Unknown error';
+        
+        if (message.includes('requires') && message.includes('available') && (message.includes('GiB') || message.includes('MiB'))) {
+          message = `Insufficient Memory: ${message}. Try using a smaller model or quantize your model further.`;
+        }
+
         const errorText = `Error: ${message}`;
         if (!assistantContentForSave) assistantContentForSave = errorText;
         if (currentChatIdRef.current === chatId) setStatusText(errorText);
@@ -538,7 +578,9 @@ export function useChatSession(deps: {
     handleSystemPromptChange,
     handleSaveSystemPrompt,
     handleSaveProjectRoot,
+    handlePickProjectRoot,
     handleSend,
+    handleAbort,
     contextPercentage,
     isCurrentChatSending,
   };

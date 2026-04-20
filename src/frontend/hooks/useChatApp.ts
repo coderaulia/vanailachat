@@ -326,6 +326,7 @@ export function useChatApp() {
 
     // Handlers
     handleSend: chatSession.handleSend,
+    handleAbort: chatSession.handleAbort,
     handleAttach: chatSession.handleAttach,
     removeAttachment: chatSession.removeAttachment,
     handleNewChat: chatSession.handleNewChat,
@@ -346,6 +347,8 @@ export function useChatApp() {
     handleSystemPromptChange: chatSession.handleSystemPromptChange,
     handleSaveSystemPrompt: chatSession.handleSaveSystemPrompt,
     handleSaveProjectRoot: chatSession.handleSaveProjectRoot,
+    handlePickProjectRoot: chatSession.handlePickProjectRoot,
+    handleRefreshModels: modelManager.fetchModels,
 
     // View State
     viewMode,

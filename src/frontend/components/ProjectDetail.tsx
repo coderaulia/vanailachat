@@ -22,11 +22,14 @@ interface ProjectDetailProps {
   onAttach: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onRemoveAttachment: (index: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
-  
+  onPickProjectRoot: () => Promise<void>;
+  onRefreshModels: () => void;
+
   // Missing Composer props to prevent crashes
   shouldShowRoleSuggestion: boolean;
   suggestedModelName: string;
   suggestedRoleLabel: string;
+  onAbort: () => void;
 }
 
 export function ProjectDetail({
@@ -46,15 +49,18 @@ export function ProjectDetail({
   onAttach,
   onRemoveAttachment,
   fileInputRef,
+  onPickProjectRoot,
+  onRefreshModels,
   shouldShowRoleSuggestion,
   suggestedModelName,
   suggestedRoleLabel,
+  onAbort,
 }: ProjectDetailProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
   const [isEditingMemory, setIsEditingMemory] = useState(false);
-  
+
   const [description, setDescription] = useState(project.description || '');
   const [instructions, setInstructions] = useState(project.instructions || '');
   const [memory, setMemory] = useState(project.memory || '');
@@ -79,8 +85,8 @@ export function ProjectDetail({
           <h1 className="project-detail__name">{project.name}</h1>
           <div className="project-detail__actions">
             <div className="project-detail__menu-container" style={{ position: 'relative' }}>
-              <button 
-                className="icon-btn" 
+              <button
+                className="icon-btn"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 title="Project settings"
               >
@@ -88,7 +94,7 @@ export function ProjectDetail({
               </button>
               {isMenuOpen && (
                 <div className="project-menu-dropdown">
-                  <button 
+                  <button
                     className="menu-item menu-item--danger"
                     onClick={() => {
                       if (confirm('Are you sure you want to delete this project and all its chats?')) {
@@ -102,7 +108,7 @@ export function ProjectDetail({
                 </div>
               )}
             </div>
-            <button 
+            <button
               className={`icon-btn ${project.pinned ? 'icon-btn--active' : ''}`}
               onClick={() => onUpdateProject(project.id, { pinned: !project.pinned })}
               title={project.pinned ? "Unfavorite" : "Favorite"}
@@ -111,7 +117,7 @@ export function ProjectDetail({
             </button>
           </div>
         </div>
-        
+
         {isEditingDescription ? (
           <input
             className="project-detail__desc-input"
@@ -130,8 +136,8 @@ export function ProjectDetail({
             }}
           />
         ) : (
-          <p 
-            className="project-detail__description" 
+          <p
+            className="project-detail__description"
             onClick={() => setIsEditingDescription(true)}
           >
             {description || 'Add a description for this project...'}
@@ -157,23 +163,26 @@ export function ProjectDetail({
               selectedModel={selectedModel}
               onSelectModel={onSelectModel}
               selectedRole="general"
-              onSelectRole={() => {}}
+              onSelectRole={() => { }}
               isSearchEnabled={false}
-              onToggleSearch={() => {}}
-              onNewChat={() => {}}
-              
+              onToggleSearch={() => { }}
+              onNewChat={() => { }}
+
               // Safe defaults for remaining props
               shouldShowRoleSuggestion={shouldShowRoleSuggestion}
               suggestedModelName={suggestedModelName}
               suggestedRoleLabel={suggestedRoleLabel}
-              onRoleAcceptSuggestion={() => {}}
-              onRoleDismissSuggestion={() => {}}
+              onRoleAcceptSuggestion={() => { }}
+              onRoleDismissSuggestion={() => { }}
               systemPrompt={project.instructions || ''}
-              onSetSystemPrompt={() => {}}
-              onSaveSystemPrompt={() => {}}
+              onSetSystemPrompt={() => { }}
+              onSaveSystemPrompt={() => { }}
               projectRoot=""
-              onSetProjectRoot={() => {}}
-              onSaveProjectRoot={() => {}}
+              onSetProjectRoot={() => { }}
+              onSaveProjectRoot={() => { }}
+              onPickProjectRoot={onPickProjectRoot}
+              onRefreshModels={onRefreshModels}
+              onAbort={onAbort}
             />
           </div>
 
@@ -181,8 +190,8 @@ export function ProjectDetail({
             <h3 className="project-detail__section-label">Recent Conversations</h3>
             <div className="project-detail__chat-list">
               {chats.filter(([_, chat]) => chat.projectId === project.id).map(([id, chat]) => (
-                <div 
-                  key={id} 
+                <div
+                  key={id}
                   className="project-detail__chat-card"
                   onClick={() => onSelectChat(id)}
                 >
@@ -202,8 +211,8 @@ export function ProjectDetail({
               <h3 className="project-card__title">Memory</h3>
               <div className="project-card__actions">
                 <span className="badge-lock">🔒 Only you</span>
-                <button 
-                  className="icon-btn-edit" 
+                <button
+                  className="icon-btn-edit"
                   onClick={() => setIsEditingMemory(!isEditingMemory)}
                 >
                   ✎
@@ -232,8 +241,8 @@ export function ProjectDetail({
           <div className="project-card project-card--instructions">
             <div className="project-card__header">
               <h3 className="project-card__title">Instructions</h3>
-              <button 
-                className="icon-btn-edit" 
+              <button
+                className="icon-btn-edit"
                 onClick={() => setIsEditingInstructions(!isEditingInstructions)}
               >
                 ✎

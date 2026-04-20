@@ -5,12 +5,21 @@ interface ModelSelectorProps {
   availableModels: string[];
   selectedModel: string;
   onSelectModel: (model: string) => void;
+  onRefresh?: () => void;
 }
 
-export function ModelSelector({ availableModels, selectedModel, onSelectModel }: ModelSelectorProps) {
+export function ModelSelector({ availableModels, selectedModel, onSelectModel, onRefresh }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedInfo = getModelInfo(selectedModel);
+
+  const toggleDropdown = () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState && onRefresh) {
+      onRefresh();
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -27,7 +36,7 @@ export function ModelSelector({ availableModels, selectedModel, onSelectModel }:
       <button
         type="button"
         className={`model-selector__trigger ${isOpen ? 'is-open' : ''}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleDropdown}
       >
         <span className="model-selector__icon">{selectedInfo.icon}</span>
         <div className="model-selector__current">

@@ -8,6 +8,7 @@ export interface ModelDetails {
   architecture: string | null;
   contextWindow: number | null;
   parameters: string | null;
+  capabilities: string[] | null;
 }
 
 export class OllamaService {
@@ -82,11 +83,21 @@ export class OllamaService {
       const contextMatch = stdout.match(/context length\s+(\d+)/i);
       const parametersMatch = stdout.match(/parameters\s+([^\n]+)/i);
       const architectureMatch = stdout.match(/architecture\s+([^\n]+)/i);
+
+      // Parse capabilities
+      const capabilitiesMatch = stdout.match(/Capabilities\s+([\s\S]*?)(?=\n\n|\n[A-Z]|$)/i);
+      const capabilities = capabilitiesMatch
+        ? capabilitiesMatch[1]
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null;
       
       return {
         contextWindow: contextMatch ? Number(contextMatch[1]) : null,
         parameters: parametersMatch ? parametersMatch[1].trim() : null,
         architecture: architectureMatch ? architectureMatch[1].trim() : null,
+        capabilities,
       };
     } catch (err) {
       console.error(`[OLLAMA] Failed to get details for ${modelName}:`, err);
@@ -94,6 +105,7 @@ export class OllamaService {
         architecture: null,
         contextWindow: null,
         parameters: null,
+        capabilities: null,
       };
     }
   }

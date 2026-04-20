@@ -41,6 +41,7 @@ interface AppDependencies {
   deleteChat: (id: string) => boolean;
   listMessages: (chatId: string) => MessageRecord[];
   insertMessage: (input: InsertMessageInput) => MessageRecord;
+  pickDirectory: () => Promise<string | null>;
 }
 
 const defaultDependencies: AppDependencies = {
@@ -61,6 +62,26 @@ const defaultDependencies: AppDependencies = {
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
   insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
+  pickDirectory: async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFilePromise = promisify(execFile);
+    try {
+      const { stdout } = await execFilePromise('zenity', [
+        '--file-selection',
+        '--directory',
+        '--title=Select Project Root',
+      ]);
+      return stdout.trim();
+    } catch {
+      try {
+        const { stdout } = await execFilePromise('kdialog', ['--getexistingdirectory', '.']);
+        return stdout.trim();
+      } catch {
+        return null;
+      }
+    }
+  },
 };
 
 function toOptionalNumber(value: unknown): number | undefined {
@@ -75,6 +96,26 @@ function extractImageBase64(url: string): string {
   }
 
   return url.slice(markerIndex + dataUrlMarker.length);
+}
+
+function parseOllamaError(responseText: string): string {
+  try {
+    const parsed = JSON.parse(responseText);
+    if (parsed.error) {
+      if (typeof parsed.error === 'string' && (parsed.error.startsWith('{') || parsed.error.startsWith('['))) {
+        try {
+          const nested = JSON.parse(parsed.error);
+          return nested.error || parsed.error;
+        } catch {
+          return parsed.error;
+        }
+      }
+      return parsed.error;
+    }
+    return responseText;
+  } catch {
+    return responseText;
+  }
 }
 
 function normalizeMessageContent(content: unknown): { content: string; images?: string[] } {
@@ -565,6 +606,16 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       return context.json({ error: message }, 500);
     }
   });
+  
+  app.post('/api/pick-directory', async (context) => {
+    try {
+      const path = await dependencies.pickDirectory();
+      return context.json({ path });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
 
   app.get('/api/models', async (context) => {
     try {
@@ -635,9 +686,96 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         systemPrompt +=
           '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
       }
+      if (chatRecord?.projectRoot) {
+        systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
+        try {
+          const directoryListing = await ToolService.executeTool('list_directory', { path: '.', maxDepth: 2 });
+          systemPrompt += `\n\n[Project Structure]\n${directoryListing}`;
+        } catch (error) {
+          console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
+        }
+      }
+
       systemPrompt += '\n\nYou can also read local project files using read_file.';
 
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
+      
+      // Check if model supports chat or is an image model
+      const modelDetails = (await dependencies.getModelDetails(body.model)) as any;
+      const isImageModel = modelDetails?.capabilities?.includes('image');
+      const isChatModel =
+        !modelDetails?.capabilities ||
+        modelDetails.capabilities.includes('chat') ||
+        (modelDetails.capabilities.includes('text') && !isImageModel);
+
+      if (isImageModel && !isChatModel) {
+        const lastUserMessage = [...incomingMessages].reverse().find((m) => m.role === 'user');
+        if (!lastUserMessage) {
+          throw new Error('No user message found for image generation');
+        }
+
+        const prompt = typeof lastUserMessage.content === 'string' 
+          ? lastUserMessage.content 
+          : normalizeMessageContent(lastUserMessage.content).content;
+
+        const genResponse = await dependencies.fetchFn(`${ollamaUrl}/api/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: body.model,
+            prompt: prompt,
+            stream: false,
+          }),
+        });
+
+        if (!genResponse.ok) {
+          throw new Error(parseOllamaError(await genResponse.text()));
+        }
+
+        const genPayload = (await genResponse.json()) as any;
+        const images = genPayload.images || [];
+        const imageMarkdown = images
+          .map((img: string) => `![Generated Image](data:image/png;base64,${img})`)
+          .join('\n\n');
+        
+        const content = genPayload.response 
+          ? `${genPayload.response}\n\n${imageMarkdown}`
+          : imageMarkdown;
+
+        if (!clientWantsStreaming) {
+          return context.json({
+            model: body.model,
+            message: { role: 'assistant', content },
+            done: true,
+          });
+        }
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  model: body.model,
+                  message: { role: 'assistant', content },
+                  done: true,
+                }) + '\n'
+              )
+            );
+            controller.close();
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/x-ndjson; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          },
+        });
+      }
+
       const messages = [
         { role: 'system', content: systemPrompt },
         ...incomingMessages.map((message) => {
@@ -661,7 +799,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       });
 
       if (!upstreamResponse.ok) {
-        throw new Error(await upstreamResponse.text());
+        throw new Error(parseOllamaError(await upstreamResponse.text()));
       }
 
       if (!clientWantsStreaming) {
