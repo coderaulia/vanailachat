@@ -47,6 +47,7 @@ export function repairChatHistories(rawValue: unknown): {
       createdAt: typeof value.createdAt === 'number' ? value.createdAt : Date.now(),
       updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : Date.now(),
       pinned: typeof value.pinned === 'boolean' ? value.pinned : false,
+      role: typeof value.role === 'string' ? value.role : null,
       model: typeof value.model === 'string' ? value.model : null,
       systemPrompt: typeof value.systemPrompt === 'string' ? value.systemPrompt : null,
       usage: typeof value.usage === 'number' ? value.usage : 0,

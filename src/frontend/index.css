@@ -1092,8 +1092,57 @@ textarea {
 
 .input-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 10px;
+}
+
+.role-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.role-chip {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface-strong);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.role-chip:hover {
+  border-color: var(--border-medium);
+}
+
+.role-chip.active {
+  background: var(--bg-accent-soft);
+  color: var(--bg-accent-strong);
+  border-color: color-mix(in srgb, var(--bg-accent) 42%, transparent);
+}
+
+.role-suggestion {
+  margin-top: 12px;
+  border: 1px solid color-mix(in srgb, var(--bg-accent) 30%, var(--border-soft));
+  background: color-mix(in srgb, var(--bg-accent-soft) 70%, transparent);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.role-suggestion__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .composer-model {

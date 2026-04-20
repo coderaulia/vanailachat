@@ -24,10 +24,13 @@ const App = () => {
     handleDeleteChat,
     handleRenameChat,
     handleNewChat,
+    handleDismissRoleSuggestion,
     handleSaveSystemPrompt,
+    handleSelectRole,
     handleSelectProject,
     handleSelectChat,
     handleTogglePin,
+    handleAcceptRoleSuggestion,
     handleSystemPromptChange,
     handleSend,
     isCurrentChatSending,
@@ -38,13 +41,17 @@ const App = () => {
     projects,
     removeAttachment,
     selectedProjectId,
+    selectedRole,
     selectedModel,
     setIsSearchEnabled,
     setPrompt,
     setSelectedModel,
     sortedHistories,
     statusText,
+    suggestedModelName,
+    suggestedRoleLabel,
     systemPrompt,
+    shouldShowRoleSuggestion,
     toggleTheme,
   } = useChatApp();
 
@@ -122,12 +129,19 @@ const App = () => {
           onAttach={handleAttach}
           onNewChat={handleNewChat}
           onRemoveAttachment={removeAttachment}
+          onRoleAcceptSuggestion={handleAcceptRoleSuggestion}
+          onRoleDismissSuggestion={handleDismissRoleSuggestion}
+          onSelectRole={handleSelectRole}
           onSelectModel={setSelectedModel}
           onSend={handleSend}
           onSetPrompt={setPrompt}
           onSetSystemPrompt={handleSystemPromptChange}
           onSaveSystemPrompt={handleSaveSystemPrompt}
           onToggleSearch={() => setIsSearchEnabled((enabled) => !enabled)}
+          selectedRole={selectedRole}
+          shouldShowRoleSuggestion={shouldShowRoleSuggestion}
+          suggestedModelName={suggestedModelName}
+          suggestedRoleLabel={suggestedRoleLabel}
           systemPrompt={systemPrompt}
         />
       </main>

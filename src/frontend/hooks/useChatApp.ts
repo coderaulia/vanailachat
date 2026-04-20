@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
+import { MODEL_ROLE_LABELS, MODEL_ROLE_MAP } from '../config/modelRoles';
+import type { ModelRole } from '../config/modelRoles';
 import type { Attachment, Chat, ContextWindow, Message, MessageRole } from '../types/chat';
 
 const DEFAULT_CONTEXT_WINDOW: ContextWindow = { current: 0, total: 32768 };
 const MAX_CONVERSATION_HISTORY = 20;
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+const DEFAULT_MODEL_ROLE: ModelRole = 'general';
 const THEME_STORAGE_KEY = 'vanaila-theme';
 const MODEL_STORAGE_KEY = 'vanaila-model';
 
@@ -97,6 +100,26 @@ function parseStreamLine(line: string): StreamEvent | null {
   }
 }
 
+function toModelRole(role: string | null | undefined): ModelRole {
+  if (role && role in MODEL_ROLE_MAP) {
+    return role as ModelRole;
+  }
+  return DEFAULT_MODEL_ROLE;
+}
+
+function getSuggestedRole(prompt: string): ModelRole | null {
+  const lowered = prompt.toLowerCase();
+  const hasCodeFence = lowered.includes('```');
+  const hasFileExtension = /\b[\w-]+\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|cs|rb|php|html|css|json)\b/.test(lowered);
+  const hasCodingKeyword = /\b(debug|refactor|write|design)\b/.test(lowered);
+
+  if (hasCodeFence || hasFileExtension || hasCodingKeyword) {
+    return 'coding';
+  }
+
+  return null;
+}
+
 export function useChatApp() {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [chatHistories, setChatHistories] = useState<Record<string, Chat>>({});
@@ -105,6 +128,8 @@ export function useChatApp() {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModelState] = useState('');
+  const [selectedRole, setSelectedRole] = useState<ModelRole>(DEFAULT_MODEL_ROLE);
+  const [dismissedSuggestionPrompt, setDismissedSuggestionPrompt] = useState<string | null>(null);
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
   const [statusText, setStatusText] = useState('Ready');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -139,6 +164,7 @@ export function useChatApp() {
     projectId: string;
     title: string;
     model: string | null;
+    role: string | null;
     systemPrompt: string | null;
     pinned?: boolean;
     createdAt: number;
@@ -157,7 +183,13 @@ export function useChatApp() {
 
   const patchChat = async (
     id: string,
-    updates: { title?: string; pinned?: boolean; systemPrompt?: string | null; updatedAt?: number }
+    updates: {
+      title?: string;
+      pinned?: boolean;
+      role?: string | null;
+      systemPrompt?: string | null;
+      updatedAt?: number;
+    }
   ): Promise<ApiChat> => {
     const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -238,6 +270,13 @@ export function useChatApp() {
     }
   };
 
+  const getRoleRecommendedModels = (role: ModelRole): string[] => {
+    const recommendations = MODEL_ROLE_MAP[role];
+    return availableModels.filter((model) =>
+      recommendations.some((recommended) => model.toLowerCase().includes(recommended.toLowerCase()))
+    );
+  };
+
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -272,6 +311,7 @@ export function useChatApp() {
             createdAt: chat.createdAt,
             updatedAt: chat.updatedAt,
             pinned: Boolean(chat.pinned),
+            role: typeof chat.role === 'string' ? chat.role : DEFAULT_MODEL_ROLE,
             model: chat.model,
             systemPrompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt : null,
             usage: chat.usage ?? 0,
@@ -324,6 +364,36 @@ export function useChatApp() {
       });
   }, [selectedModel]);
 
+  const filteredAvailableModels = useMemo(() => {
+    const recommended = getRoleRecommendedModels(selectedRole);
+    return recommended.length > 0 ? recommended : availableModels;
+  }, [availableModels, selectedRole]);
+
+  useEffect(() => {
+    if (filteredAvailableModels.length === 0) {
+      return;
+    }
+
+    if (!selectedModel || !filteredAvailableModels.includes(selectedModel)) {
+      setSelectedModelState(filteredAvailableModels[0]);
+    }
+  }, [filteredAvailableModels, selectedModel]);
+
+  const suggestedRole = useMemo(() => getSuggestedRole(prompt), [prompt]);
+  const shouldShowRoleSuggestion = useMemo(
+    () =>
+      Boolean(prompt.trim()) &&
+      suggestedRole !== null &&
+      suggestedRole !== selectedRole &&
+      dismissedSuggestionPrompt !== prompt,
+    [dismissedSuggestionPrompt, prompt, selectedRole, suggestedRole]
+  );
+
+  const suggestedRoleLabel = suggestedRole ? MODEL_ROLE_LABELS[suggestedRole] : '';
+  const suggestedModels = suggestedRole ? getRoleRecommendedModels(suggestedRole) : [];
+  const suggestedModelName =
+    suggestedModels[0] || (suggestedRole ? MODEL_ROLE_MAP[suggestedRole][0] : '');
+
   useEffect(() => {
     if (statusText !== 'Thinking…' && statusText !== 'Background response running…' && statusText !== 'Ready') {
       return;
@@ -361,6 +431,57 @@ export function useChatApp() {
     setSelectedModelState(model);
   };
 
+  const handleSelectRole = (role: ModelRole) => {
+    setSelectedRole(role);
+    setDismissedSuggestionPrompt(null);
+
+    const recommendedModels = getRoleRecommendedModels(role);
+    if (recommendedModels.length > 0 && !recommendedModels.includes(selectedModel)) {
+      setSelectedModelState(recommendedModels[0]);
+    }
+
+    const chatId = currentChatIdRef.current;
+    if (!chatId) {
+      return;
+    }
+
+    const updatedAt = Date.now();
+    updateHistories((previous) => {
+      const chat = previous[chatId];
+      if (!chat) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [chatId]: {
+          ...chat,
+          role,
+          updatedAt,
+        },
+      };
+    });
+
+    void patchChat(chatId, { role, updatedAt }).catch((error) => {
+      console.error(error);
+      setStatusText('Failed to save role');
+    });
+  };
+
+  const handleAcceptRoleSuggestion = () => {
+    const role = getSuggestedRole(prompt);
+    if (!role) {
+      return;
+    }
+
+    handleSelectRole(role);
+    setDismissedSuggestionPrompt(null);
+  };
+
+  const handleDismissRoleSuggestion = () => {
+    setDismissedSuggestionPrompt(prompt);
+  };
+
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
 
@@ -378,6 +499,8 @@ export function useChatApp() {
     setAttachedFiles([]);
     setPrompt('');
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    setSelectedRole(DEFAULT_MODEL_ROLE);
+    setDismissedSuggestionPrompt(null);
     closeSidebar();
     setContextWindow((previous) => ({ ...previous, current: 0 }));
     setStatusText('Ready');
@@ -439,6 +562,7 @@ export function useChatApp() {
     if (chat.model) {
       setSelectedModelState(chat.model);
     }
+    setSelectedRole(toModelRole(chat.role));
     setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
     closeSidebar();
@@ -536,6 +660,7 @@ export function useChatApp() {
               title: updatedChat.title || current.title,
               pinned: Boolean(updatedChat.pinned),
               updatedAt: updatedChat.updatedAt || current.updatedAt,
+              role: typeof updatedChat.role === 'string' ? updatedChat.role : current.role,
               model: updatedChat.model ?? current.model,
               systemPrompt:
                 typeof updatedChat.systemPrompt === 'string'
@@ -597,6 +722,7 @@ export function useChatApp() {
               title: updatedChat.title || current.title,
               pinned: Boolean(updatedChat.pinned),
               updatedAt: updatedChat.updatedAt || current.updatedAt,
+              role: typeof updatedChat.role === 'string' ? updatedChat.role : current.role,
               model: updatedChat.model ?? current.model,
               systemPrompt:
                 typeof updatedChat.systemPrompt === 'string'
@@ -828,6 +954,7 @@ export function useChatApp() {
         createdAt,
         updatedAt: startedAt,
         pinned: existingChat?.pinned ?? false,
+        role: existingChat?.role ?? selectedRole,
         model: selectedModel || null,
         systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
         usage: existingChat?.usage || 0,
@@ -839,6 +966,7 @@ export function useChatApp() {
       projectId: activeProjectId,
       title,
       pinned: existingChat?.pinned ?? false,
+      role: existingChat?.role ?? selectedRole,
       model: selectedModel || null,
       systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
       createdAt,
@@ -1118,6 +1246,7 @@ export function useChatApp() {
           projectId: activeProjectId,
           title,
           pinned: existingChat?.pinned ?? false,
+          role: existingChat?.role ?? selectedRole,
           model: selectedModel || null,
           systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
           createdAt,
@@ -1182,7 +1311,7 @@ export function useChatApp() {
 
   return {
     attachedFiles,
-    availableModels,
+    availableModels: filteredAvailableModels,
     closeSidebar,
     contextPercentage,
     contextWindow,
@@ -1194,10 +1323,13 @@ export function useChatApp() {
     handleCreateProject,
     handleRenameChat,
     handleNewChat,
+    handleDismissRoleSuggestion,
     handleSaveSystemPrompt,
     handleSelectProject,
+    handleSelectRole,
     handleSelectChat,
     handleTogglePin,
+    handleAcceptRoleSuggestion,
     handleSend,
     isCurrentChatSending,
     isDarkMode,
@@ -1208,6 +1340,7 @@ export function useChatApp() {
     projects,
     removeAttachment,
     selectedProjectId,
+    selectedRole,
     selectedModel,
     sendingChatIds,
     setIsSearchEnabled,
@@ -1215,7 +1348,10 @@ export function useChatApp() {
     setSelectedModel,
     sortedHistories,
     statusText,
+    suggestedModelName,
+    suggestedRoleLabel,
     systemPrompt,
+    shouldShowRoleSuggestion,
     toggleTheme,
     handleSystemPromptChange,
   };

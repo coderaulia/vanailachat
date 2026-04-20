@@ -15,6 +15,7 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
   pinned: boolean;
+  role: string | null;
   model: string | null;
   systemPrompt: string | null;
   usage?: number;

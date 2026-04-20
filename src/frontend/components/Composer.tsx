@@ -1,4 +1,6 @@
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
+import { MODEL_ROLE_LABELS } from '../config/modelRoles';
+import type { ModelRole } from '../config/modelRoles';
 import type { Attachment, ContextWindow } from '../types/chat';
 
 interface ComposerProps {
@@ -10,13 +12,20 @@ interface ComposerProps {
   isCurrentChatSending: boolean;
   isSearchEnabled: boolean;
   prompt: string;
+  selectedRole: ModelRole;
   selectedModel: string;
+  shouldShowRoleSuggestion: boolean;
   statusText: string;
+  suggestedModelName: string;
+  suggestedRoleLabel: string;
   systemPrompt: string;
   thinkingSeconds: number;
   onAttach: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onNewChat: () => void;
   onRemoveAttachment: (index: number) => void;
+  onRoleAcceptSuggestion: () => void;
+  onRoleDismissSuggestion: () => void;
+  onSelectRole: (role: ModelRole) => void;
   onSelectModel: (model: string) => void;
   onSend: (event?: FormEvent) => Promise<void>;
   onSetPrompt: (value: string) => void;
@@ -34,13 +43,20 @@ export function Composer({
   isCurrentChatSending,
   isSearchEnabled,
   prompt,
+  selectedRole,
   selectedModel,
+  shouldShowRoleSuggestion,
   statusText,
+  suggestedModelName,
+  suggestedRoleLabel,
   systemPrompt,
   thinkingSeconds,
   onAttach,
   onNewChat,
   onRemoveAttachment,
+  onRoleAcceptSuggestion,
+  onRoleDismissSuggestion,
+  onSelectRole,
   onSelectModel,
   onSend,
   onSetPrompt,
@@ -104,6 +120,19 @@ export function Composer({
             </div>
 
             <div className="input-actions">
+              <div className="role-picker">
+                {Object.entries(MODEL_ROLE_LABELS).map(([role, label]) => (
+                  <button
+                    key={role}
+                    type="button"
+                    className={`role-chip ${selectedRole === role ? 'active' : ''}`}
+                    onClick={() => onSelectRole(role as ModelRole)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div className="composer-model">
                 <label>Model</label>
                 <select
@@ -179,6 +208,22 @@ export function Composer({
               </button>
             </div>
           </div>
+
+          {shouldShowRoleSuggestion ? (
+            <div className="role-suggestion" aria-live="polite">
+              <span>
+                This looks like a {suggestedRoleLabel.toLowerCase()} task. Switch to {suggestedModelName}?
+              </span>
+              <div className="role-suggestion__actions">
+                <button type="button" className="btn btn-secondary" onClick={onRoleDismissSuggestion}>
+                  Dismiss
+                </button>
+                <button type="button" className="btn btn-primary" onClick={onRoleAcceptSuggestion}>
+                  Accept
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </form>
     </footer>
