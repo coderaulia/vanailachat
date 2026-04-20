@@ -28,6 +28,8 @@ const App = () => {
     handleRenameChat,
     handleNewChat,
     handleDismissRoleSuggestion,
+    handleProjectRootChange,
+    handleSaveProjectRoot,
     handleSaveSystemPrompt,
     handleSelectRole,
     handleSelectProject,
@@ -41,6 +43,7 @@ const App = () => {
     isSidebarOpen,
     openSidebar,
     prompt,
+    projectRoot,
     projects,
     removeAttachment,
     selectedProjectId,
@@ -139,10 +142,12 @@ const App = () => {
           onRemoveAttachment={removeAttachment}
           onRoleAcceptSuggestion={handleAcceptRoleSuggestion}
           onRoleDismissSuggestion={handleDismissRoleSuggestion}
+          onSaveProjectRoot={handleSaveProjectRoot}
           onSelectRole={handleSelectRole}
           onSelectModel={setSelectedModel}
           onSend={handleSend}
           onSetPrompt={setPrompt}
+          onSetProjectRoot={handleProjectRootChange}
           onSetSystemPrompt={handleSystemPromptChange}
           onSaveSystemPrompt={handleSaveSystemPrompt}
           onToggleSearch={() => setIsSearchEnabled((enabled) => !enabled)}
@@ -151,6 +156,7 @@ const App = () => {
           suggestedModelName={suggestedModelName}
           suggestedRoleLabel={suggestedRoleLabel}
           systemPrompt={systemPrompt}
+          projectRoot={projectRoot}
         />
       </main>
     </div>

@@ -12,6 +12,7 @@ interface ComposerProps {
   isCurrentChatSending: boolean;
   isSearchEnabled: boolean;
   prompt: string;
+  projectRoot: string;
   selectedRole: ModelRole;
   selectedModel: string;
   shouldShowRoleSuggestion: boolean;
@@ -25,10 +26,12 @@ interface ComposerProps {
   onRemoveAttachment: (index: number) => void;
   onRoleAcceptSuggestion: () => void;
   onRoleDismissSuggestion: () => void;
+  onSaveProjectRoot: () => void;
   onSelectRole: (role: ModelRole) => void;
   onSelectModel: (model: string) => void;
   onSend: (event?: FormEvent) => Promise<void>;
   onSetPrompt: (value: string) => void;
+  onSetProjectRoot: (value: string) => void;
   onSetSystemPrompt: (value: string) => void;
   onSaveSystemPrompt: () => void;
   onToggleSearch: () => void;
@@ -43,6 +46,7 @@ export function Composer({
   isCurrentChatSending,
   isSearchEnabled,
   prompt,
+  projectRoot,
   selectedRole,
   selectedModel,
   shouldShowRoleSuggestion,
@@ -56,10 +60,12 @@ export function Composer({
   onRemoveAttachment,
   onRoleAcceptSuggestion,
   onRoleDismissSuggestion,
+  onSaveProjectRoot,
   onSelectRole,
   onSelectModel,
   onSend,
   onSetPrompt,
+  onSetProjectRoot,
   onSetSystemPrompt,
   onSaveSystemPrompt,
   onToggleSearch,
@@ -81,6 +87,19 @@ export function Composer({
               placeholder="You are a helpful assistant."
             ></textarea>
           </details>
+
+          {selectedRole === 'coding' ? (
+            <div className="project-root-field">
+              <label>Project Root</label>
+              <input
+                className="project-root-input"
+                value={projectRoot}
+                onChange={(event) => onSetProjectRoot(event.target.value)}
+                onBlur={onSaveProjectRoot}
+                placeholder="/absolute/path/to/project"
+              />
+            </div>
+          ) : null}
 
           {attachedFiles.length > 0 && (
             <div className="attachment-tray">

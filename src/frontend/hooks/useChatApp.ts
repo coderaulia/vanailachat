@@ -20,6 +20,7 @@ interface ApiChat {
   projectId: string;
   title: string;
   model: string | null;
+  projectRoot?: string | null;
   systemPrompt?: string;
   pinned?: boolean;
   role?: string | null;
@@ -137,6 +138,7 @@ export function useChatApp() {
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
   const [prompt, setPrompt] = useState('');
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [projectRoot, setProjectRoot] = useState('');
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
 
@@ -165,6 +167,7 @@ export function useChatApp() {
     title: string;
     model: string | null;
     role: string | null;
+    projectRoot: string | null;
     systemPrompt: string | null;
     pinned?: boolean;
     createdAt: number;
@@ -187,6 +190,7 @@ export function useChatApp() {
       title?: string;
       pinned?: boolean;
       role?: string | null;
+      projectRoot?: string | null;
       systemPrompt?: string | null;
       updatedAt?: number;
     }
@@ -315,6 +319,7 @@ export function useChatApp() {
         pinned: Boolean(chat.pinned),
         role: typeof chat.role === 'string' ? chat.role : DEFAULT_MODEL_ROLE,
         model: chat.model,
+        projectRoot: typeof chat.projectRoot === 'string' ? chat.projectRoot : null,
         systemPrompt: typeof chat.systemPrompt === 'string' ? chat.systemPrompt : null,
         usage: chat.usage ?? 0,
       };
@@ -507,6 +512,7 @@ export function useChatApp() {
     setAttachedFiles([]);
     setPrompt('');
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    setProjectRoot('');
     setSelectedRole(DEFAULT_MODEL_ROLE);
     setDismissedSuggestionPrompt(null);
     closeSidebar();
@@ -620,6 +626,7 @@ export function useChatApp() {
     }
     setSelectedRole(toModelRole(chat.role));
     setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
+    setProjectRoot(chat.projectRoot || '');
     setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
     closeSidebar();
 
@@ -718,6 +725,10 @@ export function useChatApp() {
               updatedAt: updatedChat.updatedAt || current.updatedAt,
               role: typeof updatedChat.role === 'string' ? updatedChat.role : current.role,
               model: updatedChat.model ?? current.model,
+              projectRoot:
+                typeof updatedChat.projectRoot === 'string'
+                  ? updatedChat.projectRoot
+                  : current.projectRoot,
               systemPrompt:
                 typeof updatedChat.systemPrompt === 'string'
                   ? updatedChat.systemPrompt
@@ -780,6 +791,10 @@ export function useChatApp() {
               updatedAt: updatedChat.updatedAt || current.updatedAt,
               role: typeof updatedChat.role === 'string' ? updatedChat.role : current.role,
               model: updatedChat.model ?? current.model,
+              projectRoot:
+                typeof updatedChat.projectRoot === 'string'
+                  ? updatedChat.projectRoot
+                  : current.projectRoot,
               systemPrompt:
                 typeof updatedChat.systemPrompt === 'string'
                   ? updatedChat.systemPrompt
@@ -866,6 +881,75 @@ export function useChatApp() {
           [chatId]: {
             ...previous[chatId],
             systemPrompt: currentChat.systemPrompt,
+            updatedAt: currentChat.updatedAt,
+          },
+        }));
+      });
+  };
+
+  const handleProjectRootChange = (value: string) => {
+    setProjectRoot(value);
+  };
+
+  const handleSaveProjectRoot = () => {
+    const chatId = currentChatIdRef.current;
+    if (!chatId) {
+      return;
+    }
+
+    const currentChat = chatHistories[chatId];
+    const normalizedRoot = projectRoot.trim() || '';
+    const updatedAt = Date.now();
+
+    updateHistories((previous) => {
+      const chat = previous[chatId];
+      if (!chat) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [chatId]: {
+          ...chat,
+          projectRoot: normalizedRoot || null,
+          updatedAt,
+        },
+      };
+    });
+
+    void patchChat(chatId, { projectRoot: normalizedRoot || null, updatedAt })
+      .then((updatedChat) => {
+        updateHistories((previous) => {
+          const chat = previous[chatId];
+          if (!chat) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [chatId]: {
+              ...chat,
+              projectRoot:
+                typeof updatedChat.projectRoot === 'string'
+                  ? updatedChat.projectRoot
+                  : normalizedRoot || null,
+              updatedAt: updatedChat.updatedAt || chat.updatedAt,
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        setStatusText('Failed to save project root');
+        if (!currentChat) {
+          return;
+        }
+
+        updateHistories((previous) => ({
+          ...previous,
+          [chatId]: {
+            ...previous[chatId],
+            projectRoot: currentChat.projectRoot,
             updatedAt: currentChat.updatedAt,
           },
         }));
@@ -1012,6 +1096,7 @@ export function useChatApp() {
         pinned: existingChat?.pinned ?? false,
         role: existingChat?.role ?? selectedRole,
         model: selectedModel || null,
+        projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
         systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
         usage: existingChat?.usage || 0,
       },
@@ -1024,6 +1109,7 @@ export function useChatApp() {
       pinned: existingChat?.pinned ?? false,
       role: existingChat?.role ?? selectedRole,
       model: selectedModel || null,
+      projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
       systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
       createdAt,
       updatedAt: startedAt,
@@ -1351,6 +1437,7 @@ export function useChatApp() {
           pinned: existingChat?.pinned ?? false,
           role: existingChat?.role ?? selectedRole,
           model: selectedModel || null,
+          projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
           systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
           createdAt,
           updatedAt: finishedAt,
@@ -1429,6 +1516,8 @@ export function useChatApp() {
     handleExportData,
     handleImportData,
     handleDismissRoleSuggestion,
+    handleProjectRootChange,
+    handleSaveProjectRoot,
     handleSaveSystemPrompt,
     handleSelectProject,
     handleSelectRole,
@@ -1442,6 +1531,7 @@ export function useChatApp() {
     isSidebarOpen,
     openSidebar,
     prompt,
+    projectRoot,
     projects,
     removeAttachment,
     selectedProjectId,

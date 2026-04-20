@@ -175,6 +175,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         projectId?: unknown;
         title?: unknown;
         model?: unknown;
+        projectRoot?: unknown;
         systemPrompt?: unknown;
         pinned?: unknown;
         role?: unknown;
@@ -187,6 +188,12 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
         title: typeof body.title === 'string' ? body.title : undefined,
         model: typeof body.model === 'string' ? body.model : body.model === null ? null : undefined,
+        projectRoot:
+          typeof body.projectRoot === 'string'
+            ? body.projectRoot
+            : body.projectRoot === null
+              ? null
+              : undefined,
         systemPrompt:
           typeof body.systemPrompt === 'string'
             ? body.systemPrompt
@@ -246,6 +253,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         projectId?: unknown;
         title?: unknown;
         model?: unknown;
+        projectRoot?: unknown;
         systemPrompt?: unknown;
         pinned?: unknown;
         role?: unknown;
@@ -257,6 +265,12 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         projectId: typeof body.projectId === 'string' ? body.projectId : existingChat.projectId,
         title: typeof body.title === 'string' ? body.title : existingChat.title,
         model: typeof body.model === 'string' ? body.model : body.model === null ? null : existingChat.model,
+        projectRoot:
+          typeof body.projectRoot === 'string'
+            ? body.projectRoot
+            : body.projectRoot === null
+              ? null
+              : existingChat.projectRoot,
         systemPrompt:
           typeof body.systemPrompt === 'string'
             ? body.systemPrompt
@@ -364,6 +378,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
           projectId?: unknown;
           title?: unknown;
           model?: unknown;
+          projectRoot?: unknown;
           systemPrompt?: unknown;
           pinned?: unknown;
           role?: unknown;
@@ -422,6 +437,12 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
           projectId: typeof chat.projectId === 'string' ? chat.projectId : undefined,
           title: typeof chat.title === 'string' ? chat.title : undefined,
           model: typeof chat.model === 'string' ? chat.model : chat.model === null ? null : undefined,
+          projectRoot:
+            typeof chat.projectRoot === 'string'
+              ? chat.projectRoot
+              : chat.projectRoot === null
+                ? null
+                : undefined,
           systemPrompt:
             typeof chat.systemPrompt === 'string'
               ? chat.systemPrompt
@@ -512,10 +533,14 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
 
       const clientWantsStreaming = body.stream !== false;
 
-      const chatPrompt =
+      const chatRecord =
         typeof body.chatId === 'string' && body.chatId
-          ? dependencies.getChat(body.chatId)?.systemPrompt
+          ? dependencies.getChat(body.chatId)
           : null;
+
+      ToolService.setExecutionRoot(chatRecord?.projectRoot ?? null);
+
+      const chatPrompt = chatRecord?.systemPrompt ?? null;
 
       let systemPrompt = chatPrompt && chatPrompt.trim() ? chatPrompt : 'You are a helpful assistant.';
       if (body.search) {

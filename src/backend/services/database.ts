@@ -27,6 +27,7 @@ interface ChatRow {
   project_id: string;
   title: string;
   model: string | null;
+  project_root: string | null;
   system_prompt: string | null;
   pinned: number;
   role: string | null;
@@ -62,6 +63,7 @@ export interface ChatRecord {
   projectId: string;
   title: string;
   model: string | null;
+  projectRoot: string | null;
   systemPrompt: string | null;
   pinned: boolean;
   role: string | null;
@@ -75,6 +77,7 @@ export interface UpsertChatInput {
   projectId?: string;
   title?: string;
   model?: string | null;
+  projectRoot?: string | null;
   systemPrompt?: string | null;
   pinned?: boolean;
   role?: string | null;
@@ -150,6 +153,7 @@ export class DatabaseService {
         project_id TEXT NOT NULL,
         title TEXT NOT NULL,
         model TEXT,
+        project_root TEXT,
         system_prompt TEXT,
         pinned INTEGER NOT NULL DEFAULT 0,
         role TEXT,
@@ -173,6 +177,14 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at ASC);
     `);
 
+    const chatColumns = db
+      .prepare("SELECT name FROM pragma_table_info('chats')")
+      .all() as Array<{ name: string }>;
+    const hasProjectRootColumn = chatColumns.some((column) => column.name === 'project_root');
+    if (!hasProjectRootColumn) {
+      db.exec('ALTER TABLE chats ADD COLUMN project_root TEXT');
+    }
+
     this.ensureDefaultProject();
   }
 
@@ -190,6 +202,7 @@ export class DatabaseService {
       projectId: row.project_id,
       title: row.title,
       model: row.model,
+      projectRoot: row.project_root,
       systemPrompt: row.system_prompt,
       pinned: row.pinned === 1,
       role: row.role,
@@ -276,6 +289,7 @@ export class DatabaseService {
         c.project_id,
         c.title,
         c.model,
+        c.project_root,
         c.system_prompt,
         c.pinned,
         c.role,
@@ -308,6 +322,7 @@ export class DatabaseService {
           c.project_id,
           c.title,
           c.model,
+          c.project_root,
           c.system_prompt,
           c.pinned,
           c.role,
@@ -337,6 +352,7 @@ export class DatabaseService {
       project_id: input.projectId || existing?.projectId || defaultProject.id,
       title: input.title?.trim() || existing?.title || 'Untitled chat',
       model: input.model ?? existing?.model ?? null,
+      project_root: input.projectRoot ?? existing?.projectRoot ?? null,
       system_prompt: input.systemPrompt ?? existing?.systemPrompt ?? null,
       pinned: input.pinned ?? existing?.pinned ?? false,
       role: input.role ?? existing?.role ?? null,
@@ -346,12 +362,13 @@ export class DatabaseService {
 
     db.prepare(
       `
-      INSERT INTO chats (id, project_id, title, model, system_prompt, pinned, role, created_at, updated_at)
-      VALUES (@id, @project_id, @title, @model, @system_prompt, @pinned, @role, @created_at, @updated_at)
+      INSERT INTO chats (id, project_id, title, model, project_root, system_prompt, pinned, role, created_at, updated_at)
+      VALUES (@id, @project_id, @title, @model, @project_root, @system_prompt, @pinned, @role, @created_at, @updated_at)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         title = excluded.title,
         model = excluded.model,
+        project_root = excluded.project_root,
         system_prompt = excluded.system_prompt,
         pinned = excluded.pinned,
         role = excluded.role,

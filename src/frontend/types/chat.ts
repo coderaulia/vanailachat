@@ -19,6 +19,7 @@ export interface Chat {
   pinned: boolean;
   role: string | null;
   model: string | null;
+  projectRoot: string | null;
   systemPrompt: string | null;
   usage?: number;
 }

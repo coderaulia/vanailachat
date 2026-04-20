@@ -49,6 +49,7 @@ export function repairChatHistories(rawValue: unknown): {
       pinned: typeof value.pinned === 'boolean' ? value.pinned : false,
       role: typeof value.role === 'string' ? value.role : null,
       model: typeof value.model === 'string' ? value.model : null,
+      projectRoot: typeof value.projectRoot === 'string' ? value.projectRoot : null,
       systemPrompt: typeof value.systemPrompt === 'string' ? value.systemPrompt : null,
       usage: typeof value.usage === 'number' ? value.usage : 0,
     };
