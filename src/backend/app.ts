@@ -8,6 +8,7 @@ import type {
   InsertMessageInput,
   MessageRecord,
   ProjectRecord,
+  UpdateProjectInput,
   UpsertChatInput,
 } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
@@ -30,7 +31,10 @@ interface AppDependencies {
   getModelDetails: (modelName: string) => Promise<unknown>;
   getToolDefinitions: () => unknown[];
   listProjects: () => ProjectRecord[];
+  getProject: (id: string) => ProjectRecord | null;
   createProject: (input: CreateProjectInput) => ProjectRecord;
+  updateProject: (id: string, input: UpdateProjectInput) => ProjectRecord;
+  deleteProject: (id: string) => boolean;
   listChats: (projectId?: string) => ChatRecord[];
   getChat: (id: string) => ChatRecord | null;
   upsertChat: (input: UpsertChatInput) => ChatRecord;
@@ -47,7 +51,10 @@ const defaultDependencies: AppDependencies = {
   getModelDetails: OllamaService.getModelDetails.bind(OllamaService),
   getToolDefinitions: ToolService.getToolDefinitions.bind(ToolService),
   listProjects: DatabaseService.listProjects.bind(DatabaseService),
+  getProject: DatabaseService.getProject.bind(DatabaseService),
   createProject: DatabaseService.createProject.bind(DatabaseService),
+  updateProject: DatabaseService.updateProject.bind(DatabaseService),
+  deleteProject: DatabaseService.deleteProject.bind(DatabaseService),
   listChats: DatabaseService.listChats.bind(DatabaseService),
   getChat: DatabaseService.getChat.bind(DatabaseService),
   upsertChat: DatabaseService.upsertChat.bind(DatabaseService),
@@ -139,7 +146,14 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
 
   app.post('/api/projects', async (context) => {
     try {
-      const body = (await context.req.json()) as { id?: unknown; name?: unknown; createdAt?: unknown };
+      const body = (await context.req.json()) as { 
+        id?: unknown; 
+        name?: unknown; 
+        description?: unknown;
+        instructions?: unknown;
+        memory?: unknown;
+        createdAt?: unknown 
+      };
       if (typeof body.name !== 'string' || !body.name.trim()) {
         return context.json({ error: 'Project name is required' }, 400);
       }
@@ -147,10 +161,67 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       const project = dependencies.createProject({
         id: typeof body.id === 'string' ? body.id : undefined,
         name: body.name,
+        description: typeof body.description === 'string' ? body.description : undefined,
+        instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
+        memory: typeof body.memory === 'string' ? body.memory : undefined,
         createdAt: toOptionalNumber(body.createdAt),
       });
 
       return context.json({ project }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.get('/api/projects/:id', (context) => {
+    try {
+      const id = context.req.param('id');
+      const project = dependencies.getProject(id);
+      if (!project) {
+        return context.json({ error: 'Project not found' }, 404);
+      }
+      return context.json({ project });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.patch('/api/projects/:id', async (context) => {
+    try {
+      const id = context.req.param('id');
+      const body = (await context.req.json()) as {
+        name?: unknown;
+        description?: unknown;
+        instructions?: unknown;
+        memory?: unknown;
+        pinned?: unknown;
+      };
+
+      const project = dependencies.updateProject(id, {
+        name: typeof body.name === 'string' ? body.name : undefined,
+        description: typeof body.description === 'string' ? body.description : undefined,
+        instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
+        memory: typeof body.memory === 'string' ? body.memory : undefined,
+        pinned: typeof body.pinned === 'boolean' ? body.pinned : undefined,
+      });
+
+      return context.json({ project });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+ 
+  app.delete('/api/projects/:id', (context) => {
+    try {
+      const id = context.req.param('id');
+      const deleted = dependencies.deleteProject(id);
+      if (!deleted) {
+        return context.json({ error: 'Project not found' }, 404);
+      }
+      return context.json({ ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return context.json({ error: message }, 500);
@@ -540,14 +611,31 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
 
       ToolService.setExecutionRoot(chatRecord?.projectRoot ?? null);
 
-      const chatPrompt = chatRecord?.systemPrompt ?? null;
+      let systemPrompt = 'You are a helpful assistant.';
 
-      let systemPrompt = chatPrompt && chatPrompt.trim() ? chatPrompt : 'You are a helpful assistant.';
+      // Integrate Project Context if available
+      if (chatRecord?.projectId) {
+        const project = dependencies.getProject(chatRecord.projectId);
+        if (project) {
+          if (project.instructions && project.instructions.trim()) {
+            systemPrompt += `\n\n[Project Instructions]\n${project.instructions}`;
+          }
+          if (project.memory && project.memory.trim()) {
+            systemPrompt += `\n\n[Shared Project Memory]\n${project.memory}`;
+          }
+        }
+      }
+
+      const chatPrompt = chatRecord?.systemPrompt ?? null;
+      if (chatPrompt && chatPrompt.trim()) {
+        systemPrompt += `\n\n[Chat-Specific Instructions]\n${chatPrompt}`;
+      }
+
       if (body.search) {
         systemPrompt +=
-          ' Web search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
+          '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
       }
-      systemPrompt += ' You can also read local project files using read_file.';
+      systemPrompt += '\n\nYou can also read local project files using read_file.';
 
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
       const messages = [

@@ -3,6 +3,7 @@ import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
 import { Sidebar } from './components/Sidebar';
+import { ProjectDetail } from './components/ProjectDetail';
 import { useChatApp } from './hooks/useChatApp';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 
@@ -61,6 +62,10 @@ const App = () => {
     systemPrompt,
     shouldShowRoleSuggestion,
     toggleTheme,
+    viewMode,
+    setViewMode,
+    handleUpdateProject,
+    handleDeleteProject,
   } = useChatApp();
 
   useEffect(() => {
@@ -95,71 +100,122 @@ const App = () => {
         currentChatId={currentChatId}
         histories={sortedHistories}
         onClose={closeSidebar}
-        onNewChat={handleNewChat}
+        onNewChat={() => {
+          handleNewChat();
+          setViewMode('chat');
+        }}
         projects={projects}
         selectedProjectId={selectedProjectId}
         onCreateProject={handleCreateProject}
         onExport={handleExportData}
         onImport={handleImportData}
         onSelectProject={handleSelectProject}
-        onSelectChat={handleSelectChat}
+        onSelectChat={(id) => {
+          handleSelectChat(id);
+          setViewMode('chat');
+        }}
         onDeleteChat={handleDeleteChat}
         onRenameChat={handleRenameChat}
         onTogglePin={handleTogglePin}
+        onViewProjectDetail={() => setViewMode('project')}
       />
 
       <main className="main-content">
-        <ChatHeader
-          isCurrentChatSending={isCurrentChatSending}
-          selectedModel={selectedModel}
-          showTokens={showTokens}
-          statusText={statusText}
-          thinkingSeconds={thinkingSeconds}
-          onToggleSidebar={toggleSidebar}
-          onToggleShowTokens={() => setShowTokens((previous) => !previous)}
-          onToggleTheme={toggleTheme}
-        />
+        {(viewMode === 'chat' || currentChatId) ? (
+          <>
+            <ChatHeader
+              isCurrentChatSending={isCurrentChatSending}
+              selectedModel={selectedModel}
+              showTokens={showTokens}
+              statusText={statusText}
+              thinkingSeconds={thinkingSeconds}
+              onToggleSidebar={toggleSidebar}
+              onToggleShowTokens={() => setShowTokens((previous) => !previous)}
+              onToggleTheme={toggleTheme}
+            />
 
-        <ChatLog
-          conversation={conversation}
-          isCurrentChatSending={isCurrentChatSending}
-          showTokens={showTokens}
-          renderMarkdown={renderMarkdown}
-        />
+            <ChatLog
+              conversation={conversation}
+              isCurrentChatSending={isCurrentChatSending}
+              showTokens={showTokens}
+              renderMarkdown={renderMarkdown}
+            />
 
-        <Composer
-          attachedFiles={attachedFiles}
-          availableModels={filteredAvailableModels}
-          contextPercentage={contextPercentage}
-          contextWindow={contextWindow}
-          fileInputRef={fileInputRef}
-          isCurrentChatSending={isCurrentChatSending}
-          isSearchEnabled={isSearchEnabled}
-          prompt={prompt}
-          selectedModel={selectedModel}
-          statusText={statusText}
-          thinkingSeconds={thinkingSeconds}
-          onAttach={handleAttach}
-          onNewChat={handleNewChat}
-          onRemoveAttachment={removeAttachment}
-          onRoleAcceptSuggestion={handleAcceptRoleSuggestion}
-          onRoleDismissSuggestion={handleDismissRoleSuggestion}
-          onSaveProjectRoot={handleSaveProjectRoot}
-          onSelectRole={handleSelectRole}
-          onSelectModel={setSelectedModel}
-          onSend={handleSend}
-          onSetPrompt={setPrompt}
-          onSetProjectRoot={handleProjectRootChange}
-          onSetSystemPrompt={handleSystemPromptChange}
-          onSaveSystemPrompt={handleSaveSystemPrompt}
-          onToggleSearch={() => setIsSearchEnabled((enabled: boolean) => !enabled)}
-          selectedRole={selectedRole}
-          shouldShowRoleSuggestion={shouldShowRoleSuggestion}
-          suggestedModelName={suggestedModelName}
-          suggestedRoleLabel={suggestedRoleLabel}
-          systemPrompt={systemPrompt}
-          projectRoot={projectRoot}
-        />
+            <Composer
+              attachedFiles={attachedFiles}
+              availableModels={filteredAvailableModels}
+              contextPercentage={contextPercentage}
+              contextWindow={contextWindow}
+              fileInputRef={fileInputRef}
+              isCurrentChatSending={isCurrentChatSending}
+              isSearchEnabled={isSearchEnabled}
+              prompt={prompt}
+              selectedModel={selectedModel}
+              statusText={statusText}
+              thinkingSeconds={thinkingSeconds}
+              onAttach={handleAttach}
+              onNewChat={handleNewChat}
+              onRemoveAttachment={removeAttachment}
+              onRoleAcceptSuggestion={handleAcceptRoleSuggestion}
+              onRoleDismissSuggestion={handleDismissRoleSuggestion}
+              onSaveProjectRoot={handleSaveProjectRoot}
+              onSelectRole={handleSelectRole}
+              onSelectModel={setSelectedModel}
+              onSend={handleSend}
+              onSetPrompt={setPrompt}
+              onSetProjectRoot={handleProjectRootChange}
+              onSetSystemPrompt={handleSystemPromptChange}
+              onSaveSystemPrompt={handleSaveSystemPrompt}
+              onToggleSearch={() => setIsSearchEnabled((enabled: boolean) => !enabled)}
+              selectedRole={selectedRole}
+              shouldShowRoleSuggestion={shouldShowRoleSuggestion}
+              suggestedModelName={suggestedModelName}
+              suggestedRoleLabel={suggestedRoleLabel}
+              systemPrompt={systemPrompt}
+              projectRoot={projectRoot}
+            />
+          </>
+        ) : (
+          (() => {
+            const currentProject = projects.find(p => p.id === selectedProjectId);
+            if (currentProject) {
+              return (
+                <ProjectDetail
+                  project={currentProject}
+                  chats={sortedHistories}
+                  onBack={() => setViewMode('chat')}
+                  onSelectChat={(id) => {
+                    handleSelectChat(id);
+                    setViewMode('chat');
+                  }}
+                  onUpdateProject={handleUpdateProject}
+                  onDeleteProject={handleDeleteProject}
+                  prompt={prompt}
+                  setPrompt={setPrompt}
+                  onSend={async (e?: React.FormEvent) => {
+                    await handleSend(e);
+                    setViewMode('chat');
+                  }}
+                  availableModels={availableModels}
+                  selectedModel={selectedModel}
+                  onSelectModel={setSelectedModel}
+                  attachedFiles={attachedFiles}
+                  onAttach={handleAttach}
+                  onRemoveAttachment={removeAttachment}
+                  fileInputRef={fileInputRef}
+                  shouldShowRoleSuggestion={shouldShowRoleSuggestion}
+                  suggestedModelName={suggestedModelName}
+                  suggestedRoleLabel={suggestedRoleLabel}
+                />
+              );
+            }
+            return (
+              <div className="empty-workspace">
+                <h2>Select or create a project to get started</h2>
+              </div>
+            );
+          })()
+        )}
       </main>
     </div>
   );

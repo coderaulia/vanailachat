@@ -84,6 +84,20 @@ export function usePersistence() {
     if (!response.ok) throw new Error(await response.text());
   };
 
+  const patchProject = async (id: string, updates: Partial<ApiProject>) => {
+    const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { project?: ApiProject };
+    if (!data.project) throw new Error('Missing project in response');
+    
+    setProjects(prev => prev.map(p => p.id === id ? data.project! : p));
+    return data.project;
+  };
+
   const loadMessages = async (chatId: string): Promise<Message[]> => {
     const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
     if (!response.ok) throw new Error(await response.text());
@@ -111,6 +125,7 @@ export function usePersistence() {
     fetchChats,
     upsertChat,
     patchChat,
+    patchProject,
     deleteChat,
     saveMessage,
     loadMessages,

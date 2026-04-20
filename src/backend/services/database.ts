@@ -19,6 +19,10 @@ function normalizeTimestamp(value: number | undefined): number {
 interface ProjectRow {
   id: string;
   name: string;
+  description: string | null;
+  instructions: string | null;
+  memory: string | null;
+  pinned: number;
   created_at: number;
 }
 
@@ -49,13 +53,29 @@ interface MessageRow {
 export interface ProjectRecord {
   id: string;
   name: string;
+  description: string | null;
+  instructions: string | null;
+  memory: string | null;
+  pinned: boolean;
   createdAt: number;
 }
 
 export interface CreateProjectInput {
   id?: string;
   name: string;
+  description?: string | null;
+  instructions?: string | null;
+  memory?: string | null;
+  pinned?: boolean;
   createdAt?: number;
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string | null;
+  instructions?: string | null;
+  memory?: string | null;
+  pinned?: boolean;
 }
 
 export interface ChatRecord {
@@ -145,6 +165,10 @@ export class DatabaseService {
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
+        description TEXT,
+        instructions TEXT,
+        memory TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       );
 
@@ -185,6 +209,23 @@ export class DatabaseService {
       db.exec('ALTER TABLE chats ADD COLUMN project_root TEXT');
     }
 
+    const projectColumns = db
+      .prepare("SELECT name FROM pragma_table_info('projects')")
+      .all() as Array<{ name: string }>;
+    
+    if (!projectColumns.some(c => c.name === 'description')) {
+      db.exec('ALTER TABLE projects ADD COLUMN description TEXT');
+    }
+    if (!projectColumns.some(c => c.name === 'instructions')) {
+      db.exec('ALTER TABLE projects ADD COLUMN instructions TEXT');
+    }
+    if (!projectColumns.some(c => c.name === 'memory')) {
+      db.exec('ALTER TABLE projects ADD COLUMN memory TEXT');
+    }
+    if (!projectColumns.some(c => c.name === 'pinned')) {
+      db.exec('ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    }
+
     this.ensureDefaultProject();
   }
 
@@ -192,6 +233,10 @@ export class DatabaseService {
     return {
       id: row.id,
       name: row.name,
+      description: row.description ?? null,
+      instructions: row.instructions ?? null,
+      memory: row.memory ?? null,
+      pinned: row.pinned === 1,
       createdAt: row.created_at,
     };
   }
@@ -227,22 +272,30 @@ export class DatabaseService {
   private static ensureDefaultProject(): ProjectRecord {
     const db = this.getDb();
     const existing = db
-      .prepare('SELECT id, name, created_at FROM projects ORDER BY created_at ASC LIMIT 1')
+      .prepare('SELECT id, name, description, instructions, memory, created_at FROM projects ORDER BY created_at ASC LIMIT 1')
       .get() as ProjectRow | undefined;
 
     if (existing) {
       return this.mapProject(existing);
     }
 
-    const project = {
+    const project: ProjectRow = {
       id: generateId('project'),
       name: DEFAULT_PROJECT_NAME,
+      description: null,
+      instructions: null,
+      memory: null,
+      pinned: 0,
       created_at: Date.now(),
     };
 
-    db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(
+    db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       project.id,
       project.name,
+      project.description,
+      project.instructions,
+      project.memory,
+      project.pinned,
       project.created_at
     );
 
@@ -252,7 +305,7 @@ export class DatabaseService {
   static listProjects(): ProjectRecord[] {
     const db = this.getDb();
     const rows = db
-      .prepare('SELECT id, name, created_at FROM projects ORDER BY created_at ASC')
+      .prepare('SELECT id, name, description, instructions, memory, pinned, created_at FROM projects ORDER BY created_at ASC')
       .all() as ProjectRow[];
 
     return rows.map((row) => this.mapProject(row));
@@ -268,16 +321,66 @@ export class DatabaseService {
     const project = {
       id: input.id && input.id.trim() ? input.id : generateId('project'),
       name,
+      description: input.description ?? null,
+      instructions: input.instructions ?? null,
+      memory: input.memory ?? null,
+      pinned: input.pinned ? 1 : 0,
       created_at: normalizeTimestamp(input.createdAt),
     };
 
-    db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(
+    db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       project.id,
       project.name,
+      project.description,
+      project.instructions,
+      project.memory,
+      project.pinned,
       project.created_at
     );
 
     return this.mapProject(project);
+  }
+
+  static getProject(id: string): ProjectRecord | null {
+    const db = this.getDb();
+    const row = db
+      .prepare('SELECT id, name, description, instructions, memory, pinned, created_at FROM projects WHERE id = ?')
+      .get(id) as ProjectRow | undefined;
+
+    return row ? this.mapProject(row) : null;
+  }
+
+  static updateProject(id: string, input: UpdateProjectInput): ProjectRecord {
+    const db = this.getDb();
+    const existing = this.getProject(id);
+    if (!existing) {
+      throw new Error('Project not found');
+    }
+
+    const name = input.name?.trim() || existing.name;
+    const description = input.description !== undefined ? input.description : existing.description;
+    const instructions = input.instructions !== undefined ? input.instructions : existing.instructions;
+    const memory = input.memory !== undefined ? input.memory : existing.memory;
+
+    const pinned = input.pinned !== undefined ? (input.pinned ? 1 : 0) : (existing.pinned ? 1 : 0);
+ 
+    db.prepare(`
+      UPDATE projects 
+      SET name = ?, description = ?, instructions = ?, memory = ?, pinned = ?
+      WHERE id = ?
+    `).run(name, description, instructions, memory, pinned, id);
+
+    const updated = this.getProject(id);
+    if (!updated) {
+      throw new Error('Failed to update project');
+    }
+    return updated;
+  }
+
+  static deleteProject(id: string): boolean {
+    const db = this.getDb();
+    const result = db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    return result.changes > 0;
   }
 
   static listChats(projectId?: string): ChatRecord[] {

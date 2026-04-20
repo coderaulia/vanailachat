@@ -64,6 +64,10 @@ export interface ApiMessage {
 export interface ApiProject {
   id: string;
   name: string;
+  description: string | null;
+  instructions: string | null;
+  memory: string | null;
+  pinned?: boolean;
   createdAt: number;
 }
 

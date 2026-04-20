@@ -7,8 +7,8 @@ import { ModelSelector } from './ModelSelector';
 interface ComposerProps {
   attachedFiles: Attachment[];
   availableModels: string[];
-  contextPercentage: number;
-  contextWindow: ContextWindow;
+  contextPercentage?: number;
+  contextWindow?: ContextWindow;
   fileInputRef: RefObject<HTMLInputElement | null>;
   isCurrentChatSending: boolean;
   isSearchEnabled: boolean;
@@ -163,17 +163,19 @@ export function Composer({
                   />
                 </div>
 
-                <div className="composer-context">
-                  <label>Context</label>
-                  <div className="context-status">
-                    <span className="context-status__text">
-                      {contextWindow.current} / {contextWindow.total}
-                    </span>
-                    <span className="context-status__meter">
-                      <span className="context-status__meter-fill" style={{ width: `${contextPercentage}%` }}></span>
-                    </span>
+                {contextWindow && (
+                  <div className="composer-context">
+                    <label>Context</label>
+                    <div className="context-status">
+                      <span className="context-status__text">
+                        {contextWindow.current} / {contextWindow.total}
+                      </span>
+                      <span className="context-status__meter">
+                        <span className="context-status__meter-fill" style={{ width: `${contextPercentage ?? 0}%` }}></span>
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="composer-actions">

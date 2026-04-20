@@ -14,6 +14,7 @@ export function useChatApp() {
   const hasImageAttachment = attachedFiles.some(f => f.type === 'image');
 
   const uiState = useUIState();
+  const [viewMode, setViewMode] = useState<'chat' | 'project'>('chat');
   const persistence = usePersistence();
   const modelManager = useModelManager(prompt, hasImageAttachment);
 
@@ -208,6 +209,39 @@ export function useChatApp() {
     }
   };
 
+  const handleUpdateProject = async (projectId: string, updates: Partial<ApiProject>) => {
+    try {
+      await persistence.patchProject(projectId, updates);
+      setStatusText('Project updated');
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to update project');
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(await response.text());
+      
+      persistence.setProjects((prev) => prev.filter(p => p.id !== projectId));
+      
+      // If deleted project was selected, switch to first available or default
+      if (selectedProjectId === projectId) {
+        const remaining = persistence.projects.filter(p => p.id !== projectId);
+        if (remaining.length > 0) {
+          setSelectedProjectId(remaining[0].id);
+        }
+      }
+      
+      setStatusText('Project deleted');
+      setViewMode('chat');
+    } catch (error) {
+      console.error(error);
+      setStatusText('Failed to delete project');
+    }
+  };
+
   const handleDeleteChat = (id: string) => {
     if (!chatHistories[id]) return;
     updateHistories((prev) => {
@@ -301,6 +335,8 @@ export function useChatApp() {
     handleDismissRoleSuggestion,
     handleSelectProject,
     handleCreateProject,
+    handleUpdateProject,
+    handleDeleteProject,
     handleDeleteChat,
     handleTogglePin,
     handleRenameChat,
@@ -310,6 +346,10 @@ export function useChatApp() {
     handleSystemPromptChange: chatSession.handleSystemPromptChange,
     handleSaveSystemPrompt: chatSession.handleSaveSystemPrompt,
     handleSaveProjectRoot: chatSession.handleSaveProjectRoot,
+
+    // View State
+    viewMode,
+    setViewMode,
 
     // Shared
     prompt,

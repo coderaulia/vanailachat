@@ -25,6 +25,7 @@ interface SidebarProps {
   onDeleteChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
   onTogglePin: (id: string) => void;
+  onViewProjectDetail: () => void;
 }
 
 export function Sidebar({
@@ -43,6 +44,7 @@ export function Sidebar({
   onDeleteChat,
   onRenameChat,
   onTogglePin,
+  onViewProjectDetail,
 }: SidebarProps) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -96,6 +98,8 @@ export function Sidebar({
     }
   };
 
+  const filteredHistories = histories.filter(([, chat]) => chat.projectId === selectedProjectId);
+
   return (
     <>
       <button
@@ -117,22 +121,10 @@ export function Sidebar({
             </div>
 
             <div className="project-switcher">
-              <label htmlFor="project-select">Project</label>
-              <div className="project-switcher__controls">
-                <select
-                  id="project-select"
-                  className="select project-select"
-                  value={selectedProjectId ?? ''}
-                  onChange={(event) => onSelectProject(event.target.value)}
-                >
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="project-switcher__header">
+                <label htmlFor="project-select">Project</label>
                 <button
-                  className="btn btn-secondary icon-btn"
+                  className="btn-add-project"
                   type="button"
                   aria-label="Create project"
                   onClick={() => {
@@ -140,7 +132,41 @@ export function Sidebar({
                     setNewProjectName('');
                   }}
                 >
-                  +
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="project-switcher__controls">
+                <div className="project-select-container">
+                  <select
+                    id="project-select"
+                    className="select project-select"
+                    value={selectedProjectId ?? ''}
+                    onChange={(event) => onSelectProject(event.target.value)}
+                  >
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="btn-open-project"
+                  type="button"
+                  aria-label="View project detail"
+                  title="Open Project Workspace"
+                  onClick={onViewProjectDetail}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 2H2v10h10V2z"></path>
+                    <path d="M22 12h-10v10h10V12z"></path>
+                    <path d="M12 12H2v10h10V12z"></path>
+                    <path d="M22 2h-10v10h10V2z"></path>
+                  </svg>
                 </button>
               </div>
 
@@ -187,11 +213,11 @@ export function Sidebar({
                 <p className="section-eyebrow">Library</p>
                 <h2 className="section-title">Recent Conversations</h2>
               </div>
-              <span className="section-meta">{histories.length} chats</span>
+              <span className="section-meta">{filteredHistories.length} chats</span>
             </div>
 
             <div className="history-list">
-              {histories.map(([id, chat]) => (
+              {filteredHistories.map(([id, chat]) => (
                 <div
                   key={id}
                   className={`history-item ${currentChatId === id ? 'active' : ''}`}
