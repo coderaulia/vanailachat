@@ -12,6 +12,7 @@ interface ComposerProps {
   prompt: string;
   selectedModel: string;
   statusText: string;
+  thinkingSeconds: number;
   onAttach: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   onNewChat: () => void;
   onRemoveAttachment: (index: number) => void;
@@ -32,6 +33,7 @@ export function Composer({
   prompt,
   selectedModel,
   statusText,
+  thinkingSeconds,
   onAttach,
   onNewChat,
   onRemoveAttachment,
@@ -80,6 +82,7 @@ export function Composer({
           <div className="composer-footer">
             <div className="chat-status" aria-live="polite">
               <span className="status-text">{statusText}</span>
+              {isCurrentChatSending ? <span className="thinking-badge">Thinking… {thinkingSeconds}s</span> : null}
             </div>
 
             <div className="input-actions">

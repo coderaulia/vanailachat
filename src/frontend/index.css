@@ -559,6 +559,9 @@ textarea {
 .status-pill__value {
   color: var(--text-main);
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .header-eyebrow,
@@ -986,11 +989,37 @@ textarea {
 
 .chat-status {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .status-text {
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.thinking-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg-accent-strong);
+  background: color-mix(in srgb, var(--bg-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bg-accent) 35%, transparent);
+  animation: thinking-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .input-actions {

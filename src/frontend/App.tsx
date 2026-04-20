@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
@@ -7,6 +8,8 @@ import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 
 const App = () => {
   const renderMarkdown = useMarkdownRenderer();
+  const thinkingStart = useRef<number | null>(null);
+  const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const {
     attachedFiles,
     availableModels,
@@ -38,6 +41,31 @@ const App = () => {
     toggleTheme,
   } = useChatApp();
 
+  useEffect(() => {
+    if (isCurrentChatSending) {
+      if (thinkingStart.current === null) {
+        thinkingStart.current = Date.now();
+      }
+
+      setThinkingSeconds(Math.floor((Date.now() - thinkingStart.current) / 1000));
+
+      const intervalId = window.setInterval(() => {
+        if (thinkingStart.current === null) {
+          return;
+        }
+        setThinkingSeconds(Math.floor((Date.now() - thinkingStart.current) / 1000));
+      }, 1000);
+
+      return () => {
+        window.clearInterval(intervalId);
+      };
+    }
+
+    thinkingStart.current = null;
+    setThinkingSeconds(0);
+    return undefined;
+  }, [isCurrentChatSending]);
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -54,8 +82,10 @@ const App = () => {
 
       <main className="main-content">
         <ChatHeader
+          isCurrentChatSending={isCurrentChatSending}
           selectedModel={selectedModel}
           statusText={statusText}
+          thinkingSeconds={thinkingSeconds}
           onOpenSidebar={openSidebar}
           onToggleTheme={toggleTheme}
         />
@@ -77,6 +107,7 @@ const App = () => {
           prompt={prompt}
           selectedModel={selectedModel}
           statusText={statusText}
+          thinkingSeconds={thinkingSeconds}
           onAttach={handleAttach}
           onNewChat={handleNewChat}
           onRemoveAttachment={removeAttachment}

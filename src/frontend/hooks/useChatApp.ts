@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import type { Attachment, Chat, ContextWindow, Message, MessageRole } from '../types/chat';
 
 const DEFAULT_CONTEXT_WINDOW: ContextWindow = { current: 0, total: 32768 };
+const MAX_CONVERSATION_HISTORY = 20;
 const THEME_STORAGE_KEY = 'vanaila-theme';
 const MODEL_STORAGE_KEY = 'vanaila-model';
 
@@ -700,6 +701,8 @@ export function useChatApp() {
     let assistantContentForSave = '';
 
     try {
+      const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -707,7 +710,7 @@ export function useChatApp() {
         body: JSON.stringify({
           model: selectedModel || null,
           messages: [
-            ...conversation.map((message) => ({ role: message.role, content: message.content })),
+            ...recentConversation.map((message) => ({ role: message.role, content: message.content })),
             { role: 'user', content: messageContent },
           ],
           stream: true,

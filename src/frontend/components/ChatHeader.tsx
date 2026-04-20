@@ -1,13 +1,17 @@
 interface ChatHeaderProps {
+  isCurrentChatSending: boolean;
   selectedModel: string;
   statusText: string;
+  thinkingSeconds: number;
   onOpenSidebar: () => void;
   onToggleTheme: () => void;
 }
 
 export function ChatHeader({
+  isCurrentChatSending,
   selectedModel,
   statusText,
+  thinkingSeconds,
   onOpenSidebar,
   onToggleTheme,
 }: ChatHeaderProps) {
@@ -44,7 +48,14 @@ export function ChatHeader({
             </div>
             <div className="status-pill">
               <span className="status-pill__label">Ollama</span>
-              <span className="status-pill__value">{statusText === 'Ready' ? 'Connected' : statusText}</span>
+              <span className="status-pill__value">
+                {statusText === 'Ready' ? 'Connected' : statusText}
+                {isCurrentChatSending ? (
+                  <span className="thinking-badge" aria-live="polite">
+                    Thinking… {thinkingSeconds}s
+                  </span>
+                ) : null}
+              </span>
             </div>
           </div>
 
