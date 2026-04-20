@@ -1,6 +1,15 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { DatabaseService } from './services/database.js';
+import type {
+  ChatRecord,
+  CreateProjectInput,
+  InsertMessageInput,
+  MessageRecord,
+  ProjectRecord,
+  UpsertChatInput,
+} from './services/database.js';
 import { OllamaService } from './services/ollama.js';
 import { ToolService } from './services/tools.js';
 
@@ -19,6 +28,13 @@ interface AppDependencies {
   getInstalledModels: () => Promise<string[]>;
   getModelDetails: (modelName: string) => Promise<unknown>;
   getToolDefinitions: () => unknown[];
+  listProjects: () => ProjectRecord[];
+  createProject: (input: CreateProjectInput) => ProjectRecord;
+  listChats: (projectId?: string) => ChatRecord[];
+  upsertChat: (input: UpsertChatInput) => ChatRecord;
+  deleteChat: (id: string) => boolean;
+  listMessages: (chatId: string) => MessageRecord[];
+  insertMessage: (input: InsertMessageInput) => MessageRecord;
 }
 
 const defaultDependencies: AppDependencies = {
@@ -28,7 +44,18 @@ const defaultDependencies: AppDependencies = {
   getInstalledModels: OllamaService.getInstalledModels.bind(OllamaService),
   getModelDetails: OllamaService.getModelDetails.bind(OllamaService),
   getToolDefinitions: ToolService.getToolDefinitions.bind(ToolService),
+  listProjects: DatabaseService.listProjects.bind(DatabaseService),
+  createProject: DatabaseService.createProject.bind(DatabaseService),
+  listChats: DatabaseService.listChats.bind(DatabaseService),
+  upsertChat: DatabaseService.upsertChat.bind(DatabaseService),
+  deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
+  listMessages: DatabaseService.listMessages.bind(DatabaseService),
+  insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
 };
+
+function toOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
 
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   const dependencies = { ...defaultDependencies, ...overrides };
@@ -38,6 +65,165 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('*', cors());
 
   app.get('/api/health', (context) => context.json({ status: 'ok' }));
+
+  app.get('/api/projects', (context) => {
+    try {
+      const projects = dependencies.listProjects();
+      return context.json({ projects });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.post('/api/projects', async (context) => {
+    try {
+      const body = (await context.req.json()) as { id?: unknown; name?: unknown; createdAt?: unknown };
+      if (typeof body.name !== 'string' || !body.name.trim()) {
+        return context.json({ error: 'Project name is required' }, 400);
+      }
+
+      const project = dependencies.createProject({
+        id: typeof body.id === 'string' ? body.id : undefined,
+        name: body.name,
+        createdAt: toOptionalNumber(body.createdAt),
+      });
+
+      return context.json({ project }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.get('/api/chats', (context) => {
+    try {
+      const projectId = context.req.query('projectId') || undefined;
+      const chats = dependencies.listChats(projectId);
+      return context.json({ chats });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.post('/api/chats', async (context) => {
+    try {
+      const body = (await context.req.json()) as {
+        id?: unknown;
+        projectId?: unknown;
+        title?: unknown;
+        model?: unknown;
+        systemPrompt?: unknown;
+        pinned?: unknown;
+        role?: unknown;
+        createdAt?: unknown;
+        updatedAt?: unknown;
+      };
+
+      const chat = dependencies.upsertChat({
+        id: typeof body.id === 'string' ? body.id : undefined,
+        projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
+        title: typeof body.title === 'string' ? body.title : undefined,
+        model: typeof body.model === 'string' ? body.model : body.model === null ? null : undefined,
+        systemPrompt:
+          typeof body.systemPrompt === 'string'
+            ? body.systemPrompt
+            : body.systemPrompt === null
+              ? null
+              : undefined,
+        pinned:
+          typeof body.pinned === 'boolean'
+            ? body.pinned
+            : typeof body.pinned === 'number'
+              ? body.pinned === 1
+              : undefined,
+        role: typeof body.role === 'string' ? body.role : body.role === null ? null : undefined,
+        createdAt: toOptionalNumber(body.createdAt),
+        updatedAt: toOptionalNumber(body.updatedAt),
+      });
+
+      return context.json({ chat }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.delete('/api/chats/:id', (context) => {
+    try {
+      const id = context.req.param('id');
+      if (!id) {
+        return context.json({ error: 'Chat ID required' }, 400);
+      }
+
+      const deleted = dependencies.deleteChat(id);
+      if (!deleted) {
+        return context.json({ error: 'Chat not found' }, 404);
+      }
+
+      return context.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.get('/api/messages', (context) => {
+    try {
+      const chatId = context.req.query('chatId');
+      if (!chatId) {
+        return context.json({ error: 'chatId is required' }, 400);
+      }
+
+      const messages = dependencies.listMessages(chatId);
+      return context.json({ messages });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
+  app.post('/api/messages', async (context) => {
+    try {
+      const body = (await context.req.json()) as {
+        id?: unknown;
+        chatId?: unknown;
+        role?: unknown;
+        content?: unknown;
+        promptTokens?: unknown;
+        completionTokens?: unknown;
+        createdAt?: unknown;
+      };
+
+      if (typeof body.chatId !== 'string' || !body.chatId.trim()) {
+        return context.json({ error: 'chatId is required' }, 400);
+      }
+
+      if (typeof body.role !== 'string' || !body.role.trim()) {
+        return context.json({ error: 'role is required' }, 400);
+      }
+
+      if (typeof body.content !== 'string') {
+        return context.json({ error: 'content must be a string' }, 400);
+      }
+
+      const message = dependencies.insertMessage({
+        id: typeof body.id === 'string' ? body.id : undefined,
+        chatId: body.chatId,
+        role: body.role,
+        content: body.content,
+        promptTokens: toOptionalNumber(body.promptTokens),
+        completionTokens: toOptionalNumber(body.completionTokens),
+        createdAt: toOptionalNumber(body.createdAt),
+      });
+
+      return context.json({ message }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
 
   app.get('/api/models', async (context) => {
     try {

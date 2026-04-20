@@ -1,17 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import {
-  loadChatHistories,
-  saveChatHistories,
-} from '../lib/chatStorage';
-import type { Attachment, Chat, ContextWindow, Message } from '../types/chat';
+import type { Attachment, Chat, ContextWindow, Message, MessageRole } from '../types/chat';
 
 const DEFAULT_CONTEXT_WINDOW: ContextWindow = { current: 0, total: 32768 };
 const THEME_STORAGE_KEY = 'vanaila-theme';
+const MODEL_STORAGE_KEY = 'vanaila-model';
 
 type SendMessagePart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
+
+interface ApiChat {
+  id: string;
+  projectId?: string;
+  title: string;
+  model: string | null;
+  systemPrompt?: string;
+  pinned?: boolean;
+  role?: string | null;
+  createdAt: number;
+  updatedAt: number;
+  usage?: number;
+}
+
+interface ApiMessage {
+  id: string;
+  chatId: string;
+  role: string;
+  content: string;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  createdAt: number;
+}
 
 function getInitialTheme(): boolean {
   if (typeof window === 'undefined') {
@@ -36,12 +56,19 @@ function parseUsage(data: { total_tokens?: number; prompt_tokens?: number; compl
   return promptTokens + completionTokens;
 }
 
+function toMessageRole(role: string): MessageRole {
+  if (role === 'user' || role === 'assistant' || role === 'system') {
+    return role;
+  }
+  return 'assistant';
+}
+
 export function useChatApp() {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [chatHistories, setChatHistories] = useState<Record<string, Chat>>({});
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedModel, setSelectedModelState] = useState('');
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
   const [statusText, setStatusText] = useState('Ready');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -58,21 +85,67 @@ export function useChatApp() {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
 
-  const updateHistories = (
-    updater: (prev: Record<string, Chat>) => Record<string, Chat>,
-    persist = false
-  ) => {
-    setChatHistories((prev) => {
-      const next = updater(prev);
-      if (persist) {
-        saveChatHistories(localStorage, next);
-      }
-      return next;
-    });
+  const updateHistories = (updater: (prev: Record<string, Chat>) => Record<string, Chat>) => {
+    setChatHistories((prev) => updater(prev));
   };
 
-  const persistHistories = (nextHistories: Record<string, Chat>) => {
-    updateHistories(() => nextHistories, true);
+  const upsertChat = async (chat: {
+    id: string;
+    title: string;
+    model: string | null;
+    createdAt: number;
+    updatedAt: number;
+  }) => {
+    const response = await fetch('/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(chat),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+  };
+
+  const saveMessage = async (
+    chatId: string,
+    message: Message,
+    options?: { promptTokens?: number; completionTokens?: number }
+  ) => {
+    const response = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: message.id,
+        chatId,
+        role: message.role,
+        content: message.content,
+        promptTokens: options?.promptTokens,
+        completionTokens: options?.completionTokens,
+        createdAt: message.timestamp,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+  };
+
+  const loadMessages = async (chatId: string): Promise<Message[]> => {
+    const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = (await response.json()) as { messages?: ApiMessage[] };
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+
+    return messages.map((message) => ({
+      id: message.id,
+      role: toMessageRole(message.role),
+      content: message.content,
+      timestamp: message.createdAt,
+    }));
   };
 
   const fetchModels = async () => {
@@ -84,7 +157,7 @@ export function useChatApp() {
       const models = Array.isArray(data.models) ? data.models : [];
       setAvailableModels(models);
       if (models.length > 0) {
-        setSelectedModel((current) => current || models[0]);
+        setSelectedModelState((current) => current || models[0]);
         setStatusText('Ready');
       } else {
         setStatusText('No models installed');
@@ -96,8 +169,36 @@ export function useChatApp() {
   };
 
   useEffect(() => {
-    const histories = loadChatHistories(localStorage);
-    setChatHistories(histories);
+    const initialize = async () => {
+      try {
+        const response = await fetch('/api/chats');
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = (await response.json()) as { chats?: ApiChat[] };
+        const chats = Array.isArray(data.chats) ? data.chats : [];
+        const histories = chats.reduce<Record<string, Chat>>((accumulator, chat) => {
+          accumulator[chat.id] = {
+            id: chat.id,
+            title: chat.title || 'Untitled chat',
+            conversation: [],
+            createdAt: chat.createdAt,
+            updatedAt: chat.updatedAt,
+            model: chat.model,
+            usage: chat.usage ?? 0,
+          };
+          return accumulator;
+        }, {});
+
+        setChatHistories(histories);
+      } catch (error) {
+        console.error(error);
+        setStatusText('Failed to load chats');
+      }
+
+      await fetchModels();
+    };
 
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     if (savedTheme === 'dark' || savedTheme === 'light') {
@@ -108,13 +209,20 @@ export function useChatApp() {
       setIsDarkMode(true);
     }
 
-    fetchModels();
+    const savedModel = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (savedModel) {
+      setSelectedModelState(savedModel);
+    }
+
+    void initialize();
   }, []);
 
   useEffect(() => {
     if (!selectedModel) {
       return;
     }
+
+    localStorage.setItem(MODEL_STORAGE_KEY, selectedModel);
 
     fetch(`/api/model-details?model=${encodeURIComponent(selectedModel)}`)
       .then((response) => response.json() as Promise<{ contextWindow?: number | null }>)
@@ -153,6 +261,10 @@ export function useChatApp() {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   };
 
+  const setSelectedModel = (model: string) => {
+    setSelectedModelState(model);
+  };
+
   const openSidebar = () => setIsSidebarOpen(true);
   const closeSidebar = () => setIsSidebarOpen(false);
 
@@ -177,24 +289,70 @@ export function useChatApp() {
     setConversation(chat.conversation);
     setCurrentChatId(id);
     currentChatIdRef.current = id;
-    setSelectedModel(chat.model || selectedModel);
+    if (chat.model) {
+      setSelectedModelState(chat.model);
+    }
     setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
     closeSidebar();
+
+    void (async () => {
+      try {
+        const messages = await loadMessages(id);
+        updateHistories((previous) => {
+          const current = previous[id];
+          if (!current) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [id]: {
+              ...current,
+              conversation: messages,
+            },
+          };
+        });
+
+        if (currentChatIdRef.current === id) {
+          setConversation(messages);
+        }
+      } catch (error) {
+        console.error(error);
+        setStatusText('Failed to load messages');
+      }
+    })();
   };
 
   const handleDeleteChat = (id: string) => {
-    const nextHistories = { ...chatHistories };
-    if (!nextHistories[id]) {
+    if (!chatHistories[id]) {
       console.warn(`[HISTORY] Chat ${id} not found in history`);
       return;
     }
 
-    delete nextHistories[id];
-    persistHistories(nextHistories);
+    updateHistories((previous) => {
+      const nextHistories = { ...previous };
+      delete nextHistories[id];
+      return nextHistories;
+    });
 
     if (currentChatId === id) {
       handleNewChat();
     }
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+      } catch (error) {
+        console.error(error);
+        setStatusText('Failed to delete chat');
+      }
+    })();
   };
 
   const removeAttachment = (index: number) => {
@@ -277,6 +435,8 @@ export function useChatApp() {
 
     const startedAt = Date.now();
     const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).slice(2, 11)}`;
+    const existingChat = chatHistories[chatId];
+    const createdAt = existingChat?.createdAt || startedAt;
 
     const userMessage: Message = {
       id: `${startedAt}_user_${Math.random().toString(36).slice(2, 8)}`,
@@ -305,35 +465,48 @@ export function useChatApp() {
     setSendingChatIds((previous) => ({ ...previous, [chatId]: true }));
     setStatusText('Thinking…');
 
-    updateHistories((previous) => {
-      const existingChat = previous[chatId];
-      const title =
-        existingChat?.title && existingChat.title.trim() && existingChat.title !== 'Untitled chat'
-          ? existingChat.title
-          : finalPrompt.slice(0, 30) || 'Untitled chat';
+    const title =
+      existingChat?.title && existingChat.title.trim() && existingChat.title !== 'Untitled chat'
+        ? existingChat.title
+        : finalPrompt.slice(0, 30) || 'Untitled chat';
 
-      return {
-        ...previous,
-        [chatId]: {
-          id: chatId,
-          title,
-          conversation: optimisticConversation,
-          createdAt: existingChat?.createdAt || startedAt,
-          updatedAt: startedAt,
-          model: selectedModel,
-          usage: existingChat?.usage || 0,
-        },
-      };
-    }, true);
+    updateHistories((previous) => ({
+      ...previous,
+      [chatId]: {
+        id: chatId,
+        title,
+        conversation: optimisticConversation,
+        createdAt,
+        updatedAt: startedAt,
+        model: selectedModel || null,
+        usage: existingChat?.usage || 0,
+      },
+    }));
+
+    void upsertChat({
+      id: chatId,
+      title,
+      model: selectedModel || null,
+      createdAt,
+      updatedAt: startedAt,
+    }).catch((error) => {
+      console.error(error);
+      setStatusText('Failed to save chat');
+    });
 
     let requestFailed = false;
+    let fullContent = '';
+    let finalUsage = existingChat?.usage || 0;
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
+    let assistantContentForSave = '';
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: selectedModel,
+          model: selectedModel || null,
           messages: [
             ...conversation.map((message) => ({ role: message.role, content: message.content })),
             { role: 'user', content: messageContent },
@@ -351,9 +524,6 @@ export function useChatApp() {
       if (!reader) {
         throw new Error('No reader');
       }
-
-      let fullContent = '';
-      let finalUsage = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -381,9 +551,17 @@ export function useChatApp() {
             };
 
             fullContent += data.message?.content || '';
+            assistantContentForSave = fullContent;
 
             if (data.usage) {
               finalUsage = parseUsage(data.usage);
+              if (typeof data.usage.prompt_tokens === 'number') {
+                promptTokens = data.usage.prompt_tokens;
+              }
+              if (typeof data.usage.completion_tokens === 'number') {
+                completionTokens = data.usage.completion_tokens;
+              }
+
               if (currentChatIdRef.current === chatId) {
                 setContextWindow((previous) => ({ ...previous, current: finalUsage }));
               }
@@ -435,6 +613,8 @@ export function useChatApp() {
         }
       }
 
+      assistantContentForSave = fullContent;
+
       updateHistories((previous) => {
         const chat = previous[chatId];
         if (!chat) {
@@ -449,11 +629,15 @@ export function useChatApp() {
             usage: finalUsage || chat.usage,
           },
         };
-      }, true);
+      });
     } catch (error) {
       requestFailed = true;
       const message = error instanceof Error ? error.message : 'Unknown error';
       const errorText = `Error: ${message}`;
+
+      if (!assistantContentForSave) {
+        assistantContentForSave = errorText;
+      }
 
       if (currentChatIdRef.current === chatId) {
         setStatusText(errorText);
@@ -482,7 +666,7 @@ export function useChatApp() {
             updatedAt: Date.now(),
           },
         };
-      }, true);
+      });
 
       if (currentChatIdRef.current === chatId) {
         setConversation((previous) => {
@@ -500,6 +684,31 @@ export function useChatApp() {
         });
       }
     } finally {
+      const finishedAt = Date.now();
+      const assistantMessageToPersist: Message = {
+        ...assistantMessage,
+        content: assistantContentForSave,
+      };
+
+      try {
+        await upsertChat({
+          id: chatId,
+          title,
+          model: selectedModel || null,
+          createdAt,
+          updatedAt: finishedAt,
+        });
+
+        await saveMessage(chatId, userMessage);
+        await saveMessage(chatId, assistantMessageToPersist, {
+          promptTokens,
+          completionTokens,
+        });
+      } catch (error) {
+        console.error(error);
+        setStatusText('Failed to persist messages');
+      }
+
       setSendingChatIds((previous) => {
         if (!previous[chatId]) {
           return previous;
