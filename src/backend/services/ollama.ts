@@ -4,6 +4,12 @@ import { Socket } from 'node:net';
 
 const execFilePromise = promisify(execFile);
 
+export interface ModelDetails {
+  architecture: string | null;
+  contextWindow: number | null;
+  parameters: string | null;
+}
+
 export class OllamaService {
   private static OLLAMA_HOST = '127.0.0.1';
   private static OLLAMA_PORT = 11434;
@@ -70,7 +76,7 @@ export class OllamaService {
     }
   }
 
-  static async getModelDetails(modelName: string): Promise<any> {
+  static async getModelDetails(modelName: string): Promise<ModelDetails> {
     try {
       const { stdout } = await execFilePromise('ollama', ['show', modelName, '--verbose']);
       const contextMatch = stdout.match(/context length\s+(\d+)/i);
@@ -84,7 +90,11 @@ export class OllamaService {
       };
     } catch (err) {
       console.error(`[OLLAMA] Failed to get details for ${modelName}:`, err);
-      return { contextWindow: null };
+      return {
+        architecture: null,
+        contextWindow: null,
+        parameters: null,
+      };
     }
   }
 

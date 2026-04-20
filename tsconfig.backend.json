@@ -3,6 +3,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Node",
+    "composite": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -10,5 +11,6 @@
     "outDir": "dist/backend",
     "rootDir": "src/backend"
   },
-  "include": ["src/backend"]
+  "include": ["src/backend"],
+  "exclude": ["src/backend/**/__tests__/*", "src/backend/**/*.test.ts"]
 }

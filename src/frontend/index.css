@@ -555,6 +555,10 @@ textarea {
   transition: all 0.2s ease;
 }
 
+.sidebar-toggle {
+  display: none;
+}
+
 .icon-btn:hover {
   background: var(--bg-surface);
   border-color: var(--border-medium);
