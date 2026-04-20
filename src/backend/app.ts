@@ -57,6 +57,64 @@ function toOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function extractImageBase64(url: string): string {
+  const dataUrlMarker = ';base64,';
+  const markerIndex = url.indexOf(dataUrlMarker);
+  if (markerIndex === -1) {
+    return url;
+  }
+
+  return url.slice(markerIndex + dataUrlMarker.length);
+}
+
+function normalizeMessageContent(content: unknown): { content: string; images?: string[] } {
+  if (typeof content === 'string') {
+    return { content };
+  }
+
+  if (!Array.isArray(content)) {
+    return { content: String(content ?? '') };
+  }
+
+  const textParts: string[] = [];
+  const images: string[] = [];
+
+  for (const part of content) {
+    if (typeof part !== 'object' || part === null) {
+      continue;
+    }
+
+    const typedPart = part as {
+      type?: unknown;
+      text?: unknown;
+      image_url?: { url?: unknown };
+    };
+
+    if (typedPart.type === 'text' && typeof typedPart.text === 'string') {
+      textParts.push(typedPart.text);
+      continue;
+    }
+
+    if (
+      typedPart.type === 'image_url' &&
+      typedPart.image_url &&
+      typeof typedPart.image_url.url === 'string'
+    ) {
+      images.push(extractImageBase64(typedPart.image_url.url));
+    }
+  }
+
+  const normalized = {
+    content: textParts.join('\n').trim(),
+  };
+
+  if (images.length > 0) {
+    return { ...normalized, images };
+  }
+
+  return normalized;
+}
+
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   const dependencies = { ...defaultDependencies, ...overrides };
   const app = new Hono();
@@ -257,8 +315,11 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
     const ollamaUrl = dependencies.getBaseUrl();
 
     try {
+      if (!body.model || typeof body.model !== 'string') {
+        return context.json({ error: 'Model required' }, 400);
+      }
+
       const clientWantsStreaming = body.stream !== false;
-      const tools = dependencies.getToolDefinitions();
 
       let systemPrompt = 'You are a helpful assistant.';
       if (body.search) {
@@ -267,94 +328,49 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       }
       systemPrompt += ' You can also read local project files using read_file.';
 
+      const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
       const messages = [
         { role: 'system', content: systemPrompt },
-        ...((Array.isArray(body.messages) ? body.messages : []) as Array<{ role: string; content: unknown }>),
+        ...incomingMessages.map((message) => {
+          const normalized = normalizeMessageContent(message.content);
+          return {
+            role: message.role,
+            content: normalized.content,
+            ...(normalized.images ? { images: normalized.images } : {}),
+          };
+        }),
       ];
 
-      let currentTurn = 0;
-      const maxTurns = 5;
-      let lastData: Record<string, unknown> | null = null;
-      let lastMessage: Record<string, unknown> | null = null;
+      const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: body.model,
+          stream: clientWantsStreaming,
+          messages,
+        }),
+      });
 
-      while (currentTurn < maxTurns) {
-        const response = await dependencies.fetchFn(`${ollamaUrl}/v1/chat/completions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...body,
-            stream: false,
-            tools,
-            messages,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(await response.text());
-        }
-
-        const data = (await response.json()) as {
-          choices?: Array<{ message?: Record<string, unknown> }>;
-          usage?: Record<string, unknown>;
-        };
-
-        lastData = data as unknown as Record<string, unknown>;
-
-        const candidateMessage = data.choices?.[0]?.message;
-        if (!candidateMessage) {
-          throw new Error('Invalid response from Ollama: missing assistant message');
-        }
-
-        lastMessage = candidateMessage;
-        messages.push(candidateMessage as { role: string; content: unknown });
-
-        const toolCalls = Array.isArray(candidateMessage.tool_calls)
-          ? (candidateMessage.tool_calls as Array<{
-              id: string;
-              function: { name: string; arguments?: string };
-            }>)
-          : [];
-
-        if (toolCalls.length === 0) {
-          break;
-        }
-
-        for (const call of toolCalls) {
-          const args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
-          const result = await dependencies.executeTool(call.function.name, args);
-          messages.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            name: call.function.name,
-            content: result,
-          } as unknown as { role: string; content: unknown });
-        }
-
-        currentTurn += 1;
+      if (!upstreamResponse.ok) {
+        throw new Error(await upstreamResponse.text());
       }
 
-      if (!lastMessage) {
-        throw new Error('No assistant response generated');
+      if (!clientWantsStreaming) {
+        const payload = await upstreamResponse.json();
+        return context.json(payload as object);
       }
 
-      if (clientWantsStreaming) {
-        const sseContent = `data: ${JSON.stringify({
-          message: {
-            role: 'assistant',
-            content: typeof lastMessage.content === 'string' ? lastMessage.content : '',
-          },
-          usage: lastData?.usage,
-          done: true,
-        })}\n\n`;
-
-        return context.body(sseContent, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        });
+      if (!upstreamResponse.body) {
+        throw new Error('No stream body from Ollama');
       }
 
-      return context.json({
-        choices: [{ message: lastMessage }],
-        usage: lastData?.usage,
+      return new Response(upstreamResponse.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

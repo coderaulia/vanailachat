@@ -33,6 +33,14 @@ interface ApiMessage {
   createdAt: number;
 }
 
+interface StreamEvent {
+  message?: { content?: string };
+  usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
+  done?: boolean;
+  prompt_eval_count?: number;
+  eval_count?: number;
+}
+
 function getInitialTheme(): boolean {
   if (typeof window === 'undefined') {
     return false;
@@ -63,6 +71,24 @@ function toMessageRole(role: string): MessageRole {
   return 'assistant';
 }
 
+function parseStreamLine(line: string): StreamEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+  if (!payload || payload === '[DONE]') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(payload) as StreamEvent;
+  } catch {
+    return null;
+  }
+}
+
 export function useChatApp() {
   const [conversation, setConversation] = useState<Message[]>([]);
   const [chatHistories, setChatHistories] = useState<Record<string, Chat>>({});
@@ -80,10 +106,18 @@ export function useChatApp() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentChatIdRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentChatIdRef.current = currentChatId;
   }, [currentChatId]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const updateHistories = (updater: (prev: Record<string, Chat>) => Record<string, Chat>) => {
     setChatHistories((prev) => updater(prev));
@@ -262,6 +296,14 @@ export function useChatApp() {
   };
 
   const setSelectedModel = (model: string) => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      activeRequestIdRef.current = null;
+      setSendingChatIds({});
+      setStatusText('Ready');
+    }
+
     setSelectedModelState(model);
   };
 
@@ -269,6 +311,13 @@ export function useChatApp() {
   const closeSidebar = () => setIsSidebarOpen(false);
 
   const handleNewChat = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      activeRequestIdRef.current = null;
+      setSendingChatIds({});
+    }
+
     setConversation([]);
     setCurrentChatId(null);
     currentChatIdRef.current = null;
@@ -276,7 +325,7 @@ export function useChatApp() {
     setPrompt('');
     closeSidebar();
     setContextWindow((previous) => ({ ...previous, current: 0 }));
-    setStatusText(Object.keys(sendingChatIds).length > 0 ? 'Background response running…' : 'Ready');
+    setStatusText('Ready');
   };
 
   const handleSelectChat = (id: string) => {
@@ -406,11 +455,23 @@ export function useChatApp() {
       event.preventDefault();
     }
 
-    const activeChatId = currentChatId;
-    const isCurrentChatSending = activeChatId ? sendingChatIds[activeChatId] : false;
-    if ((!prompt.trim() && attachedFiles.length === 0) || isCurrentChatSending) {
+    if (!prompt.trim() && attachedFiles.length === 0) {
       return;
     }
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      activeRequestIdRef.current = null;
+      setSendingChatIds({});
+    }
+
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    activeRequestIdRef.current = requestId;
+
+    const activeChatId = currentChatId;
 
     const textMessagePart: Extract<SendMessagePart, { type: 'text' }> = {
       type: 'text',
@@ -468,7 +529,7 @@ export function useChatApp() {
     const title =
       existingChat?.title && existingChat.title.trim() && existingChat.title !== 'Untitled chat'
         ? existingChat.title
-        : finalPrompt.slice(0, 30) || 'Untitled chat';
+        : userMessage.content.slice(0, 50) || 'Untitled chat';
 
     updateHistories((previous) => ({
       ...previous,
@@ -495,6 +556,7 @@ export function useChatApp() {
     });
 
     let requestFailed = false;
+    let requestAborted = false;
     let fullContent = '';
     let finalUsage = existingChat?.usage || 0;
     let promptTokens: number | undefined;
@@ -505,6 +567,7 @@ export function useChatApp() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           model: selectedModel || null,
           messages: [
@@ -525,91 +588,106 @@ export function useChatApp() {
         throw new Error('No reader');
       }
 
+      const decoder = new TextDecoder();
+      let streamBuffer = '';
+
+      const applyStreamEvent = (data: StreamEvent) => {
+        const contentChunk = data.message?.content || '';
+        if (contentChunk) {
+          fullContent += contentChunk;
+          assistantContentForSave = fullContent;
+        }
+
+        if (data.usage) {
+          finalUsage = parseUsage(data.usage);
+          if (typeof data.usage.prompt_tokens === 'number') {
+            promptTokens = data.usage.prompt_tokens;
+          }
+          if (typeof data.usage.completion_tokens === 'number') {
+            completionTokens = data.usage.completion_tokens;
+          }
+        }
+
+        if (typeof data.prompt_eval_count === 'number' && typeof data.eval_count === 'number') {
+          promptTokens = data.prompt_eval_count;
+          completionTokens = data.eval_count;
+          finalUsage = data.prompt_eval_count + data.eval_count;
+        }
+
+        if (currentChatIdRef.current === chatId && finalUsage > 0) {
+          setContextWindow((previous) => ({ ...previous, current: finalUsage }));
+        }
+
+        if (!contentChunk && !data.done) {
+          return;
+        }
+
+        updateHistories((previous) => {
+          const chat = previous[chatId];
+          if (!chat || chat.conversation.length === 0) {
+            return previous;
+          }
+
+          const updatedConversation = [...chat.conversation];
+          const lastIndex = updatedConversation.length - 1;
+          if (updatedConversation[lastIndex]?.role === 'assistant') {
+            updatedConversation[lastIndex] = {
+              ...updatedConversation[lastIndex],
+              content: fullContent,
+            };
+          }
+
+          return {
+            ...previous,
+            [chatId]: {
+              ...chat,
+              conversation: updatedConversation,
+              updatedAt: Date.now(),
+              usage: finalUsage || chat.usage,
+            },
+          };
+        });
+
+        if (currentChatIdRef.current === chatId) {
+          setConversation((previous) => {
+            if (previous.length === 0) {
+              return previous;
+            }
+
+            const updated = [...previous];
+            const lastIndex = updated.length - 1;
+            if (updated[lastIndex]?.role === 'assistant') {
+              updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
+            }
+            return updated;
+          });
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
           break;
         }
 
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n');
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.split('\n');
+        streamBuffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) {
+          const data = parseStreamLine(line);
+          if (!data) {
             continue;
           }
+          applyStreamEvent(data);
+        }
+      }
 
-          const jsonString = line.slice(6);
-          if (jsonString === '[DONE]') {
-            continue;
-          }
-
-          try {
-            const data = JSON.parse(jsonString) as {
-              message?: { content?: string };
-              usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
-            };
-
-            fullContent += data.message?.content || '';
-            assistantContentForSave = fullContent;
-
-            if (data.usage) {
-              finalUsage = parseUsage(data.usage);
-              if (typeof data.usage.prompt_tokens === 'number') {
-                promptTokens = data.usage.prompt_tokens;
-              }
-              if (typeof data.usage.completion_tokens === 'number') {
-                completionTokens = data.usage.completion_tokens;
-              }
-
-              if (currentChatIdRef.current === chatId) {
-                setContextWindow((previous) => ({ ...previous, current: finalUsage }));
-              }
-            }
-
-            updateHistories((previous) => {
-              const chat = previous[chatId];
-              if (!chat || chat.conversation.length === 0) {
-                return previous;
-              }
-
-              const updatedConversation = [...chat.conversation];
-              const lastIndex = updatedConversation.length - 1;
-              if (updatedConversation[lastIndex]?.role === 'assistant') {
-                updatedConversation[lastIndex] = {
-                  ...updatedConversation[lastIndex],
-                  content: fullContent,
-                };
-              }
-
-              return {
-                ...previous,
-                [chatId]: {
-                  ...chat,
-                  conversation: updatedConversation,
-                  updatedAt: Date.now(),
-                  usage: finalUsage || chat.usage,
-                },
-              };
-            });
-
-            if (currentChatIdRef.current === chatId) {
-              setConversation((previous) => {
-                if (previous.length === 0) {
-                  return previous;
-                }
-
-                const updated = [...previous];
-                const lastIndex = updated.length - 1;
-                if (updated[lastIndex]?.role === 'assistant') {
-                  updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
-                }
-                return updated;
-              });
-            }
-          } catch {
-            // Ignore partial JSON chunks.
-          }
+      streamBuffer += decoder.decode();
+      if (streamBuffer.trim()) {
+        const data = parseStreamLine(streamBuffer);
+        if (data) {
+          applyStreamEvent(data);
         }
       }
 
@@ -631,59 +709,107 @@ export function useChatApp() {
         };
       });
     } catch (error) {
-      requestFailed = true;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      const errorText = `Error: ${message}`;
+      const isAbortError =
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && error.name === 'AbortError');
 
-      if (!assistantContentForSave) {
-        assistantContentForSave = errorText;
-      }
+      if (isAbortError) {
+        requestAborted = true;
 
-      if (currentChatIdRef.current === chatId) {
-        setStatusText(errorText);
-      }
+        if (!assistantContentForSave) {
+          updateHistories((previous) => {
+            const chat = previous[chatId];
+            if (!chat || chat.conversation.length === 0) {
+              return previous;
+            }
 
-      updateHistories((previous) => {
-        const chat = previous[chatId];
-        if (!chat || chat.conversation.length === 0) {
-          return previous;
+            const updatedConversation = [...chat.conversation];
+            const lastIndex = updatedConversation.length - 1;
+            if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) {
+              updatedConversation.pop();
+            }
+
+            return {
+              ...previous,
+              [chatId]: {
+                ...chat,
+                conversation: updatedConversation,
+                updatedAt: Date.now(),
+              },
+            };
+          });
+
+          if (currentChatIdRef.current === chatId) {
+            setConversation((previous) => {
+              if (previous.length === 0) {
+                return previous;
+              }
+
+              const updated = [...previous];
+              const lastIndex = updated.length - 1;
+              if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) {
+                updated.pop();
+              }
+              return updated;
+            });
+          }
+        }
+      } else {
+        requestFailed = true;
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        const errorText = `Error: ${message}`;
+
+        if (!assistantContentForSave) {
+          assistantContentForSave = errorText;
         }
 
-        const updatedConversation = [...chat.conversation];
-        const lastIndex = updatedConversation.length - 1;
-        if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) {
-          updatedConversation[lastIndex] = {
-            ...updatedConversation[lastIndex],
-            content: errorText,
-          };
+        if (currentChatIdRef.current === chatId) {
+          setStatusText(errorText);
         }
 
-        return {
-          ...previous,
-          [chatId]: {
-            ...chat,
-            conversation: updatedConversation,
-            updatedAt: Date.now(),
-          },
-        };
-      });
-
-      if (currentChatIdRef.current === chatId) {
-        setConversation((previous) => {
-          if (previous.length === 0) {
+        updateHistories((previous) => {
+          const chat = previous[chatId];
+          if (!chat || chat.conversation.length === 0) {
             return previous;
           }
 
-          const updated = [...previous];
-          const lastIndex = updated.length - 1;
-          if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) {
-            updated[lastIndex] = { ...updated[lastIndex], content: errorText };
+          const updatedConversation = [...chat.conversation];
+          const lastIndex = updatedConversation.length - 1;
+          if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) {
+            updatedConversation[lastIndex] = {
+              ...updatedConversation[lastIndex],
+              content: errorText,
+            };
           }
 
-          return updated;
+          return {
+            ...previous,
+            [chatId]: {
+              ...chat,
+              conversation: updatedConversation,
+              updatedAt: Date.now(),
+            },
+          };
         });
+
+        if (currentChatIdRef.current === chatId) {
+          setConversation((previous) => {
+            if (previous.length === 0) {
+              return previous;
+            }
+
+            const updated = [...previous];
+            const lastIndex = updated.length - 1;
+            if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) {
+              updated[lastIndex] = { ...updated[lastIndex], content: errorText };
+            }
+
+            return updated;
+          });
+        }
       }
     } finally {
+      const isActiveRequest = activeRequestIdRef.current === requestId;
       const finishedAt = Date.now();
       const assistantMessageToPersist: Message = {
         ...assistantMessage,
@@ -700,27 +826,34 @@ export function useChatApp() {
         });
 
         await saveMessage(chatId, userMessage);
-        await saveMessage(chatId, assistantMessageToPersist, {
-          promptTokens,
-          completionTokens,
-        });
+        if (assistantMessageToPersist.content.trim().length > 0 || !requestAborted) {
+          await saveMessage(chatId, assistantMessageToPersist, {
+            promptTokens,
+            completionTokens,
+          });
+        }
       } catch (error) {
         console.error(error);
         setStatusText('Failed to persist messages');
       }
 
-      setSendingChatIds((previous) => {
-        if (!previous[chatId]) {
-          return previous;
+      if (isActiveRequest) {
+        activeRequestIdRef.current = null;
+        abortRef.current = null;
+
+        setSendingChatIds((previous) => {
+          if (!previous[chatId]) {
+            return previous;
+          }
+
+          const next = { ...previous };
+          delete next[chatId];
+          return next;
+        });
+
+        if (currentChatIdRef.current === chatId && !requestFailed) {
+          setStatusText('Ready');
         }
-
-        const next = { ...previous };
-        delete next[chatId];
-        return next;
-      });
-
-      if (currentChatIdRef.current === chatId && !requestFailed) {
-        setStatusText('Ready');
       }
     }
   };
