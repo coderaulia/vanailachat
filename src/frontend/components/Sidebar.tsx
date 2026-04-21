@@ -41,6 +41,7 @@ export function Sidebar() {
   const [editingTitle, setEditingTitle] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const beginRename = (event: MouseEvent, chatId: string, title: string) => {
@@ -89,7 +90,11 @@ export function Sidebar() {
     }
   };
 
-  const filteredHistories = histories.filter(([, chat]) => chat.projectId === selectedProjectId);
+  const filteredHistories = histories.filter(([, chat]) => {
+    if (chat.projectId !== selectedProjectId) return false;
+    if (!searchQuery.trim()) return true;
+    return chat.title?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <>
@@ -205,6 +210,28 @@ export function Sidebar() {
                 <h2 className="section-title">Recent Conversations</h2>
               </div>
               <span className="section-meta">{filteredHistories.length} chats</span>
+            </div>
+
+            <div className="sidebar-search">
+              <svg className="sidebar-search__icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className="sidebar-search__input"
+                placeholder="Search chats…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="sidebar-search__clear"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >×</button>
+              )}
             </div>
 
             <div className="history-list">

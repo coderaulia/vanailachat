@@ -18,11 +18,12 @@
 }
 
 .composer {
-  padding: 20px;
+  padding: 12px 14px;
   border-radius: 28px;
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   width: 100%;
+  position: relative;
 }
 
 .composer-label {
@@ -53,11 +54,54 @@
 }
 
 .system-prompt-textarea {
-  min-height: 84px;
+  min-height: 100px;
   border: none;
   border-top: 1px solid var(--border-soft);
-  border-radius: 0;
+  border-radius: 0 0 12px 12px;
   background: transparent;
+}
+
+/* System prompt popover */
+.system-prompt-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  animation: slide-up 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.system-prompt-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.system-prompt-popover__title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.system-prompt-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .project-root-field {
@@ -94,38 +138,22 @@
   border-radius: 10px;
 }
 
-.composer-footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-top: 10px;
-}
-
-.composer-footer__left {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.composer-footer__right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.composer-meta {
+/* Single unified toolbar row */
+.composer-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 
-.composer-actions {
+.composer-toolbar__right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .send-btn {
