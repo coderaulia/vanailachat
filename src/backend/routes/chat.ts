@@ -156,30 +156,140 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         }),
       ];
 
-      const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: body.model,
-          stream: clientWantsStreaming,
-          messages,
-        }),
-      });
-
-      if (!upstreamResponse.ok) {
-        throw new Error(parseOllamaError(await upstreamResponse.text()));
+      let tools = dependencies.getToolDefinitions() as any[];
+      if (!body.search) {
+        tools = tools.filter(t => t.function.name !== 'search_web');
       }
 
       if (!clientWantsStreaming) {
+        const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: body.model,
+            stream: false,
+            messages,
+            tools: tools.length > 0 ? tools : undefined,
+          }),
+        });
+
+        if (!upstreamResponse.ok) {
+          throw new Error(parseOllamaError(await upstreamResponse.text()));
+        }
+
         const payload = await upstreamResponse.json();
         return context.json(payload as object);
       }
 
-      if (!upstreamResponse.body) {
-        throw new Error('No stream body from Ollama');
-      }
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
 
-      return new Response(upstreamResponse.body, {
+      const stream = new ReadableStream({
+        async start(controller) {
+          let currentMessages = [...messages];
+          let iteration = 0;
+          const maxIterations = 7;
+
+          try {
+            while (iteration < maxIterations) {
+              iteration++;
+
+              const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: body.model,
+                  stream: true,
+                  messages: currentMessages,
+                  tools: tools.length > 0 ? tools : undefined,
+                }),
+              });
+
+              if (!upstreamResponse.ok) {
+                throw new Error(parseOllamaError(await upstreamResponse.text()));
+              }
+
+              if (!upstreamResponse.body) throw new Error('No stream body from Ollama');
+              
+              const reader = upstreamResponse.body.getReader();
+              let isToolCall = false;
+              let streamBuffer = '';
+              let assistantMessage = { role: 'assistant', content: '', tool_calls: [] as any[] };
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunkStr = decoder.decode(value, { stream: true });
+                streamBuffer += chunkStr;
+                const lines = streamBuffer.split('\n');
+                streamBuffer = lines.pop() ?? '';
+
+                for (const line of lines) {
+                  if (!line.trim()) continue;
+                  const data = JSON.parse(line);
+
+                  if (data.message) {
+                    if (data.message.tool_calls) {
+                      isToolCall = true;
+                      assistantMessage.tool_calls = data.message.tool_calls;
+                    }
+                    if (data.message.content) {
+                      assistantMessage.content += data.message.content;
+                    }
+                  }
+
+                  if (!isToolCall) {
+                    controller.enqueue(encoder.encode(line + '\n'));
+                  }
+                }
+              }
+
+              if (streamBuffer.trim()) {
+                const data = JSON.parse(streamBuffer);
+                if (data.message?.tool_calls) {
+                  isToolCall = true;
+                  assistantMessage.tool_calls = data.message.tool_calls;
+                }
+                if (!isToolCall) {
+                  controller.enqueue(encoder.encode(streamBuffer + '\n'));
+                }
+              }
+
+              if (!isToolCall) {
+                controller.close();
+                return;
+              }
+
+              currentMessages.push(assistantMessage);
+
+              for (const tc of assistantMessage.tool_calls) {
+                controller.enqueue(encoder.encode(JSON.stringify({
+                   tool_event: true,
+                   tool: tc.function.name
+                }) + '\n'));
+
+                try {
+                  const result = await dependencies.executeTool(
+                    tc.function.name,
+                    tc.function.arguments,
+                    chatRecord?.projectRoot ?? null
+                  );
+                  currentMessages.push({ role: 'tool', content: result });
+                } catch (toolErr) {
+                  currentMessages.push({ role: 'tool', content: `Error: ${toolErr instanceof Error ? toolErr.message : 'Unknown error'}` });
+                }
+              }
+            }
+            controller.close();
+          } catch (err) {
+            console.error('[CHAT ERROR]', err);
+            controller.error(err);
+          }
+        }
+      });
+
+      return new Response(stream, {
         status: 200,
         headers: {
           'Content-Type': 'application/x-ndjson; charset=utf-8',

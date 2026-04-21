@@ -354,7 +354,18 @@ export function useChatSession(deps: {
       const decoder = new TextDecoder();
       let streamBuffer = '';
 
-      const applyStreamEventLocal = (data: StreamEvent) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const applyStreamEventLocal = (data: StreamEvent | any) => {
+        if (data.tool_event) {
+           let msg = 'Thinking…';
+           if (data.tool === 'read_file') msg = 'Reading file…';
+           if (data.tool === 'search_web') msg = 'Searching the web…';
+           if (data.tool === 'list_directory') msg = 'Analyzing directory…';
+           if (data.tool === 'run_command') msg = 'Executing command…';
+           setStatusText(msg);
+           return;
+        }
+
         const contentChunk = data.message?.content || '';
         if (contentChunk) {
           fullContent += contentChunk;

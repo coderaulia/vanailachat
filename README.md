@@ -83,6 +83,7 @@ The Hono backend starts on **port 3000** and auto-launches the `ollama` daemon i
 - **Token Badges**: Toggle per-message prompt/completion token counts.
 
 ### Agentic Tools
+- **Recursive Execution Loop**: The backend intercepts tool requests mid-stream, securely executes them, and automatically re-prompts the model with the tool outputs, without breaking the real-time frontend streaming experience.
 - **Web Search**: Toggle DuckDuckGo integration per-session; results are injected as context before inference.
 - **File Reading** (`cat`): LLM can read files within the configured project root — path traversal is blocked server-side.
 - **Directory Listing** (`ls`): LLM can browse directory trees, confined to the project root.
@@ -91,8 +92,8 @@ The Hono backend starts on **port 3000** and auto-launches the `ollama` daemon i
 ### Projects & Workspaces
 - **Multi-Project Support**: Organize chats into named projects with descriptions, custom instructions, and memory fields.
 - **Project Root**: Bind a filesystem path to a chat session; injected as context for the coding role.
+- **System Prompt Popover**: Floating settings panel in the composer to customize the AI persona per-session. Saved to SQLite and restored on chat reload.
 - **Folder Picker**: Native OS directory picker (`zenity`/`kdialog`) via backend `/api/pick-directory`.
-- **System Prompt per Chat**: Per-session system prompt saved to SQLite and restored on chat reload.
 
 ### UI & UX
 - **Keyboard Shortcuts**:
@@ -104,7 +105,7 @@ The Hono backend starts on **port 3000** and auto-launches the `ollama` daemon i
   | `Escape` | Abort generation |
 - **Dark Mode**: Full theme toggle persisted across sessions.
 - **Glassmorphic Design**: Layered backdrop-blur surfaces, gradient backgrounds, micro-animations.
-- **Sidebar Chat History**: Pinnable, renameable, deleteable chat sessions filtered by active project.
+- **Sidebar Chat History**: Pinnable, renameable, and deleteable chat sessions. Includes a **real-time search filter** to find conversations by title.
 - **Multi-modal Attachments**: Paste or attach images and text files; images are sent as base64 to vision models.
 
 ### Backend & Data
