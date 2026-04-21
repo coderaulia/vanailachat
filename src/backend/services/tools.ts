@@ -14,7 +14,7 @@ type ToolSchema = {
 
 interface Tool {
   description: string;
-  execute: (args: unknown) => Promise<string>;
+  execute: (args: unknown, projectRoot: string | null) => Promise<string>;
   name: string;
   parameters: ToolSchema;
 }
@@ -110,29 +110,18 @@ function isAllowedCommand(command: string, args: string[]): boolean {
 }
 
 export class ToolService {
-  private static executionRoot: string | null = null;
-
-  private static getExecutionRoot(): string {
+  private static getExecutionRoot(projectRoot: string | null): string {
     const cwd = process.cwd();
-    if (!this.executionRoot) {
+    if (!projectRoot || !projectRoot.trim()) {
       return cwd;
     }
 
-    const resolvedRoot = path.resolve(cwd, this.executionRoot);
+    const resolvedRoot = path.resolve(cwd, projectRoot);
     if (!resolvedRoot.startsWith(cwd)) {
       return cwd;
     }
 
     return resolvedRoot;
-  }
-
-  static setExecutionRoot(projectRoot: string | null | undefined): void {
-    if (!projectRoot || !projectRoot.trim()) {
-      this.executionRoot = null;
-      return;
-    }
-
-    this.executionRoot = projectRoot;
   }
 
   private static tools: Record<string, Tool> = {
@@ -146,7 +135,7 @@ export class ToolService {
         },
         required: ['query'],
       },
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, projectRoot: string | null) => {
         const query = parseStringField(args, 'query');
         if (!query) {
           return 'Search failed: missing query';
@@ -178,7 +167,7 @@ export class ToolService {
         },
         required: ['path'],
       },
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, projectRoot: string | null) => {
         const requestedPath = parseStringField(args, 'path');
         if (!requestedPath) {
           return 'Failed to read file: missing path';
@@ -187,7 +176,7 @@ export class ToolService {
         console.log(`[TOOL] Reading file: ${requestedPath}`);
 
         try {
-          const baseRoot = this.getExecutionRoot();
+          const baseRoot = this.getExecutionRoot(projectRoot);
           const safePath = resolveWithinRoot(baseRoot, requestedPath);
           return await fs.readFile(safePath, 'utf-8');
         } catch (error) {
@@ -206,12 +195,12 @@ export class ToolService {
         },
         required: [],
       },
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, projectRoot: string | null) => {
         const requestedPath = parseStringField(args, 'path') || '.';
         const maxDepth = Math.max(0, Math.min(6, parseNumberField(args, 'maxDepth') ?? 3));
 
         try {
-          const baseRoot = this.getExecutionRoot();
+          const baseRoot = this.getExecutionRoot(projectRoot);
           const targetPath = resolveWithinRoot(baseRoot, requestedPath);
           const gitignorePath = path.join(baseRoot, '.gitignore');
 
@@ -270,7 +259,7 @@ export class ToolService {
         },
         required: ['command'],
       },
-      execute: async (args: unknown) => {
+      execute: async (args: unknown, projectRoot: string | null) => {
         const command = parseStringField(args, 'command');
         const commandArgs = parseStringArrayField(args, 'args') || [];
 
@@ -283,8 +272,17 @@ export class ToolService {
         }
 
         try {
-          const baseRoot = this.getExecutionRoot();
-          const { stdout, stderr } = await execFilePromise(command, commandArgs, {
+          const baseRoot = this.getExecutionRoot(projectRoot);
+          
+          let safeArgs = commandArgs;
+          if (command === 'cat' || command === 'ls') {
+            safeArgs = commandArgs.map((arg) => {
+              if (arg.startsWith('-')) return arg;
+              return resolveWithinRoot(baseRoot, arg);
+            });
+          }
+
+          const { stdout, stderr } = await execFilePromise(command, safeArgs, {
             cwd: baseRoot,
             maxBuffer: 1024 * 1024,
           });
@@ -315,10 +313,10 @@ export class ToolService {
     }));
   }
 
-  static async executeTool(name: string, args: unknown): Promise<string> {
+  static async executeTool(name: string, args: unknown, projectRoot: string | null): Promise<string> {
     const tool = this.tools[name];
     if (tool) {
-      return tool.execute(args);
+      return tool.execute(args, projectRoot);
     }
     return `Unknown tool: ${name}`;
   }

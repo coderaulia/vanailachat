@@ -19,19 +19,19 @@ describe('tool execution', () => {
     temporaryFiles.push(filePath);
     await fs.writeFile(filePath, 'tool-content', 'utf8');
 
-    const content = await ToolService.executeTool('read_file', { path: '.tmp-tool-read.txt' });
+    const content = await ToolService.executeTool('read_file', { path: '.tmp-tool-read.txt' }, null);
 
     expect(content).toBe('tool-content');
   });
 
   it('blocks path traversal attempts', async () => {
-    const content = await ToolService.executeTool('read_file', { path: '../outside.txt' });
+    const content = await ToolService.executeTool('read_file', { path: '../outside.txt' }, null);
 
     expect(content).toContain('Access denied');
   });
 
   it('returns a clear response for unknown tools', async () => {
-    const result = await ToolService.executeTool('missing_tool', {});
+    const result = await ToolService.executeTool('missing_tool', {}, null);
 
     expect(result).toBe('Unknown tool: missing_tool');
   });

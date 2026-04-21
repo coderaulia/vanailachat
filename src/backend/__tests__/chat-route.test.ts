@@ -19,6 +19,7 @@ describe('chat route', () => {
     const app = createApp({
       fetchFn: fetchMock,
       getBaseUrl: () => 'http://ollama.local',
+      getInstalledModels: async () => ['llama3'],
     });
 
     const response = await app.request('/api/chat', {

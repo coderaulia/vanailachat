@@ -24,7 +24,7 @@ interface ChatRequestBody {
 }
 
 interface AppDependencies {
-  executeTool: (name: string, args: unknown) => Promise<string>;
+  executeTool: (name: string, args: unknown, projectRoot: string | null) => Promise<string>;
   fetchFn: typeof fetch;
   getBaseUrl: () => string;
   getInstalledModels: () => Promise<string[]>;
@@ -653,6 +653,11 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
         return context.json({ error: 'Model required' }, 400);
       }
 
+      const installedModels = await dependencies.getInstalledModels();
+      if (!installedModels.includes(body.model)) {
+        return context.json({ error: `Model '${body.model}' is not installed or available.` }, 400);
+      }
+
       const clientWantsStreaming = body.stream !== false;
 
       const chatRecord =
@@ -660,7 +665,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
           ? dependencies.getChat(body.chatId)
           : null;
 
-      ToolService.setExecutionRoot(chatRecord?.projectRoot ?? null);
+
 
       let systemPrompt = 'You are a helpful assistant.';
 
@@ -689,7 +694,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       if (chatRecord?.projectRoot) {
         systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
         try {
-          const directoryListing = await ToolService.executeTool('list_directory', { path: '.', maxDepth: 2 });
+          const directoryListing = await dependencies.executeTool('list_directory', { path: '.', maxDepth: 2 }, chatRecord.projectRoot);
           systemPrompt += `\n\n[Project Structure]\n${directoryListing}`;
         } catch (error) {
           console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
