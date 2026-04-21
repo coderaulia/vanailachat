@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
@@ -7,6 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { ProjectDetail } from './components/ProjectDetail';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 import { ChatProvider, useChat } from './context/ChatContext';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const AppShell = () => {
   const renderMarkdown = useMarkdownRenderer();
@@ -21,7 +22,21 @@ const AppShell = () => {
     projects,
     selectedProjectId,
     viewMode,
+    handleNewChat,
+    toggleSidebar,
+    setIsSearchEnabled,
+    handleAbort,
+    setViewMode,
   } = useChat();
+
+  const shortcutsMap = useMemo(() => ({
+    'ctrl+n': () => { handleNewChat(); setViewMode('chat'); },
+    'ctrl+/': () => toggleSidebar(),
+    'ctrl+shift+s': () => setIsSearchEnabled((prev: boolean) => !prev),
+    'escape': () => { if (isCurrentChatSending) handleAbort(); },
+  }), [handleNewChat, toggleSidebar, setIsSearchEnabled, isCurrentChatSending, handleAbort, setViewMode]);
+
+  useKeyboardShortcuts(shortcutsMap);
 
   useEffect(() => {
     if (isCurrentChatSending) {

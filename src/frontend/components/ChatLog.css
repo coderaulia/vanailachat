@@ -141,6 +141,54 @@
   color: var(--text-secondary);
 }
 
+.message__meta-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message__time {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.message__copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.message:hover .message__copy-btn {
+  opacity: 1;
+}
+
+.message__copy-btn:hover {
+  background: var(--bg-surface-strong);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.message__copy-btn.is-copied {
+  opacity: 1;
+  background: color-mix(in srgb, var(--bg-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--bg-accent) 35%, transparent);
+  color: var(--bg-accent-strong);
+}
+
 .message__body {
   min-width: 0;
 }

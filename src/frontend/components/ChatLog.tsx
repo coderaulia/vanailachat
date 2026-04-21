@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
-import type { Message } from '../types/chat';
 
 import { useChat } from '../context/ChatContext';
 
@@ -14,6 +13,7 @@ interface ChatLogProps {
 export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
   const { conversation, isCurrentChatSending } = useChat();
   const chatLogRef = useRef<HTMLDivElement>(null);
+  const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (chatLogRef.current) {
@@ -28,9 +28,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
   const handleChatLogClick = async (event: MouseEvent) => {
     const target = event.target as HTMLElement;
     const copyButton = target.closest('.copy-code-btn') as HTMLButtonElement | null;
-    if (!copyButton) {
-      return;
-    }
+    if (!copyButton) return;
 
     const text = decodeURIComponent(copyButton.getAttribute('data-code') || '');
 
@@ -47,6 +45,22 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
       console.error('Failed to copy code', error);
     }
   };
+
+  const handleCopyMessage = useCallback(async (id: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setCopiedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 1800);
+    } catch (error) {
+      console.error('Failed to copy message', error);
+    }
+  }, []);
 
   return (
     <section className="chat-container">
@@ -76,7 +90,34 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
             >
               <div className="message__meta">
                 <span className="message__role">{message.role}</span>
-                <span className="message__time">{DATE_FORMATTER.format(message.timestamp)}</span>
+                <div className="message__meta-right">
+                  <span className="message__time">{DATE_FORMATTER.format(message.timestamp)}</span>
+                  {message.role === 'assistant' && (
+                    <button
+                      type="button"
+                      className={`message__copy-btn ${copiedIds.has(message.id) ? 'is-copied' : ''}`}
+                      title="Copy response as Markdown"
+                      onClick={() => handleCopyMessage(message.id, message.content)}
+                    >
+                      {copiedIds.has(message.id) ? (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="message__body">
                 <div className="message__prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }} />
