@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { migrations } from './migrations.js';
 
 const DEFAULT_PROJECT_NAME = 'Default';
 
@@ -161,69 +162,50 @@ export class DatabaseService {
   private static runMigrations(): void {
     const db = this.getDb();
 
+    // Check if we have an existing database without schema_migrations
+    const hasProjectsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").get();
+    
     db.exec(`
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
-        description TEXT,
-        instructions TEXT,
-        memory TEXT,
-        pinned INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        applied_at INTEGER NOT NULL
       );
-
-      CREATE TABLE IF NOT EXISTS chats (
-        id TEXT PRIMARY KEY,
-        project_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        model TEXT,
-        project_root TEXT,
-        system_prompt TEXT,
-        pinned INTEGER NOT NULL DEFAULT 0,
-        role TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        chat_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        prompt_tokens INTEGER,
-        completion_tokens INTEGER,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_chats_project_updated ON chats(project_id, updated_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at ASC);
     `);
 
-    const chatColumns = db
-      .prepare("SELECT name FROM pragma_table_info('chats')")
-      .all() as Array<{ name: string }>;
-    const hasProjectRootColumn = chatColumns.some((column) => column.name === 'project_root');
-    if (!hasProjectRootColumn) {
-      db.exec('ALTER TABLE chats ADD COLUMN project_root TEXT');
+    const hasMigrations = db.prepare("SELECT COUNT(*) as count FROM schema_migrations").get() as { count: number };
+    
+    // If we have projects table but no migrations recorded, it's a legacy DB
+    // Assume it has all migrations up to version 4 applied
+    if (hasProjectsTable && hasMigrations.count === 0) {
+      console.log('[DB] Detected legacy database. Initializing migration state to version 4.');
+      const stmt = db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)');
+      const now = Date.now();
+      const insertMany = db.transaction((migs: typeof migrations) => {
+        for (const mig of migs) {
+          stmt.run(mig.version, mig.name, now);
+        }
+      });
+      insertMany(migrations);
     }
 
-    const projectColumns = db
-      .prepare("SELECT name FROM pragma_table_info('projects')")
-      .all() as Array<{ name: string }>;
-    
-    if (!projectColumns.some(c => c.name === 'description')) {
-      db.exec('ALTER TABLE projects ADD COLUMN description TEXT');
-    }
-    if (!projectColumns.some(c => c.name === 'instructions')) {
-      db.exec('ALTER TABLE projects ADD COLUMN instructions TEXT');
-    }
-    if (!projectColumns.some(c => c.name === 'memory')) {
-      db.exec('ALTER TABLE projects ADD COLUMN memory TEXT');
-    }
-    if (!projectColumns.some(c => c.name === 'pinned')) {
-      db.exec('ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    const appliedMigrations = new Set(
+      (db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: number }>).map(r => r.version)
+    );
+
+    for (const migration of migrations) {
+      if (!appliedMigrations.has(migration.version)) {
+        console.log(`[DB] Running migration: ${migration.version}_${migration.name}`);
+        const transaction = db.transaction(() => {
+          migration.up(db);
+          db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(
+            migration.version,
+            migration.name,
+            Date.now()
+          );
+        });
+        transaction();
+      }
     }
 
     this.ensureDefaultProject();
