@@ -1,26 +1,24 @@
 import './ChatHeader.css';
+import { useChat } from '../context/ChatContext';
 
 interface ChatHeaderProps {
-  isCurrentChatSending: boolean;
-  selectedModel: string;
   showTokens: boolean;
-  statusText: string;
   thinkingSeconds: number;
-  onToggleSidebar: () => void;
   onToggleShowTokens: () => void;
-  onToggleTheme: () => void;
 }
 
 export function ChatHeader({
-  isCurrentChatSending,
-  selectedModel,
   showTokens,
-  statusText,
   thinkingSeconds,
-  onToggleSidebar,
   onToggleShowTokens,
-  onToggleTheme,
 }: ChatHeaderProps) {
+  const {
+    isCurrentChatSending,
+    selectedModel,
+    statusText,
+    toggleSidebar: onToggleSidebar,
+    toggleTheme: onToggleTheme,
+  } = useChat();
   return (
     <header className="app-header">
       <div className="header-main">

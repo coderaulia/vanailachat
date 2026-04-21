@@ -1,76 +1,48 @@
 import { useState, useEffect } from 'react';
-import type { ApiProject, Chat, Attachment } from '../types/chat';
-import type { ModelRole } from '../config/modelRoles';
+import type { ApiProject } from '../types/chat';
 import { DATE_FORMATTER } from '../lib/date';
 import './ProjectDetail.css';
 import { Composer } from './Composer';
+import { useChat } from '../context/ChatContext';
 
-interface ProjectDetailProps {
-  project: ApiProject;
-  chats: Array<[string, Chat]>;
-  onBack: () => void;
-  onSelectChat: (id: string) => void;
-  onUpdateProject: (id: string, updates: Partial<ApiProject>) => void;
-  onDeleteProject: (id: string) => void;
-  // Composer props
-  prompt: string;
-  setPrompt: (v: string) => void;
-  onSend: (event?: React.FormEvent) => Promise<void>;
-  availableModels: string[];
-  selectedModel: string;
-  onSelectModel: (m: string) => void;
-  attachedFiles: Attachment[];
-  onAttach: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
-  onRemoveAttachment: (index: number) => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onPickProjectRoot: () => Promise<void>;
-  onRefreshModels: () => void;
+export function ProjectDetail() {
+  const {
+    projects,
+    selectedProjectId,
+    sortedHistories: chats,
+    setViewMode,
+    handleSelectChat,
+    handleUpdateProject: onUpdateProject,
+    handleDeleteProject: onDeleteProject,
+  } = useChat();
 
-  // Missing Composer props to prevent crashes
-  shouldShowRoleSuggestion: boolean;
-  suggestedModelName: string;
-  suggestedRoleLabel: string;
-  onAbort: () => void;
-}
-
-export function ProjectDetail({
-  project,
-  chats,
-  onBack,
-  onSelectChat,
-  onUpdateProject,
-  onDeleteProject,
-  prompt,
-  setPrompt,
-  onSend,
-  availableModels,
-  selectedModel,
-  onSelectModel,
-  attachedFiles,
-  onAttach,
-  onRemoveAttachment,
-  fileInputRef,
-  onPickProjectRoot,
-  onRefreshModels,
-  shouldShowRoleSuggestion,
-  suggestedModelName,
-  suggestedRoleLabel,
-  onAbort,
-}: ProjectDetailProps) {
+  const project = projects.find(p => p.id === selectedProjectId);
+  
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
   const [isEditingMemory, setIsEditingMemory] = useState(false);
 
-  const [description, setDescription] = useState(project.description || '');
-  const [instructions, setInstructions] = useState(project.instructions || '');
-  const [memory, setMemory] = useState(project.memory || '');
+  const [description, setDescription] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [memory, setMemory] = useState('');
 
   useEffect(() => {
-    setDescription(project.description || '');
-    setInstructions(project.instructions || '');
-    setMemory(project.memory || '');
+    if (project) {
+      setDescription(project.description || '');
+      setInstructions(project.instructions || '');
+      setMemory(project.memory || '');
+    }
   }, [project]);
+
+  if (!project) return null;
+
+  const onBack = () => setViewMode('chat');
+  
+  const onSelectChatLocal = (id: string) => {
+    handleSelectChat(id);
+    setViewMode('chat');
+  };
 
   const saveProjectField = (field: keyof ApiProject, value: string) => {
     onUpdateProject(project.id, { [field]: value });
@@ -149,42 +121,7 @@ export function ProjectDetail({
       <main className="project-detail__content">
         <div className="project-detail__main-col">
           <div className="project-detail__composer-wrap">
-            <Composer
-              prompt={prompt}
-              onSetPrompt={setPrompt}
-              onSend={onSend}
-              attachedFiles={attachedFiles}
-              onAttach={onAttach}
-              onRemoveAttachment={onRemoveAttachment}
-              fileInputRef={fileInputRef}
-              statusText="How can I help you today?"
-              isCurrentChatSending={false}
-              thinkingSeconds={0}
-              availableModels={availableModels}
-              selectedModel={selectedModel}
-              onSelectModel={onSelectModel}
-              selectedRole="general"
-              onSelectRole={() => { }}
-              isSearchEnabled={false}
-              onToggleSearch={() => { }}
-              onNewChat={() => { }}
-
-              // Safe defaults for remaining props
-              shouldShowRoleSuggestion={shouldShowRoleSuggestion}
-              suggestedModelName={suggestedModelName}
-              suggestedRoleLabel={suggestedRoleLabel}
-              onRoleAcceptSuggestion={() => { }}
-              onRoleDismissSuggestion={() => { }}
-              systemPrompt={project.instructions || ''}
-              onSetSystemPrompt={() => { }}
-              onSaveSystemPrompt={() => { }}
-              projectRoot=""
-              onSetProjectRoot={() => { }}
-              onSaveProjectRoot={() => { }}
-              onPickProjectRoot={onPickProjectRoot}
-              onRefreshModels={onRefreshModels}
-              onAbort={onAbort}
-            />
+            <Composer thinkingSeconds={0} />
           </div>
 
           <section className="project-detail__chats">
@@ -194,7 +131,7 @@ export function ProjectDetail({
                 <div
                   key={id}
                   className="project-detail__chat-card"
-                  onClick={() => onSelectChat(id)}
+                  onClick={() => onSelectChatLocal(id)}
                 >
                   <h4 className="project-detail__chat-title">{chat.title || 'Untitled chat'}</h4>
                   <p className="project-detail__chat-meta">

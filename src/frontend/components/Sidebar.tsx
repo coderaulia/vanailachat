@@ -4,49 +4,39 @@ import { DATE_FORMATTER } from '../lib/date';
 import type { Chat } from '../types/chat';
 import './Sidebar.css';
 
-interface ProjectOption {
-  id: string;
-  name: string;
-  createdAt: number;
-}
+import { useChat } from '../context/ChatContext';
 
-interface SidebarProps {
-  isOpen: boolean;
-  currentChatId: string | null;
-  histories: Array<[string, Chat]>;
-  projects: ProjectOption[];
-  selectedProjectId: string | null;
-  onClose: () => void;
-  onNewChat: () => void;
-  onSelectProject: (id: string) => void;
-  onCreateProject: (name: string) => void;
-  onExport: () => void;
-  onImport: (file: File) => void;
-  onSelectChat: (id: string) => void;
-  onDeleteChat: (id: string) => void;
-  onRenameChat: (id: string, title: string) => void;
-  onTogglePin: (id: string) => void;
-  onViewProjectDetail: () => void;
-}
+export function Sidebar() {
+  const {
+    isSidebarOpen: isOpen,
+    closeSidebar: onClose,
+    currentChatId,
+    sortedHistories: histories,
+    projects,
+    selectedProjectId,
+    handleNewChat,
+    handleSelectProject: onSelectProject,
+    handleCreateProject: onCreateProject,
+    handleExportData: onExport,
+    handleImportData: onImport,
+    handleSelectChat,
+    handleDeleteChat: onDeleteChat,
+    handleRenameChat: onRenameChat,
+    handleTogglePin: onTogglePin,
+    setViewMode,
+  } = useChat();
 
-export function Sidebar({
-  isOpen,
-  currentChatId,
-  histories,
-  projects,
-  selectedProjectId,
-  onClose,
-  onNewChat,
-  onSelectProject,
-  onCreateProject,
-  onExport,
-  onImport,
-  onSelectChat,
-  onDeleteChat,
-  onRenameChat,
-  onTogglePin,
-  onViewProjectDetail,
-}: SidebarProps) {
+  const onNewChatLocal = () => {
+    handleNewChat();
+    setViewMode('chat');
+  };
+
+  const onSelectChatLocal = (id: string) => {
+    handleSelectChat(id);
+    setViewMode('chat');
+  };
+
+  const onViewProjectDetail = () => setViewMode('project');
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -189,7 +179,7 @@ export function Sidebar({
                 className="btn btn-primary btn-block"
                 type="button"
                 aria-label="Start New Chat"
-                onClick={onNewChat}
+                onClick={onNewChatLocal}
               >
                 <svg
                   width="16"
@@ -219,17 +209,11 @@ export function Sidebar({
 
             <div className="history-list">
               {filteredHistories.map(([id, chat]) => (
-                <div
+                <button
                   key={id}
-                  className={`history-item ${currentChatId === id ? 'active' : ''}`}
-                  onClick={() => onSelectChat(id)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      onSelectChat(id);
-                    }
-                  }}
+                  className={`history-item ${currentChatId === id ? 'is-active' : ''} ${chat.pinned ? 'is-pinned' : ''}`}
+                  type="button"
+                  onClick={() => onSelectChatLocal(id)}
                 >
                   <div className="history-item__content">
                     {editingChatId === id ? (
@@ -307,7 +291,7 @@ export function Sidebar({
                       &times;
                     </button>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 

@@ -5,79 +5,50 @@ import type { Attachment, ContextWindow } from '../types/chat';
 import { ModelSelector } from './ModelSelector';
 import './Composer.css';
 
+import { useChat } from '../context/ChatContext';
+
 interface ComposerProps {
-  attachedFiles: Attachment[];
-  availableModels: string[];
-  contextPercentage?: number;
-  contextWindow?: ContextWindow;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  isCurrentChatSending: boolean;
-  isSearchEnabled: boolean;
-  prompt: string;
-  projectRoot: string;
-  selectedRole: ModelRole;
-  selectedModel: string;
-  shouldShowRoleSuggestion: boolean;
-  statusText: string;
-  suggestedModelName: string;
-  suggestedRoleLabel: string;
-  systemPrompt: string;
   thinkingSeconds: number;
-  onAttach: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
-  onNewChat: () => void;
-  onRemoveAttachment: (index: number) => void;
-  onRoleAcceptSuggestion: () => void;
-  onRoleDismissSuggestion: () => void;
-  onSaveProjectRoot: () => void;
-  onPickProjectRoot: () => Promise<void>;
-  onSelectRole: (role: ModelRole) => void;
-  onSelectModel: (model: string) => void;
-  onSend: (event?: FormEvent) => Promise<void>;
-  onSetPrompt: (value: string) => void;
-  onSetProjectRoot: (value: string) => void;
-  onSetSystemPrompt: (value: string) => void;
-  onSaveSystemPrompt: () => void;
-  onToggleSearch: () => void;
-  onRefreshModels?: () => void;
-  onAbort?: () => void;
 }
 
-export function Composer({
-  attachedFiles,
-  availableModels,
-  contextPercentage,
-  contextWindow,
-  fileInputRef,
-  isCurrentChatSending,
-  isSearchEnabled,
-  prompt,
-  projectRoot,
-  selectedRole,
-  selectedModel,
-  shouldShowRoleSuggestion,
-  statusText,
-  suggestedModelName,
-  suggestedRoleLabel,
-  systemPrompt,
-  thinkingSeconds,
-  onAttach,
-  onNewChat,
-  onRemoveAttachment,
-  onRoleAcceptSuggestion,
-  onRoleDismissSuggestion,
-  onSaveProjectRoot,
-  onPickProjectRoot,
-  onSelectRole,
-  onSelectModel,
-  onSend,
-  onSetPrompt,
-  onSetProjectRoot,
-  onSetSystemPrompt,
-  onSaveSystemPrompt,
-  onToggleSearch,
-  onRefreshModels,
-  onAbort,
-}: ComposerProps) {
+export function Composer({ thinkingSeconds }: ComposerProps) {
+  const {
+    attachedFiles,
+    filteredAvailableModels: availableModels,
+    contextPercentage,
+    contextWindow,
+    fileInputRef,
+    isCurrentChatSending,
+    isSearchEnabled,
+    prompt,
+    projectRoot,
+    selectedRole,
+    selectedModel,
+    shouldShowRoleSuggestion,
+    statusText,
+    suggestedModelName,
+    suggestedRoleLabel,
+    systemPrompt,
+    handleAttach: onAttach,
+    handleNewChat: onNewChat,
+    removeAttachment: onRemoveAttachment,
+    handleAcceptRoleSuggestion: onRoleAcceptSuggestion,
+    handleDismissRoleSuggestion: onRoleDismissSuggestion,
+    handleSaveProjectRoot: onSaveProjectRoot,
+    handlePickProjectRoot: onPickProjectRoot,
+    handleSelectRole: onSelectRole,
+    setSelectedModel: onSelectModel,
+    handleSend: onSend,
+    setPrompt: onSetPrompt,
+    handleProjectRootChange: onSetProjectRoot,
+    handleSystemPromptChange: onSetSystemPrompt,
+    handleSaveSystemPrompt: onSaveSystemPrompt,
+    setIsSearchEnabled,
+    handleRefreshModels: onRefreshModels,
+    handleAbort: onAbort,
+  } = useChat();
+
+  const onToggleSearch = () => setIsSearchEnabled((prev: boolean) => !prev);
   return (
     <footer className="app-footer">
       <form className="chat-form" onSubmit={onSend}>

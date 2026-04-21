@@ -4,14 +4,15 @@ import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Message } from '../types/chat';
 
+import { useChat } from '../context/ChatContext';
+
 interface ChatLogProps {
-  conversation: Message[];
-  isCurrentChatSending: boolean;
   showTokens: boolean;
   renderMarkdown: (content: string) => string;
 }
 
-export function ChatLog({ conversation, isCurrentChatSending, showTokens, renderMarkdown }: ChatLogProps) {
+export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
+  const { conversation, isCurrentChatSending } = useChat();
   const chatLogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
