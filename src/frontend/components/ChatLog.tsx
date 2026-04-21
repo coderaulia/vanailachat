@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent } from 'react';
+import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Message } from '../types/chat';
 

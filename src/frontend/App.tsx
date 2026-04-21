@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
+import './App.css';
 import { Sidebar } from './components/Sidebar';
 import { ProjectDetail } from './components/ProjectDetail';
 import { useChatApp } from './hooks/useChatApp';

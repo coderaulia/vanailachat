@@ -3,6 +3,7 @@ import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
 import type { Attachment, ContextWindow } from '../types/chat';
 import { ModelSelector } from './ModelSelector';
+import './Composer.css';
 
 interface ComposerProps {
   attachedFiles: Attachment[];

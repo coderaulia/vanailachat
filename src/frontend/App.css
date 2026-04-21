@@ -1,0 +1,68 @@
+.app-shell {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-surface-strong);
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 0 40px 24px;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .main-content {
+    padding: 12px;
+  }
+
+  .header-main,
+  .composer,
+  .chat-log {
+    border-radius: 24px;
+  }
+
+  .header-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-summary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .summary-pill {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .textarea {
+    min-height: 120px;
+  }
+
+  .input-actions {
+    width: 100%;
+    flex-direction: column-reverse;
+  }
+
+  .composer-model,
+  .composer-context,
+  .composer-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .context-status {
+    min-width: 0;
+  }
+
+  .input-actions .btn {
+    width: 100%;
+  }
+}

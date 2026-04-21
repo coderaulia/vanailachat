@@ -1,3 +1,5 @@
+import './ChatHeader.css';
+
 interface ChatHeaderProps {
   isCurrentChatSending: boolean;
   selectedModel: string;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { ApiProject, Chat, Attachment } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { DATE_FORMATTER } from '../lib/date';
+import './ProjectDetail.css';
 import { Composer } from './Composer';
 
 interface ProjectDetailProps {

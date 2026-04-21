@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import './ModelSelector.css';
 import { getModelInfo } from '../config/modelMetadata';
 
 interface ModelSelectorProps {
