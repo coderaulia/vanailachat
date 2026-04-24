@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app';
-import type { ApiProject } from '../../types/chat';
+import type { ApiProject } from '../../frontend/types/chat';
 
 describe('projects route', () => {
   const mockProject: ApiProject = {

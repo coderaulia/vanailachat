@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app';
-import type { Chat } from '../../types/chat';
+import type { ApiChat as Chat } from '../../frontend/types/chat';
 
 describe('chats route', () => {
   const mockChat: Chat = {

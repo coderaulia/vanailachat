@@ -35,23 +35,22 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
       setSelectedModelState(savedModel);
     }
     fetchModels();
+    const interval = setInterval(fetchModels, 300_000);
+    return () => clearInterval(interval);
   }, []);
 
-  const filteredAvailableModels = useMemo(() => {
-    const recommended = getRoleRecommendedModels(selectedRole);
-    return recommended.length > 0 ? recommended : availableModels;
-  }, [availableModels, selectedRole]);
+  const filteredAvailableModels = useMemo(() => availableModels, [availableModels]);
 
   useEffect(() => {
     if (availableModels.length === 0) return;
-    
+
     // If no model selected, or selected model is not in the full list of available models,
     // then we need to pick a default.
     if (!selectedModel || !availableModels.includes(selectedModel)) {
-      const defaultModel = filteredAvailableModels.length > 0 
-        ? filteredAvailableModels[0] 
+      const defaultModel = filteredAvailableModels.length > 0
+        ? filteredAvailableModels[0]
         : availableModels[0];
-      
+
       if (defaultModel) {
         setSelectedModelState(defaultModel);
       }
@@ -65,7 +64,7 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
     const hasFileExtension = /\b[\w-]+\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|cs|rb|php|html|css|json)\b/.test(lowered);
     const hasCodingKeyword = /\b(debug|refactor|write|design|implement|function|class)\b/.test(lowered);
     const hasImageKeyword = /\b(image|draw|generate|paint|visualize|picture|photo|sketch|flux)\b/.test(lowered);
-    
+
     if (hasImageKeyword) return 'creative';
     if (hasCodeFence || hasFileExtension || hasCodingKeyword) return 'coding';
     return null;
