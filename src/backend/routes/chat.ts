@@ -88,6 +88,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         const genResponse = await dependencies.fetchFn(`${ollamaUrl}/api/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: context.req.raw.signal,
           body: JSON.stringify({
             model: body.model,
             prompt: prompt,
@@ -155,16 +156,20 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           };
         }),
       ];
-
+      const supportsTools = Array.isArray(modelDetails?.capabilities) && modelDetails.capabilities.includes('tools');
+      
       let tools = dependencies.getToolDefinitions() as any[];
-      if (!body.search) {
-        tools = tools.filter(t => t.function.name !== 'search_web');
+      if (!supportsTools) {
+        tools = [];
+      } else if (!body.search) {
+        tools = tools.filter((t) => t.function.name !== 'search_web');
       }
 
       if (!clientWantsStreaming) {
         const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: context.req.raw.signal,
           body: JSON.stringify({
             model: body.model,
             stream: false,
@@ -197,6 +202,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
               const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                signal: context.req.raw.signal,
                 body: JSON.stringify({
                   model: body.model,
                   stream: true,
@@ -283,8 +289,17 @@ export function chatRouter(dependencies: AppDependencies): Hono {
             }
             controller.close();
           } catch (err) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const error = err as any;
+            if (error.name === 'AbortError' || error.code === 'ERR_INVALID_STATE') {
+              return;
+            }
             console.error('[CHAT ERROR]', err);
-            controller.error(err);
+            try {
+              controller.error(err);
+            } catch (e) {
+              // ignore
+            }
           }
         }
       });
@@ -298,6 +313,9 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         },
       });
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return new Response(null);
+      }
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[CHAT ERROR] ${message}`);
       return context.json({ error: message }, 500);

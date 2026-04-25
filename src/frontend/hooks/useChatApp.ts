@@ -303,6 +303,7 @@ export function useChatApp() {
 
     // Model Manager
     availableModels: modelManager.availableModels,
+    modelMetadata: modelManager.modelMetadata,
     selectedModel: modelManager.selectedModel,
     selectedRole: modelManager.selectedRole,
     filteredAvailableModels: modelManager.filteredAvailableModels,

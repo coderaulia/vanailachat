@@ -21,6 +21,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     fileInputRef,
     isCurrentChatSending,
     isSearchEnabled,
+    modelMetadata,
     prompt,
     projectRoot,
     selectedRole,
@@ -164,6 +165,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 <label>Model</label>
                 <ModelSelector
                   availableModels={availableModels}
+                  modelMetadata={modelMetadata}
                   selectedModel={selectedModel}
                   onSelectModel={onSelectModel}
                   onRefresh={onRefreshModels}

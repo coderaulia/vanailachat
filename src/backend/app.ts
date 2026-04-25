@@ -18,6 +18,7 @@ const defaultDependencies: AppDependencies = {
   fetchFn: fetch,
   getBaseUrl: OllamaService.getBaseUrl.bind(OllamaService),
   getInstalledModels: OllamaService.getInstalledModels.bind(OllamaService),
+  getInstalledModelMetadata: OllamaService.getInstalledModelMetadata.bind(OllamaService),
   getModelDetails: OllamaService.getModelDetails.bind(OllamaService),
   getToolDefinitions: ToolService.getToolDefinitions.bind(ToolService),
   listProjects: DatabaseService.listProjects.bind(DatabaseService),

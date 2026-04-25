@@ -1,19 +1,22 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useModelManager } from '../hooks/useModelManager';
 
-// Mock fetch
-global.fetch = vi.fn();
+const fetchMock = vi.fn<typeof fetch>();
+global.fetch = fetchMock;
+
+const jsonResponse = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
 describe('useModelManager hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    (fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => ({ models: [] }),
-    });
+    fetchMock.mockResolvedValue(jsonResponse({ models: [], metadata: {} }));
   });
 
   it('detects coding task from prompt', () => {
@@ -35,21 +38,43 @@ describe('useModelManager hook', () => {
   });
 
   it('fetches models on mount', async () => {
-    (fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => ({ models: ['llama3', 'codellama'] }),
-    });
+    fetchMock.mockResolvedValue(jsonResponse({ models: ['llama3', 'codellama'] }));
 
     const { result } = renderHook(() => useModelManager('', false));
     
     // Initial state
     expect(result.current.availableModels).toEqual([]);
 
-    // Wait for fetch
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0));
+    await waitFor(() => {
+      expect(result.current.availableModels).toEqual(['llama3', 'codellama']);
     });
+  });
 
-    expect(result.current.availableModels).toEqual(['llama3', 'codellama']);
+  it('stores metadata from the models response', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        models: ['llama3'],
+        metadata: {
+          llama3: {
+            family: 'llama',
+            parameterSize: '8B',
+            quantizationLevel: 'Q4_K_M',
+            capabilities: ['completion', 'tools'],
+          },
+        },
+      })
+    );
+
+    const { result } = renderHook(() => useModelManager('', false));
+
+    await waitFor(() => {
+      expect(result.current.availableModels).toEqual(['llama3']);
+    });
+    expect(result.current.modelMetadata.llama3).toMatchObject({
+      family: 'llama',
+      parameterSize: '8B',
+      quantizationLevel: 'Q4_K_M',
+      capabilities: ['completion', 'tools'],
+    });
   });
 });

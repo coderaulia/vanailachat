@@ -6,8 +6,13 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
 
   app.get('/', async (context) => {
     try {
-      const models = await dependencies.getInstalledModels();
-      return context.json({ models });
+      const modelsWithMetadata = await dependencies.getInstalledModelMetadata();
+      const models = modelsWithMetadata.map((model) => model.name);
+      const metadata = Object.fromEntries(
+        modelsWithMetadata.map((model) => [model.name, model])
+      );
+
+      return context.json({ models, metadata });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return context.json({ error: message }, 500);

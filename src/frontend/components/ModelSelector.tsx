@@ -1,18 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import './ModelSelector.css';
 import { getModelInfo } from '../config/modelMetadata';
+import type { ModelMetadataMap } from '../config/modelMetadata';
 
 interface ModelSelectorProps {
   availableModels: string[];
+  modelMetadata: ModelMetadataMap;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   onRefresh?: () => void;
 }
 
-export function ModelSelector({ availableModels, selectedModel, onSelectModel, onRefresh }: ModelSelectorProps) {
+export function ModelSelector({
+  availableModels,
+  modelMetadata,
+  selectedModel,
+  onSelectModel,
+  onRefresh,
+}: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const selectedInfo = getModelInfo(selectedModel);
+  const selectedInfo = getModelInfo(selectedModel, modelMetadata[selectedModel]);
 
   const toggleDropdown = () => {
     const nextState = !isOpen;
@@ -69,7 +77,7 @@ export function ModelSelector({ availableModels, selectedModel, onSelectModel, o
         <div className="model-selector__dropdown">
           <div className="model-selector__list">
             {availableModels.map((model) => {
-              const info = getModelInfo(model);
+              const info = getModelInfo(model, modelMetadata[model]);
               const isActive = model === selectedModel;
               return (
                 <button

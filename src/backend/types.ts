@@ -7,6 +7,7 @@ import type {
   UpdateProjectInput,
   UpsertChatInput,
 } from './services/database.js';
+import type { InstalledModelMetadata } from './services/ollama.js';
 
 export interface ChatRequestBody {
   model?: string;
@@ -22,6 +23,7 @@ export interface AppDependencies {
   fetchFn: typeof fetch;
   getBaseUrl: () => string;
   getInstalledModels: () => Promise<string[]>;
+  getInstalledModelMetadata: () => Promise<InstalledModelMetadata[]>;
   getModelDetails: (modelName: string) => Promise<unknown>;
   getToolDefinitions: () => unknown[];
   listProjects: () => ProjectRecord[];
