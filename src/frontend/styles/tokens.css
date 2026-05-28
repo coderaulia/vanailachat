@@ -257,7 +257,7 @@ textarea {
   padding: 4px;
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 2px;
 }
 
 .history-empty {
