@@ -26,6 +26,7 @@ export function useChatSession(deps: {
   setPrompt: (value: string) => void;
   attachedFiles: Attachment[];
   setAttachedFiles: (files: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
+  persona?: string;
 }) {
   const {
     selectedModel,
@@ -33,7 +34,6 @@ export function useChatSession(deps: {
     selectedProjectId,
     projects,
     chatHistories,
-    statusText,
     setStatusText,
     closeSidebar,
     saveMessage,
@@ -48,6 +48,7 @@ export function useChatSession(deps: {
     setPrompt,
     attachedFiles,
     setAttachedFiles,
+    persona: personaId,
   } = deps;
 
   const [conversation, setConversation] = useState<Message[]>([]);
@@ -344,6 +345,7 @@ export function useChatSession(deps: {
           ],
           stream: true,
           search: isSearchEnabled,
+          persona: personaId || 'general',
         }),
       });
 

@@ -66,3 +66,34 @@
     width: 100%;
   }
 }
+
+/* Mobile sidebar: show menu toggle on small screens */
+@media (max-width: 860px) {
+  .sidebar-open .sidebar {
+    transform: translateX(0);
+    width: var(--sidebar-width, 280px);
+  }
+
+  .sidebar-closed .sidebar {
+    transform: translateX(calc(var(--sidebar-width, 280px) * -1));
+    width: var(--sidebar-width, 280px);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .main-content {
+    padding: 8px;
+  }
+
+  .welcome-screen {
+    padding: 12px;
+  }
+
+  .welcome-screen h1 {
+    font-size: 24px;
+  }
+
+  .welcome-screen p {
+    font-size: 14px;
+  }
+}

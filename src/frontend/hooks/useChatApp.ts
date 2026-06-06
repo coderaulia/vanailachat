@@ -11,6 +11,7 @@ import { DEFAULT_MODEL_ROLE } from '../config/constants';
 export function useChatApp() {
   const [prompt, setPrompt] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<any[]>([]);
+  const [persona, setPersona] = useState('general');
   const hasImageAttachment = attachedFiles.some(f => f.type === 'image');
 
   const uiState = useUIState();
@@ -60,6 +61,7 @@ export function useChatApp() {
     setPrompt,
     attachedFiles,
     setAttachedFiles,
+    persona,
   });
 
   const { handleNewChat, currentChatIdRef } = chatSession;
@@ -304,6 +306,7 @@ export function useChatApp() {
     // Model Manager
     availableModels: modelManager.availableModels,
     modelMetadata: modelManager.modelMetadata,
+    providers: modelManager.providers,
     selectedModel: modelManager.selectedModel,
     selectedRole: modelManager.selectedRole,
     filteredAvailableModels: modelManager.filteredAvailableModels,
@@ -360,5 +363,7 @@ export function useChatApp() {
     setPrompt,
     setSelectedModel,
     setSelectedRole,
+    persona,
+    setPersona,
   };
 }

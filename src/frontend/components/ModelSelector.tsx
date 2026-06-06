@@ -9,6 +9,7 @@ interface ModelSelectorProps {
   selectedModel: string;
   onSelectModel: (model: string) => void;
   onRefresh?: () => void;
+  providers?: Array<{ name: string; provider: string }>;
 }
 
 export function ModelSelector({
@@ -17,6 +18,7 @@ export function ModelSelector({
   selectedModel,
   onSelectModel,
   onRefresh,
+  providers,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -79,6 +81,7 @@ export function ModelSelector({
             {availableModels.map((model) => {
               const info = getModelInfo(model, modelMetadata[model]);
               const isActive = model === selectedModel;
+              const provider = providers?.find((p) => p.name === model)?.provider;
               return (
                 <button
                   key={model}
@@ -93,6 +96,9 @@ export function ModelSelector({
                   <div className="model-selector__option-content">
                     <div className="model-selector__option-header">
                       <span className="model-selector__option-name">{info.displayName}</span>
+                      {provider && provider !== 'ollama' && (
+                        <span className="model-selector__provider-badge">{provider}</span>
+                      )}
                       {isActive && (
                         <svg className="model-selector__check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                           <polyline points="20 6 9 17 4 12" />

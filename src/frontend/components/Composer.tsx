@@ -22,8 +22,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     isCurrentChatSending,
     isSearchEnabled,
     modelMetadata,
+    persona,
+    setPersona,
     prompt,
     projectRoot,
+    providers,
     selectedRole,
     selectedModel,
     shouldShowRoleSuggestion,
@@ -160,6 +163,20 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
             {/* Right: model, context, actions */}
             <div className="composer-toolbar__right">
+              {/* Persona selector */}
+              <div className="composer-persona">
+                <label>Assistant</label>
+                <select
+                  className="select composer-select composer-select--persona"
+                  value={persona}
+                  onChange={(e) => setPersona(e.target.value)}
+                >
+                  <option value="general">🤖 General</option>
+                  <option value="coder">💻 Coder</option>
+                  <option value="creator">✨ Creator</option>
+                </select>
+              </div>
+
               {/* Model selector */}
               <div className="composer-model">
                 <label>Model</label>
@@ -169,6 +186,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   selectedModel={selectedModel}
                   onSelectModel={onSelectModel}
                   onRefresh={onRefreshModels}
+                  providers={providers}
                 />
               </div>
 

@@ -66,6 +66,7 @@ const getSuggestedRole = (p: string, hasImage: boolean): ModelRole | null => {
 export function useModelManager(prompt: string, hasImageAttachment: boolean = false) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [modelMetadata, setModelMetadata] = useState<ModelMetadataMap>({});
+  const [providers, setProviders] = useState<Array<{ name: string; provider: string }>>([]);
   const [selectedModel, setSelectedModelState] = useState('');
   const [selectedRole, setSelectedRole] = useState<ModelRole>(DEFAULT_MODEL_ROLE);
   const [dismissedSuggestionPrompt, setDismissedSuggestionPrompt] = useState<string | null>(null);
@@ -86,6 +87,9 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
         const { models, metadata } = normalizeModelsResponse(data);
         setAvailableModels(models);
         setModelMetadata(metadata);
+        if (Array.isArray(data.providers)) {
+          setProviders(data.providers as Array<{ name: string; provider: string }>);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
@@ -146,6 +150,7 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
   return {
     availableModels,
     modelMetadata,
+    providers,
     selectedModel,
     selectedRole,
     filteredAvailableModels,

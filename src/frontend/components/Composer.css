@@ -315,3 +315,58 @@
 .context-status__meter-fill.is-danger {
   background: linear-gradient(90deg, #d5644b 0%, #b6452f 100%);
 }
+
+/* Persona selector */
+.composer-persona {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-persona label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.composer-select--persona {
+  min-width: 130px;
+}
+
+/* Improved mobile responsiveness */
+@media (max-width: 640px) {
+  .composer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .composer-toolbar__right {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .role-picker {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .composer-model,
+  .composer-persona,
+  .composer-context {
+    width: 100%;
+  }
+
+  .composer-model label,
+  .composer-persona label,
+  .composer-context label {
+    display: none;
+  }
+
+  .send-btn {
+    width: 100%;
+  }
+}

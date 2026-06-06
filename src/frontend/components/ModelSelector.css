@@ -159,3 +159,34 @@
 [data-theme="dark"] .model-selector__option-badge {
   background: rgba(255, 255, 255, 0.08);
 }
+
+.model-selector__provider-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: var(--bg-accent-soft);
+  color: var(--bg-accent-strong);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.model-selector__check {
+  flex-shrink: 0;
+  color: var(--bg-accent);
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .model-selector__dropdown {
+    width: 100vw;
+    left: -16px;
+    right: -16px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    bottom: calc(100% + 4px);
+  }
+}
