@@ -7,12 +7,35 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
   app.get('/', async (context) => {
     try {
       const modelsWithMetadata = await dependencies.getInstalledModelMetadata();
-      const models = modelsWithMetadata.map((model) => model.name);
+      
+      // Get models from provider registry (includes multi-provider)
+      const providerModels = await dependencies.providerRegistry.listAllModels();
+      
+      // Combine and deduplicate
+      const modelMap = new Map<string, { name: string; provider: string }>();
+      
+      // Add Ollama models
+      for (const model of modelsWithMetadata) {
+        modelMap.set(model.name, { name: model.name, provider: 'ollama' });
+      }
+      
+      // Add provider registry models (skip duplicates)
+      for (const providerModel of providerModels) {
+        if (!modelMap.has(providerModel.name)) {
+          modelMap.set(providerModel.name, { name: providerModel.name, provider: providerModel.provider });
+        }
+      }
+      
+      const models = Array.from(modelMap.values());
       const metadata = Object.fromEntries(
         modelsWithMetadata.map((model) => [model.name, model])
       );
 
-      return context.json({ models, metadata });
+      return context.json({
+        models: models.map(m => m.name),
+        metadata,
+        providers: models.map(m => ({ name: m.name, provider: m.provider })),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return context.json({ error: message }, 500);

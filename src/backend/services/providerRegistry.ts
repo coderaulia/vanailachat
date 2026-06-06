@@ -58,6 +58,23 @@ export class ProviderRegistry {
     return [...this.providers.values()];
   }
 
+  /** Gather models from all providers with provider name prefix */
+  async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: unknown }>> {
+    const results: Array<{ name: string; provider: string; metadata?: unknown }> = [];
+    for (const [id, provider] of this.providers) {
+      if (id === 'ollama') continue; // Ollama handled separately via getInstalledModelMetadata
+      try {
+        const models = await provider.listModels();
+        for (const model of models) {
+          results.push({ name: `openai:${model}`, provider: id, metadata: {} });
+        }
+      } catch {
+        // Provider unavailable — skip
+      }
+    }
+    return results;
+  }
+
   getDefaultId(): string | null {
     return this.defaultProviderId;
   }
