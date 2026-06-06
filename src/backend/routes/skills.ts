@@ -131,5 +131,35 @@ export function skillsRouter(): Hono {
     return context.json({ deleted: true });
   });
 
+  /**
+   * POST /api/skills/custom — install a custom SKILL.md by pasting raw content.
+   * Body: { content: string }
+   */
+  app.post('/custom', async (context) => {
+    try {
+      const body = await context.req.json<{ content: string }>();
+      if (!body.content?.trim()) {
+        return context.json({ error: 'content is required' }, 400);
+      }
+
+      const { name: parsedName, description, body: skillBody } = parseFrontmatter(body.content);
+      if (!parsedName) {
+        return context.json({ error: 'SKILL.md must have a `name` in YAML frontmatter' }, 400);
+      }
+
+      const skill = DatabaseService.upsertSkill({
+        name: parsedName,
+        description: description || `Custom skill: ${parsedName}`,
+        content: skillBody,
+        sourceUrl: null,
+        enabled: true,
+      });
+
+      return context.json({ skill });
+    } catch (error) {
+      return context.json({ error: error instanceof Error ? error.message : 'Upload failed' }, 500);
+    }
+  });
+
   return app;
 }
