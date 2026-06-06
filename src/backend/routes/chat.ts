@@ -131,6 +131,31 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           let iteration = 0;
           const maxIterations = 7;
 
+          // Track tool calls to detect repeated identical calls
+          const toolCallHistory = new Set<string>();
+
+          const enqueueToolEvent = (
+            name: string,
+            status: 'start' | 'done' | 'error',
+            detail?: string,
+          ) => {
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  JSON.stringify({
+                    tool_event: true,
+                    iteration,
+                    tool: name,
+                    status,
+                    ...(detail ? { detail: detail.slice(0, 200) } : {}),
+                  }) + '\n',
+                ),
+              );
+            } catch {
+              // Stream may be closed
+            }
+          };
+
           try {
             while (iteration < maxIterations) {
               iteration++;
@@ -158,7 +183,11 @@ export function chatRouter(dependencies: AppDependencies): Hono {
               let assistantMessage: {
                 role: string;
                 content: string;
-                tool_calls: Record<string, unknown>[];
+                tool_calls: Array<{
+                  id?: string;
+                  function?: { name?: string; arguments?: unknown };
+                  type?: string;
+                }>;
               } = { role: 'assistant', content: '', tool_calls: [] };
 
               while (true) {
@@ -208,31 +237,51 @@ export function chatRouter(dependencies: AppDependencies): Hono {
 
               currentMessages.push(assistantMessage as (typeof currentMessages)[number]);
 
+              // Process tool calls with deduplication
+              let skippedCount = 0;
               for (const tc of assistantMessage.tool_calls) {
-                controller.enqueue(
-                  encoder.encode(
-                    JSON.stringify({
-                      tool_event: true,
-                      tool: (tc as { function?: { name?: string } }).function?.name ?? 'unknown',
-                    }) + '\n',
-                  ),
-                );
+                const toolName = tc.function?.name ?? 'unknown';
+                const toolArgs = tc.function?.arguments;
+
+                // Deduplicate: skip identical tool calls already made in this session
+                const callKey = `${toolName}:${JSON.stringify(toolArgs ?? {})}`;
+                if (toolCallHistory.has(callKey)) {
+                  skippedCount++;
+                  continue;
+                }
+                toolCallHistory.add(callKey);
+
+                enqueueToolEvent(toolName, 'start');
 
                 try {
                   const result = await dependencies.executeTool(
-                    (tc as { function?: { name?: string } }).function?.name ?? '',
-                    (tc as { function?: { arguments?: unknown } }).function?.arguments,
+                    toolName,
+                    toolArgs,
                     chatRecord?.projectRoot ?? null,
                   );
                   currentMessages.push({ role: 'tool', content: result });
+                  enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '');
                 } catch (toolErr) {
-                  currentMessages.push({
-                    role: 'tool',
-                    content: `Error: ${toolErr instanceof Error ? toolErr.message : 'Unknown error'}`,
-                  });
+                  const errMsg = toolErr instanceof Error ? toolErr.message : 'Unknown error';
+                  currentMessages.push({ role: 'tool', content: `Error: ${errMsg}` });
+                  enqueueToolEvent(toolName, 'error', errMsg);
                 }
               }
+
+              if (skippedCount > 0) {
+                enqueueToolEvent('dedup', 'done', `Skipped ${skippedCount} duplicate tool call(s)`);
+              }
             }
+
+            // Max iterations reached
+            controller.enqueue(
+              encoder.encode(
+                JSON.stringify({
+                  message: { role: 'assistant', content: `\n\n*Agent looped ${maxIterations} times without finishing. Please simplify your request.*` },
+                  done: true,
+                }) + '\n',
+              ),
+            );
             controller.close();
           } catch (err) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -3,21 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { SafeSearchType, search } from 'duck-duck-scrape';
+import type { Tool, ToolSchema, ToolExecutionResult } from './toolInterface.js';
+import { toToolDefinition } from './toolInterface.js';
 
 const execFilePromise = promisify(execFile);
-
-type ToolSchema = {
-  type: 'object';
-  properties: Record<string, { type: string; description: string }>;
-  required: string[];
-};
-
-interface Tool {
-  description: string;
-  execute: (args: unknown, projectRoot: string | null) => Promise<string>;
-  name: string;
-  parameters: ToolSchema;
-}
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -303,21 +292,91 @@ export class ToolService {
   };
 
   static getToolDefinitions() {
-    return Object.values(this.tools).map((tool) => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      },
-    }));
+    return Object.values(this.tools).map(toToolDefinition);
   }
 
-  static async executeTool(name: string, args: unknown, projectRoot: string | null): Promise<string> {
+  /**
+   * Execute a tool with timeout protection.
+   * Wraps execution with a configurable timeout and duration tracking.
+   */
+  static async executeTool(
+    name: string,
+    args: unknown,
+    projectRoot: string | null,
+  ): Promise<string> {
     const tool = this.tools[name];
-    if (tool) {
-      return tool.execute(args, projectRoot);
+    if (!tool) {
+      return `Unknown tool: ${name}`;
     }
-    return `Unknown tool: ${name}`;
+
+    const timeoutMs = tool.timeoutMs ?? 30_000;
+    const start = performance.now();
+
+    try {
+      const result = await Promise.race([
+        tool.execute(args, projectRoot),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+      const durationMs = Math.round(performance.now() - start);
+      return result;
+    } catch (error) {
+      return `Tool failed: ${getErrorMessage(error)}`;
+    }
+  }
+
+  /**
+   * Execute with full result metadata (for agent loop debugging).
+   */
+  static async executeToolWithResult(
+    name: string,
+    args: unknown,
+    projectRoot: string | null,
+  ): Promise<ToolExecutionResult> {
+    const tool = this.tools[name];
+    if (!tool) {
+      return { success: false, output: `Unknown tool: ${name}`, durationMs: 0, toolName: name };
+    }
+
+    const timeoutMs = tool.timeoutMs ?? 30_000;
+    const start = performance.now();
+
+    try {
+      const output = await Promise.race([
+        tool.execute(args, projectRoot),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+      return {
+        success: true,
+        output,
+        durationMs: Math.round(performance.now() - start),
+        toolName: name,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        output: `Tool failed: ${getErrorMessage(error)}`,
+        durationMs: Math.round(performance.now() - start),
+        toolName: name,
+      };
+    }
+  }
+
+  /** Register an external/custom tool at runtime */
+  static registerTool(tool: Tool): void {
+    this.tools[tool.name] = tool;
+  }
+
+  /** Remove a tool by name */
+  static unregisterTool(name: string): void {
+    delete this.tools[name];
+  }
+
+  /** List all registered tool names */
+  static getToolNames(): string[] {
+    return Object.keys(this.tools);
   }
 }
