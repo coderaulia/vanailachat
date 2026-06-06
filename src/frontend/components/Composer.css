@@ -153,7 +153,13 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.composer-toolbar__right::-webkit-scrollbar {
+  display: none;
 }
 
 .send-btn {
