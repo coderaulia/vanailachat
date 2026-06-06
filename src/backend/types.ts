@@ -8,6 +8,7 @@ import type {
   UpsertChatInput,
 } from './services/database.js';
 import type { InstalledModelMetadata } from './services/ollama.js';
+import type { ProviderRegistry } from './services/providerRegistry.js';
 
 export interface ChatRequestBody {
   model?: string;
@@ -38,4 +39,6 @@ export interface AppDependencies {
   listMessages: (chatId: string) => MessageRecord[];
   insertMessage: (input: InsertMessageInput) => MessageRecord;
   pickDirectory: () => Promise<string | null>;
+  /** Provider registry for multi-provider support */
+  providerRegistry: ProviderRegistry;
 }

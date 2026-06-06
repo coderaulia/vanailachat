@@ -1,22 +1,30 @@
 import { Hono } from 'hono';
 import type { AppDependencies, ChatRequestBody } from '../types.js';
-import { parseOllamaError, normalizeMessageContent } from '../helpers/index.js';
+import { normalizeMessageContent } from '../helpers/index.js';
+import { ProviderRegistry } from '../services/providerRegistry.js';
 
 export function chatRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   app.post('/', async (context) => {
     const body = (await context.req.json()) as ChatRequestBody;
-    const ollamaUrl = dependencies.getBaseUrl();
 
     try {
       if (!body.model || typeof body.model !== 'string') {
         return context.json({ error: 'Model required' }, 400);
       }
 
-      const installedModels = await dependencies.getInstalledModels();
-      if (!installedModels.includes(body.model)) {
-        return context.json({ error: `Model '${body.model}' is not installed or available.` }, 400);
+      // Resolve provider from model name (supports "openai:gpt-4o" prefix syntax)
+      const provider = dependencies.providerRegistry.getByModel(body.model);
+      const modelName = ProviderRegistry.stripPrefix(body.model);
+
+      // Validate model availability
+      const isAvailable = await provider.isModelAvailable(modelName);
+      if (!isAvailable) {
+        return context.json(
+          { error: `Model '${modelName}' is not available on provider '${provider.id}'.` },
+          400,
+        );
       }
 
       const clientWantsStreaming = body.stream !== false;
@@ -26,11 +34,9 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           ? dependencies.getChat(body.chatId)
           : null;
 
-
-
+      // --- Assemble system prompt ---
       let systemPrompt = 'You are a helpful assistant.';
 
-      // Integrate Project Context if available
       if (chatRecord?.projectId) {
         const project = dependencies.getProject(chatRecord.projectId);
         if (project) {
@@ -52,10 +58,15 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         systemPrompt +=
           '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
       }
+
       if (chatRecord?.projectRoot) {
         systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
         try {
-          const directoryListing = await dependencies.executeTool('list_directory', { path: '.', maxDepth: 2 }, chatRecord.projectRoot);
+          const directoryListing = await dependencies.executeTool(
+            'list_directory',
+            { path: '.', maxDepth: 2 },
+            chatRecord.projectRoot,
+          );
           systemPrompt += `\n\n[Project Structure]\n${directoryListing}`;
         } catch (error) {
           console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
@@ -64,86 +75,8 @@ export function chatRouter(dependencies: AppDependencies): Hono {
 
       systemPrompt += '\n\nYou can also read local project files using read_file.';
 
+      // --- Build messages ---
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
-      
-      // Check if model supports chat or is an image model
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const modelDetails = (await dependencies.getModelDetails(body.model)) as any;
-      const isImageModel = modelDetails?.capabilities?.includes('image');
-      const isChatModel =
-        !modelDetails?.capabilities ||
-        modelDetails.capabilities.includes('chat') ||
-        (modelDetails.capabilities.includes('text') && !isImageModel);
-
-      if (isImageModel && !isChatModel) {
-        const lastUserMessage = [...incomingMessages].reverse().find((m) => m.role === 'user');
-        if (!lastUserMessage) {
-          throw new Error('No user message found for image generation');
-        }
-
-        const prompt = typeof lastUserMessage.content === 'string' 
-          ? lastUserMessage.content 
-          : normalizeMessageContent(lastUserMessage.content).content;
-
-        const genResponse = await dependencies.fetchFn(`${ollamaUrl}/api/generate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: context.req.raw.signal,
-          body: JSON.stringify({
-            model: body.model,
-            prompt: prompt,
-            stream: false,
-          }),
-        });
-
-        if (!genResponse.ok) {
-          throw new Error(parseOllamaError(await genResponse.text()));
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const genPayload = (await genResponse.json()) as any;
-        const images = genPayload.images || [];
-        const imageMarkdown = images
-          .map((img: string) => `![Generated Image](data:image/png;base64,${img})`)
-          .join('\n\n');
-        
-        const content = genPayload.response 
-          ? `${genPayload.response}\n\n${imageMarkdown}`
-          : imageMarkdown;
-
-        if (!clientWantsStreaming) {
-          return context.json({
-            model: body.model,
-            message: { role: 'assistant', content },
-            done: true,
-          });
-        }
-
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode(
-                JSON.stringify({
-                  model: body.model,
-                  message: { role: 'assistant', content },
-                  done: true,
-                }) + '\n'
-              )
-            );
-            controller.close();
-          },
-        });
-
-        return new Response(stream, {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/x-ndjson; charset=utf-8',
-            'Cache-Control': 'no-cache',
-            Connection: 'keep-alive',
-          },
-        });
-      }
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -156,36 +89,39 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           };
         }),
       ];
-      const supportsTools = Array.isArray(modelDetails?.capabilities) && modelDetails.capabilities.includes('tools');
-      
-      let tools = dependencies.getToolDefinitions() as any[];
+
+      // --- Tool resolution ---
+      const modelDetails = (await provider.getModelDetails(modelName)) as {
+        capabilities?: string[];
+      } | null;
+      const capabilities = modelDetails?.capabilities ?? [];
+      const supportsTools = capabilities.includes('tools');
+
+      let tools = dependencies.getToolDefinitions() as Record<string, unknown>[];
       if (!supportsTools) {
         tools = [];
       } else if (!body.search) {
-        tools = tools.filter((t) => t.function.name !== 'search_web');
-      }
-
-      if (!clientWantsStreaming) {
-        const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: context.req.raw.signal,
-          body: JSON.stringify({
-            model: body.model,
-            stream: false,
-            messages,
-            tools: tools.length > 0 ? tools : undefined,
-          }),
+        tools = tools.filter((t) => {
+          const fn = (t as { function?: { name?: string } }).function;
+          return fn?.name !== 'search_web';
         });
-
-        if (!upstreamResponse.ok) {
-          throw new Error(parseOllamaError(await upstreamResponse.text()));
-        }
-
-        const payload = await upstreamResponse.json();
-        return context.json(payload as object);
       }
 
+      // --- Non-streaming path ---
+      if (!clientWantsStreaming) {
+        const payload = await provider.chat(
+          {
+            model: modelName,
+            messages,
+            stream: false,
+            tools: tools.length > 0 ? tools : undefined,
+          } as Parameters<typeof provider.chat>[0],
+          context.req.raw.signal,
+        );
+        return context.json(payload);
+      }
+
+      // --- Streaming path with agentic tool loop ---
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
 
@@ -199,28 +135,31 @@ export function chatRouter(dependencies: AppDependencies): Hono {
             while (iteration < maxIterations) {
               iteration++;
 
-              const upstreamResponse = await dependencies.fetchFn(`${ollamaUrl}/api/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                signal: context.req.raw.signal,
-                body: JSON.stringify({
-                  model: body.model,
-                  stream: true,
+              const upstreamResponse = await provider.chatStream(
+                {
+                  model: modelName,
                   messages: currentMessages,
+                  stream: true,
                   tools: tools.length > 0 ? tools : undefined,
-                }),
-              });
+                } as Parameters<typeof provider.chatStream>[0],
+                context.req.raw.signal,
+              );
 
               if (!upstreamResponse.ok) {
-                throw new Error(parseOllamaError(await upstreamResponse.text()));
+                const errorText = await upstreamResponse.text();
+                throw new Error(errorText);
               }
 
-              if (!upstreamResponse.body) throw new Error('No stream body from Ollama');
-              
+              if (!upstreamResponse.body) throw new Error('No stream body from provider');
+
               const reader = upstreamResponse.body.getReader();
               let isToolCall = false;
               let streamBuffer = '';
-              let assistantMessage = { role: 'assistant', content: '', tool_calls: [] as any[] };
+              let assistantMessage: {
+                role: string;
+                content: string;
+                tool_calls: Record<string, unknown>[];
+              } = { role: 'assistant', content: '', tool_calls: [] };
 
               while (true) {
                 const { done, value } = await reader.read();
@@ -267,23 +206,30 @@ export function chatRouter(dependencies: AppDependencies): Hono {
                 return;
               }
 
-              currentMessages.push(assistantMessage);
+              currentMessages.push(assistantMessage as (typeof currentMessages)[number]);
 
               for (const tc of assistantMessage.tool_calls) {
-                controller.enqueue(encoder.encode(JSON.stringify({
-                   tool_event: true,
-                   tool: tc.function.name
-                }) + '\n'));
+                controller.enqueue(
+                  encoder.encode(
+                    JSON.stringify({
+                      tool_event: true,
+                      tool: (tc as { function?: { name?: string } }).function?.name ?? 'unknown',
+                    }) + '\n',
+                  ),
+                );
 
                 try {
                   const result = await dependencies.executeTool(
-                    tc.function.name,
-                    tc.function.arguments,
-                    chatRecord?.projectRoot ?? null
+                    (tc as { function?: { name?: string } }).function?.name ?? '',
+                    (tc as { function?: { arguments?: unknown } }).function?.arguments,
+                    chatRecord?.projectRoot ?? null,
                   );
                   currentMessages.push({ role: 'tool', content: result });
                 } catch (toolErr) {
-                  currentMessages.push({ role: 'tool', content: `Error: ${toolErr instanceof Error ? toolErr.message : 'Unknown error'}` });
+                  currentMessages.push({
+                    role: 'tool',
+                    content: `Error: ${toolErr instanceof Error ? toolErr.message : 'Unknown error'}`,
+                  });
                 }
               }
             }
@@ -297,11 +243,11 @@ export function chatRouter(dependencies: AppDependencies): Hono {
             console.error('[CHAT ERROR]', err);
             try {
               controller.error(err);
-            } catch (e) {
+            } catch {
               // ignore
             }
           }
-        }
+        },
       });
 
       return new Response(stream, {

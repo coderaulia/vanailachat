@@ -3,7 +3,9 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
+import { OllamaProvider } from './services/ollamaProvider.js';
 import { ToolService } from './services/tools.js';
+import { providerRegistry } from './services/providerRegistry.js';
 import type { AppDependencies } from './types.js';
 
 import { projectsRouter } from './routes/projects.js';
@@ -12,6 +14,9 @@ import { messagesRouter } from './routes/messages.js';
 import { dataRouter } from './routes/data.js';
 import { modelsRouter } from './routes/models.js';
 import { chatRouter } from './routes/chat.js';
+
+// Register providers at startup
+providerRegistry.register(new OllamaProvider());
 
 const defaultDependencies: AppDependencies = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -52,6 +57,7 @@ const defaultDependencies: AppDependencies = {
       }
     }
   },
+  providerRegistry,
 };
 
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
@@ -66,18 +72,19 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.route('/api/projects', projectsRouter(dependencies));
   app.route('/api/chats', chatsRouter(dependencies));
   app.route('/api/messages', messagesRouter(dependencies));
-  app.route('/api', dataRouter(dependencies)); // Mounts /export, /import, /pick-directory
-  app.route('/api/models', modelsRouter(dependencies)); // Note: model-details, models, config handled here or in app.ts
-  
+  app.route('/api', dataRouter(dependencies));
+  app.route('/api/models', modelsRouter(dependencies));
+
   // Expose /api/config
   app.get('/api/config', (context) => {
     return context.json({
       apiUrl: '/api',
       ollamaUrl: dependencies.getBaseUrl(),
+      providers: dependencies.providerRegistry.list().map(p => ({ id: p.id, label: p.label })),
     });
   });
 
-  // Re-map model-details here or ensure it's in modelsRouter? Let's keep it here for exact match
+  // Model details endpoint
   app.get('/api/model-details', async (context) => {
     const model = context.req.query('model');
     if (!model) {
