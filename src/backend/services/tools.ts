@@ -146,6 +146,65 @@ export class ToolService {
         }
       },
     },
+    read_url: {
+      name: 'read_url',
+      description: 'Fetch and extract readable text from a web page URL. Use after search_web to read the full content of a result.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL to fetch and read' },
+          max_chars: { type: 'number', description: 'Max characters to return (default 8000)' },
+        },
+        required: ['url'],
+      },
+      timeoutMs: 20_000,
+      execute: async (args: unknown, _projectRoot: string | null) => {
+        const url = parseStringField(args, 'url');
+        const maxChars = parseNumberField(args, 'max_chars') ?? 8000;
+        if (!url) return 'read_url failed: missing url';
+
+        console.log(`[TOOL] Reading URL: ${url}`);
+
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; VanailaChat/1.0; +research-agent)',
+              'Accept': 'text/html,text/plain',
+            },
+          });
+
+          if (!response.ok) {
+            return `HTTP ${response.status}: ${response.statusText}`;
+          }
+
+          const contentType = response.headers.get('content-type') ?? '';
+          const text = await response.text();
+
+          // Strip HTML tags and clean up whitespace
+          let content: string;
+          if (contentType.includes('text/html')) {
+            content = text
+              .replace(/<script[\s\S]*?<\/script>/gi, '')
+              .replace(/<style[\s\S]*?<\/style>/gi, '')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&#39;/g, "'")
+              .replace(/\s{2,}/g, ' ')
+              .trim();
+          } else {
+            content = text;
+          }
+
+          return content.slice(0, maxChars);
+        } catch (error) {
+          return `read_url failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
     read_file: {
       name: 'read_file',
       description: 'Read the contents of a local file in the current project',

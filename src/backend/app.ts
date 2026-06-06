@@ -20,6 +20,7 @@ import { memoryRouter } from './routes/memory.js';
 import { settingsRouter } from './routes/settings.js';
 import { personasRouter } from './routes/personas.js';
 import { skillsRouter } from './routes/skills.js';
+import { researchRouter } from './routes/research.js';
 
 // Register providers at startup
 providerRegistry.register(new OllamaProvider());
@@ -118,6 +119,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.route('/api/settings', settingsRouter());
   app.route('/api/skills', skillsRouter());
   app.route('/api/personas', personasRouter());
+  app.route('/api/research', researchRouter(dependencies));
   app.route('/api/memory', memoryRouter(dependencies));
   app.route('/api/chat', chatRouter(dependencies));
 
