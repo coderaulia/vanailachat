@@ -126,6 +126,26 @@ export interface InsertMessageInput {
   createdAt?: number;
 }
 
+interface MemoryEntryRow {
+  id: string;
+  type: string;
+  content: string;
+  embedding: string;
+  metadata: string | null;
+  source_id: string | null;
+  created_at: number;
+}
+
+export interface MemoryEntryRecord {
+  id: string;
+  type: string;
+  content: string;
+  embedding: string;
+  metadata: string | null;
+  sourceId: string | null;
+  createdAt: number;
+}
+
 export class DatabaseService {
   private static db: Database.Database | null = null;
 
@@ -527,5 +547,63 @@ export class DatabaseService {
     ).run(message);
 
     return this.mapMessage(message);
+  }
+
+  // ─── Vector Memory ───
+
+  static getAllMemoryEntries(): MemoryEntryRecord[] {
+    const db = this.getDb();
+    const rows = db
+      .prepare('SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at DESC')
+      .all() as MemoryEntryRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      content: row.content,
+      embedding: row.embedding,
+      metadata: row.metadata,
+      sourceId: row.source_id,
+      createdAt: row.created_at,
+    }));
+  }
+
+  static upsertMemory(input: {
+    id?: string;
+    type?: string;
+    content: string;
+    embedding: string;
+    metadata?: string | null;
+    sourceId?: string | null;
+  }): MemoryEntryRecord {
+    const db = this.getDb();
+    const id = input.id ?? generateId('mem');
+    const type = input.type ?? 'conversation';
+    const createdAt = Date.now();
+
+    db.prepare(
+      `INSERT INTO memories (id, type, content, embedding, metadata, source_id, created_at)
+       VALUES (@id, @type, @content, @embedding, @metadata, @source_id, @created_at)
+       ON CONFLICT(id) DO UPDATE SET
+         type = excluded.type,
+         content = excluded.content,
+         embedding = excluded.embedding,
+         metadata = excluded.metadata,
+         source_id = excluded.source_id`
+    ).run({
+      id,
+      type,
+      content: input.content,
+      embedding: input.embedding,
+      metadata: input.metadata ?? null,
+      source_id: input.sourceId ?? null,
+      created_at: createdAt,
+    });
+
+    return { id, type, content: input.content, embedding: input.embedding, metadata: input.metadata ?? null, sourceId: input.sourceId ?? null, createdAt };
+  }
+
+  static deleteMemory(id: string): boolean {
+    const db = this.getDb();
+    return db.prepare('DELETE FROM memories WHERE id = ?').run(id).changes > 0;
   }
 }

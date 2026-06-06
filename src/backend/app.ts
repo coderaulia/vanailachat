@@ -15,6 +15,7 @@ import { messagesRouter } from './routes/messages.js';
 import { dataRouter } from './routes/data.js';
 import { modelsRouter } from './routes/models.js';
 import { chatRouter } from './routes/chat.js';
+import { memoryRouter } from './routes/memory.js';
 
 // Register providers at startup
 providerRegistry.register(new OllamaProvider());
@@ -105,6 +106,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/chat/*', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
   app.use('/api/models/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
 
+  app.route('/api/memory', memoryRouter(dependencies));
   app.route('/api/chat', chatRouter(dependencies));
 
   return app;

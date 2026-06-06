@@ -82,5 +82,24 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at ASC);
       `);
     }
+  },
+  {
+    version: 5,
+    name: 'add_memories_table',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memories (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL DEFAULT 'conversation',
+          content TEXT NOT NULL,
+          embedding TEXT NOT NULL,
+          metadata TEXT,
+          source_id TEXT,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_memories_type_created ON memories(type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
+      `);
+    }
   }
 ];

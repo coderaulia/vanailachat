@@ -59,6 +59,10 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
       }
 
+      // Inject relevant vector memories into system prompt
+      // Done here after incomingMessages is declared below
+      let memoryContextBlock = '';
+
       if (chatRecord?.projectRoot) {
         systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
         try {
@@ -77,6 +81,32 @@ export function chatRouter(dependencies: AppDependencies): Hono {
 
       // --- Build messages ---
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
+
+      // Inject relevant vector memories into system prompt
+      try {
+        const lastUserMessage = incomingMessages
+          .slice()
+          .reverse()
+          .find((m: { role: string }) => m.role === 'user');
+        if (lastUserMessage) {
+          const userText = normalizeMessageContent(lastUserMessage.content).content;
+          if (userText.trim()) {
+            const { EmbeddingService } = await import('../services/embedding.js');
+            const memories = await EmbeddingService.search(userText, 3, 0.3);
+            if (memories.length > 0) {
+              memoryContextBlock = memories
+                .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
+                .join('\n\n');
+            }
+          }
+        }
+      } catch {
+        // Embedding model unavailable — skip memory injection
+      }
+
+      if (memoryContextBlock) {
+        systemPrompt += `\n\n[Relevant Memories]\n${memoryContextBlock}`;
+      }
 
       const messages = [
         { role: 'system', content: systemPrompt },
