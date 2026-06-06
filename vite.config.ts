@@ -50,7 +50,7 @@ function backendProxyPlugin(): Plugin {
         const opts = {
           hostname: '127.0.0.1',
           port: targetPort,
-          path: req.url,
+          path: '/api' + req.url,  // req.url is stripped of the '/api' mount prefix
           method: req.method,
           headers: { ...req.headers, host: `127.0.0.1:${targetPort}` },
         };
