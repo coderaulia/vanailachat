@@ -6,6 +6,7 @@ import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
 import { ToolService } from './services/tools.js';
 import { providerRegistry } from './services/providerRegistry.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
 import type { AppDependencies } from './types.js';
 
 import { projectsRouter } from './routes/projects.js';
@@ -99,6 +100,10 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       return context.json({ error: message }, 500);
     }
   });
+
+  // Rate limiting — must be before routes
+  app.use('/api/chat/*', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
+  app.use('/api/models/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
 
   app.route('/api/chat', chatRouter(dependencies));
 
