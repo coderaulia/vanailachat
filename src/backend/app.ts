@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
+import { OpenAIProvider } from './services/openaiProvider.js';
 import { ToolService } from './services/tools.js';
 import { providerRegistry } from './services/providerRegistry.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
@@ -16,9 +17,17 @@ import { dataRouter } from './routes/data.js';
 import { modelsRouter } from './routes/models.js';
 import { chatRouter } from './routes/chat.js';
 import { memoryRouter } from './routes/memory.js';
+import { settingsRouter } from './routes/settings.js';
+import { personasRouter } from './routes/personas.js';
+import { skillsRouter } from './routes/skills.js';
 
 // Register providers at startup
 providerRegistry.register(new OllamaProvider());
+try {
+  providerRegistry.register(new OpenAIProvider());
+} catch {
+  // Ignore
+}
 
 const defaultDependencies: AppDependencies = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -106,6 +115,9 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/chat/*', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
   app.use('/api/models/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
 
+  app.route('/api/settings', settingsRouter());
+  app.route('/api/skills', skillsRouter());
+  app.route('/api/personas', personasRouter());
   app.route('/api/memory', memoryRouter(dependencies));
   app.route('/api/chat', chatRouter(dependencies));
 

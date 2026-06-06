@@ -146,6 +146,47 @@ export interface MemoryEntryRecord {
   createdAt: number;
 }
 
+export interface SkillRecord {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  sourceUrl: string | null;
+  enabled: boolean;
+  installedAt: number;
+}
+
+export interface UpsertSkillInput {
+  id?: string;
+  name: string;
+  description: string;
+  content: string;
+  sourceUrl?: string | null;
+  enabled?: boolean;
+}
+
+interface SkillRow {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  source_url: string | null;
+  enabled: number;
+  installed_at: number;
+}
+
+function mapSkill(row: SkillRow): SkillRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    content: row.content,
+    sourceUrl: row.source_url,
+    enabled: row.enabled === 1,
+    installedAt: row.installed_at,
+  };
+}
+
 export class DatabaseService {
   private static db: Database.Database | null = null;
 
@@ -605,5 +646,99 @@ export class DatabaseService {
   static deleteMemory(id: string): boolean {
     const db = this.getDb();
     return db.prepare('DELETE FROM memories WHERE id = ?').run(id).changes > 0;
+  }
+
+  // ─── Settings ───
+
+  static getAllSettings(): Record<string, string> {
+    const db = this.getDb();
+    const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
+    const result: Record<string, string> = {};
+    for (const row of rows) result[row.key] = row.value;
+    return result;
+  }
+
+  static getSetting(key: string): string | null {
+    const db = this.getDb();
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  static upsertSetting(key: string, value: string): void {
+    const db = this.getDb();
+    db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (@key, @value, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).run({ key, value, updated_at: Date.now() });
+  }
+
+  // ─── Skills ───
+
+  static listSkills(): SkillRecord[] {
+    const db = this.getDb();
+    const rows = db
+      .prepare('SELECT id, name, description, content, source_url, enabled, installed_at FROM skills ORDER BY name ASC')
+      .all() as SkillRow[];
+    return rows.map(mapSkill);
+  }
+
+  static getSkill(id: string): SkillRecord | null {
+    const db = this.getDb();
+    const row = db
+      .prepare('SELECT id, name, description, content, source_url, enabled, installed_at FROM skills WHERE id = ?')
+      .get(id) as SkillRow | undefined;
+    return row ? mapSkill(row) : null;
+  }
+
+  static getSkillByName(name: string): SkillRecord | null {
+    const db = this.getDb();
+    const row = db
+      .prepare('SELECT id, name, description, content, source_url, enabled, installed_at FROM skills WHERE name = ?')
+      .get(name) as SkillRow | undefined;
+    return row ? mapSkill(row) : null;
+  }
+
+  static upsertSkill(input: UpsertSkillInput): SkillRecord {
+    const db = this.getDb();
+    const id = input.id ?? generateId('skill');
+    db.prepare(
+      `INSERT INTO skills (id, name, description, content, source_url, enabled, installed_at)
+       VALUES (@id, @name, @description, @content, @source_url, @enabled, @installed_at)
+       ON CONFLICT(name) DO UPDATE SET
+         description = excluded.description,
+         content = excluded.content,
+         source_url = excluded.source_url,
+         enabled = excluded.enabled`
+    ).run({
+      id,
+      name: input.name,
+      description: input.description,
+      content: input.content,
+      source_url: input.sourceUrl ?? null,
+      enabled: input.enabled !== false ? 1 : 0,
+      installed_at: Date.now(),
+    });
+    const saved = this.getSkillByName(input.name);
+    if (!saved) throw new Error('Failed to save skill');
+    return saved;
+  }
+
+  static setSkillEnabled(id: string, enabled: boolean): boolean {
+    const db = this.getDb();
+    const result = db.prepare('UPDATE skills SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+    return result.changes > 0;
+  }
+
+  static deleteSkill(id: string): boolean {
+    const db = this.getDb();
+    return db.prepare('DELETE FROM skills WHERE id = ?').run(id).changes > 0;
+  }
+
+  static listEnabledSkills(): SkillRecord[] {
+    const db = this.getDb();
+    const rows = db
+      .prepare('SELECT id, name, description, content, source_url, enabled, installed_at FROM skills WHERE enabled = 1 ORDER BY name ASC')
+      .all() as SkillRow[];
+    return rows.map(mapSkill);
   }
 }

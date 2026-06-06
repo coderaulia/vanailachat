@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppDependencies, ChatRequestBody } from '../types.js';
 import { normalizeMessageContent } from '../helpers/index.js';
 import { ProviderRegistry } from '../services/providerRegistry.js';
+import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
 
 export function chatRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
@@ -79,7 +80,27 @@ export function chatRouter(dependencies: AppDependencies): Hono {
 
       systemPrompt += '\n\nYou can also read local project files using read_file.';
 
-      // --- Build messages ---
+      // --- Inject enabled Skills ---
+      try {
+        const { DatabaseService } = await import('../services/database.js');
+        const enabledSkills = DatabaseService.listEnabledSkills();
+        if (enabledSkills.length > 0) {
+          for (const skill of enabledSkills) {
+            systemPrompt += `\n\n[Skill: ${skill.name}]\n${skill.content}`;
+          }
+        }
+      } catch {
+        // DB unavailable — skip skill injection
+      }
+
+      // --- Inject Persona (Coder / Creator / General) ---
+      const personaId = (body as Record<string, unknown>).persona as string | undefined;
+      const personaPrompt = getPersonaSystemPrompt(personaId);
+      if (personaPrompt) {
+        systemPrompt += `\n\n${personaPrompt}`;
+      }
+      const personaToolAllowlist = getPersonaToolAllowlist(personaId);
+
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
 
       // Inject relevant vector memories into system prompt
@@ -130,11 +151,20 @@ export function chatRouter(dependencies: AppDependencies): Hono {
       let tools = dependencies.getToolDefinitions() as Record<string, unknown>[];
       if (!supportsTools) {
         tools = [];
-      } else if (!body.search) {
-        tools = tools.filter((t) => {
-          const fn = (t as { function?: { name?: string } }).function;
-          return fn?.name !== 'search_web';
-        });
+      } else {
+        // Persona tool allowlist (empty/null = all tools allowed)
+        if (personaToolAllowlist && personaToolAllowlist.length > 0) {
+          tools = tools.filter((t) => {
+            const fn = (t as { function?: { name?: string } }).function;
+            return personaToolAllowlist.includes(fn?.name ?? '');
+          });
+        }
+        if (!body.search) {
+          tools = tools.filter((t) => {
+            const fn = (t as { function?: { name?: string } }).function;
+            return fn?.name !== 'search_web';
+          });
+        }
       }
 
       // --- Non-streaming path ---

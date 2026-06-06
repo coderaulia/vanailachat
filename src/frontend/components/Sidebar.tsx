@@ -5,6 +5,7 @@ import type { Chat } from '../types/chat';
 import './Sidebar.css';
 
 import { useChat } from '../context/ChatContext';
+import { Skills } from './Skills';
 
 export function Sidebar() {
   const {
@@ -42,6 +43,7 @@ export function Sidebar() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const beginRename = (event: MouseEvent, chatId: string, title: string) => {
@@ -201,6 +203,34 @@ export function Sidebar() {
                 New Chat
               </button>
             </div>
+          </div>
+
+          <div className="sidebar-section sidebar-section--skills">
+            <button
+              type="button"
+              className={`skills-accordion-toggle ${isSkillsOpen ? 'is-open' : ''}`}
+              aria-expanded={isSkillsOpen}
+              onClick={() => setIsSkillsOpen((v) => !v)}
+            >
+              <span className="skills-accordion-toggle__label">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                Agent Skills
+              </span>
+              <svg
+                className="skills-accordion-toggle__chevron"
+                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {isSkillsOpen && (
+              <div className="skills-accordion-body">
+                <Skills />
+              </div>
+            )}
           </div>
 
           <div className="sidebar-section">

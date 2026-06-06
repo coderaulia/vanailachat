@@ -101,5 +101,36 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
       `);
     }
+  },
+  {
+    version: 6,
+    name: 'add_settings_table',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    }
+  },
+  {
+    version: 7,
+    name: 'add_skills_table',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS skills (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          description TEXT NOT NULL,
+          content TEXT NOT NULL,
+          source_url TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          installed_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_skills_enabled ON skills(enabled);
+      `);
+    }
   }
 ];

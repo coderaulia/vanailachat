@@ -1,0 +1,332 @@
+/* ── Skills Panel ─────────────────────────────────────────── */
+
+.skills-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0 1rem;
+}
+
+.skills-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.25rem 0.25rem;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.08));
+}
+
+.skills-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.skills-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+  margin-top: 0.1rem;
+}
+
+.skills-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-text-primary, #f0f0f0);
+  margin: 0 0 0.125rem;
+}
+
+.skills-subtitle {
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #888);
+  margin: 0;
+}
+
+.skills-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  background: var(--color-accent, #7c6aff);
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ── Sections ─────────────────────────────────────────────── */
+
+.skills-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.skills-section-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #888);
+  margin: 0 0 0.25rem;
+  padding: 0 0.25rem;
+}
+
+/* ── Skill List ───────────────────────────────────────────── */
+
+.skills-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* ── Skill Item ───────────────────────────────────────────── */
+
+.skill-item {
+  border-radius: 8px;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  background: var(--color-surface-2, rgba(255,255,255,0.04));
+  transition: border-color 0.15s, background 0.15s;
+  overflow: hidden;
+}
+
+.skill-item.is-enabled {
+  border-color: rgba(124, 106, 255, 0.3);
+  background: rgba(124, 106, 255, 0.06);
+}
+
+.skill-item--available {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.skill-item--available:hover {
+  opacity: 1;
+  background: var(--color-surface-2, rgba(255,255,255,0.06));
+}
+
+.skill-item__main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+}
+
+.skill-item__emoji {
+  font-size: 1rem;
+  flex-shrink: 0;
+  width: 1.25rem;
+  text-align: center;
+}
+
+.skill-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.skill-item__name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #f0f0f0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skill-item__cat {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #888);
+}
+
+.skill-item__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.skill-item__desc {
+  font-size: 0.7125rem;
+  color: var(--color-text-secondary, #bbb);
+  line-height: 1.5;
+  padding: 0 0.625rem 0.625rem 2.375rem;
+  margin: 0;
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.06));
+}
+
+.skill-item__info-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted, #888);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.skill-item__info-btn:hover {
+  color: var(--color-text-primary, #f0f0f0);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ── Toggle switch ────────────────────────────────────────── */
+
+.skill-toggle {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.skill-toggle--on {
+  background: var(--color-accent, #7c6aff);
+}
+
+.skill-toggle--off {
+  background: var(--color-border, rgba(255,255,255,0.15));
+}
+
+.skill-toggle__knob {
+  position: absolute;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+  pointer-events: none;
+}
+
+.skill-toggle--on .skill-toggle__knob  { left: 14px; }
+.skill-toggle--off .skill-toggle__knob { left: 2px; }
+
+/* ── Install button ───────────────────────────────────────── */
+
+.skill-install-btn {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 100px;
+  border: 1px solid var(--color-accent, #7c6aff);
+  color: var(--color-accent, #7c6aff);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 56px;
+  justify-content: center;
+}
+
+.skill-install-btn:hover:not(:disabled) {
+  background: var(--color-accent, #7c6aff);
+  color: #fff;
+}
+
+.skill-install-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Uninstall ────────────────────────────────────────────── */
+
+.skill-uninstall {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted, #888);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  border-radius: 3px;
+  transition: color 0.1s;
+}
+
+.skill-uninstall:hover {
+  color: #ff6b6b;
+}
+
+/* ── States ───────────────────────────────────────────────── */
+
+.skills-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #888);
+  padding: 0.75rem 0.25rem;
+}
+
+.skills-empty {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #888);
+  text-align: center;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+.skills-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: rgba(255, 80, 80, 0.1);
+  border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 6px;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.7125rem;
+  color: #ff8080;
+}
+
+.skills-error button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ff8080;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* ── Spinner ──────────────────────────────────────────────── */
+
+.skills-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--color-accent, #7c6aff);
+  border-radius: 50%;
+  animation: skills-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.skills-spinner--sm {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+@keyframes skills-spin {
+  to { transform: rotate(360deg); }
+}
