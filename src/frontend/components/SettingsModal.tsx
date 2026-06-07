@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './SettingsModal.css';
 
 interface AllSettings {
@@ -11,7 +11,17 @@ interface AllSettings {
   onboarding_done?: string;
 }
 
-type Tab = 'ai' | 'profile' | 'memory' | 'about';
+interface MemoryEntry {
+  id: string;
+  type: string;
+  content: string;
+  embedding: string;
+  metadata: string | null;
+  sourceId: string | null;
+  createdAt: number;
+}
+
+type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'about';
 type LlmMode = 'ollama' | 'openai' | 'openrouter';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
@@ -40,8 +50,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
 
-  // Memory
+  // Instructions
   const [baseInstructions, setBaseInstructions] = useState('');
+
+  // Memories
+  const [memories, setMemories] = useState<MemoryEntry[]>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [memoriesDeleting, setMemoriesDeleting] = useState<string | null>(null);
+  const memoriesFetched = useRef(false);
 
   const flash = (label: string) => {
     setSaved(label);
@@ -74,6 +90,43 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       .catch(() => {/* best-effort */})
       .finally(() => setLoading(false));
   }, []);
+
+  // Fetch memories when tab opens
+  useEffect(() => {
+    if (activeTab !== 'memories' || memoriesFetched.current) return;
+    setMemoriesLoading(true);
+    fetch('/api/memory')
+      .then((r) => r.json())
+      .then((data: { memories: MemoryEntry[] }) => setMemories(data.memories ?? []))
+      .catch(() => {})
+      .finally(() => {
+        setMemoriesLoading(false);
+        memoriesFetched.current = true;
+      });
+  }, [activeTab]);
+
+  const refreshMemories = async () => {
+    setMemoriesLoading(true);
+    try {
+      const r = await fetch('/api/memory');
+      const data = (await r.json()) as { memories: MemoryEntry[] };
+      setMemories(data.memories ?? []);
+    } catch {
+      // best-effort
+    }
+    setMemoriesLoading(false);
+  };
+
+  const deleteMemory = async (id: string) => {
+    setMemoriesDeleting(id);
+    try {
+      await fetch(`/api/memory/${id}`, { method: 'DELETE' });
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+    } catch {
+      // best-effort
+    }
+    setMemoriesDeleting(null);
+  };
 
   // Close on Escape
   useEffect(() => {
@@ -130,10 +183,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'ai',      label: 'AI Connection',  icon: '🧠' },
-    { id: 'profile', label: 'Profile',         icon: '🪪' },
-    { id: 'memory',  label: 'Instructions',    icon: '🗂️' },
-    { id: 'about',   label: 'About',           icon: '⚙️' },
+    { id: 'ai',           label: 'AI Connection',  icon: '🧠' },
+    { id: 'profile',      label: 'Profile',         icon: '🪪' },
+    { id: 'instructions', label: 'Instructions',    icon: '📋' },
+    { id: 'memories',     label: 'Memories',        icon: '🧩' },
+    { id: 'about',        label: 'About',           icon: '⚙️' },
   ];
 
   return (
@@ -291,8 +345,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
-              {/* ── Memory & Instructions ── */}
-              {activeTab === 'memory' && (
+              {/* ── Instructions ── */}
+              {activeTab === 'instructions' && (
                 <div className="settings-section">
                   <div className="settings-field">
                     <label className="settings-label">
@@ -308,6 +362,77 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     />
                     <p className="settings-hint">These instructions are injected into every conversation as system context.</p>
                   </div>
+                </div>
+              )}
+
+              {/* ── Memories ── */}
+              {activeTab === 'memories' && (
+                <div className="settings-section">
+                  <p className="settings-hint" style={{ marginBottom: 12 }}>
+                    Vector memories are automatically extracted from your conversations. They are used to give the AI context about you across different chats.
+                  </p>
+
+                  <div className="memories-header">
+                    <span className="memories-count">
+                      {memories.length} {memories.length === 1 ? 'memory' : 'memories'} stored
+                    </span>
+                    <button
+                      type="button"
+                      className="settings-refresh-btn"
+                      onClick={refreshMemories}
+                      disabled={memoriesLoading}
+                    >
+                      {memoriesLoading ? '⏳ Refreshing…' : '🔄 Refresh'}
+                    </button>
+                  </div>
+
+                  {memoriesLoading && memories.length === 0 ? (
+                    <div className="memories-empty">
+                      <span className="memories-empty-icon">🧩</span>
+                      <p className="memories-empty-title">No memories yet</p>
+                      <p className="memories-empty-hint">
+                        Memories are created automatically as you chat. You can also manually add them via the API.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="memories-list">
+                      {memories.map((m) => (
+                        <div key={m.id} className="memories-item">
+                          <div className="memories-item__meta">
+                            <span className={`memories-type-badge memories-type--${m.type}`}>{m.type}</span>
+                            <span className="memories-date">
+                              {new Date(m.createdAt).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          <p className="memories-item__content">{m.content.slice(0, 300)}{m.content.length > 300 ? '…' : ''}</p>
+                          <button
+                            type="button"
+                            className="memories-delete-btn"
+                            onClick={() => deleteMemory(m.id)}
+                            disabled={memoriesDeleting === m.id}
+                            title="Delete memory"
+                          >
+                            {memoriesDeleting === m.id ? '⏳' : '🗑️'}
+                          </button>
+                        </div>
+                      ))}
+
+                      {memories.length === 0 && !memoriesLoading && (
+                        <div className="memories-empty">
+                          <span className="memories-empty-icon">🧩</span>
+                          <p className="memories-empty-title">No memories yet</p>
+                          <p className="memories-empty-hint">
+                            Memories are created automatically as you chat.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

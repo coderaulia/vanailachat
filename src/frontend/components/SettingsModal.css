@@ -311,6 +311,169 @@
 .settings-danger-btn:hover {
   background: rgba(239, 68, 68, 0.15);
 }
+/* Memories tab */
+.memories-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.memories-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.settings-refresh-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-refresh-btn:hover:not(:disabled) {
+  border-color: var(--bg-accent);
+}
+
+.settings-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.memories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.memories-item {
+  position: relative;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-strong);
+  transition: all 0.15s ease;
+}
+
+.memories-item:hover {
+  border-color: var(--border-medium);
+}
+
+.memories-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.memories-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  letter-spacing: 0.04em;
+}
+
+.memories-type--conversation {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.memories-type--manual {
+  background: rgba(168, 85, 247, 0.12);
+  color: #a855f7;
+}
+
+[data-theme="dark"] .memories-type--conversation {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="dark"] .memories-type--manual {
+  background: rgba(168, 85, 247, 0.18);
+}
+
+.memories-date {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.memories-item__content {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin: 0;
+  padding-right: 32px;
+}
+
+.memories-delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.memories-item:hover .memories-delete-btn {
+  opacity: 0.6;
+}
+
+.memories-item:hover .memories-delete-btn:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.memories-delete-btn:disabled {
+  opacity: 0.3 !important;
+  cursor: wait;
+}
+
+.memories-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.memories-empty-icon {
+  font-size: 36px;
+  opacity: 0.6;
+}
+
+.memories-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.memories-empty-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 320px;
+}
 
 /* Animations */
 @keyframes settingsFadeIn {

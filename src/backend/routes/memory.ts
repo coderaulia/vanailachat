@@ -6,6 +6,12 @@ import { DatabaseService } from '../services/database.js';
 export function memoryRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
+  /** List all stored memories */
+  app.get('/', (context) => {
+    const entries = DatabaseService.getAllMemoryEntries();
+    return context.json({ memories: entries, count: entries.length });
+  });
+
   /** Search memories by semantic similarity */
   app.get('/search', async (context) => {
     const query = context.req.query('q');
