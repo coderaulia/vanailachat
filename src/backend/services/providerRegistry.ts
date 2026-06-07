@@ -84,7 +84,7 @@ export class ProviderRegistry {
       try {
         const models = await provider.listModels();
         for (const model of models) {
-          results.push({ name: `openai:${model}`, provider: id, metadata: {} });
+          results.push({ name: `${id}:${model}`, provider: id, metadata: {} });
         }
       } catch {
         // Provider unavailable — skip

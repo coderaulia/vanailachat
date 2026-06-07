@@ -80,11 +80,10 @@ export function ModelSelector({
           <div className="model-selector__list">
             {availableModels.length === 0 && (
               <div className="model-selector__empty">
-                <span className="model-selector__empty-icon">🦙</span>
-                <p className="model-selector__empty-title">No models installed</p>
+                <span className="model-selector__empty-icon">🤖</span>
+                <p className="model-selector__empty-title">No models available</p>
                 <p className="model-selector__empty-hint">
-                  Run <code>ollama pull &lt;model&gt;</code> to get started.
-                  Try <code>ollama pull llama3.2</code>
+                  Connect a provider in Settings, or run <code>ollama pull llama3.2</code> for local models.
                 </p>
               </div>
             )}
