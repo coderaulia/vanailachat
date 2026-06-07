@@ -75,6 +75,10 @@ async function buildRenderer(): Promise<MarkdownRenderFn> {
   hljs.registerLanguage('markdown', markdownModule.default);
 
   const renderer = new marked.Renderer();
+  renderer.link = ({ href, title, text }) => {
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    return `<a href="${escapeHtml(href || '')}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+  };
   renderer.code = ({ text, lang }) => {
     const normalizedLanguage = normalizeLanguage(lang || '');
     const isKnownLanguage = normalizedLanguage.length > 0 && hljs.getLanguage(normalizedLanguage);
@@ -102,7 +106,7 @@ async function buildRenderer(): Promise<MarkdownRenderFn> {
 
   return (content: string) => {
     const rendered = marked.parse(content) as string;
-    return DOMPurify.sanitize(rendered);
+    return DOMPurify.sanitize(rendered, { ADD_ATTR: ['target'] });
   };
 }
 

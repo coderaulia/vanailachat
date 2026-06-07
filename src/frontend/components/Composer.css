@@ -305,8 +305,8 @@
   padding: 0 12px;
   height: 36px;
   border: 1px solid var(--border-strong);
-  border-radius: 18px;
-  background: #fffdfa;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
 }
 
 .context-status__text {

@@ -1,6 +1,6 @@
 # VanailaChat
 
-A modern, production-grade local AI chat interface built with **React 19**, **Hono**, and **SQLite**. Supports local models via Ollama and cloud providers (OpenAI, OpenRouter) — all from a single self-hosted UI with a premium glassmorphic design.
+A modern, production-grade local AI chat interface built with **React 19**, **Hono**, and **SQLite**. Supports local models via Ollama and cloud providers (OpenAI, OpenRouter, 9Router) — all from a single self-hosted UI with a premium glassmorphic design.
 
 ---
 
@@ -10,6 +10,7 @@ A modern, production-grade local AI chat interface built with **React 19**, **Ho
 - **Ollama** (local) — auto-starts the daemon, lists installed models
 - **OpenAI** — GPT-4o, GPT-4, o1, etc. via API key
 - **OpenRouter** — 100+ models (Claude, Gemini, Mixtral, Llama…) via API key
+- **9Router** — OpenAI-compatible proxy routing to 40+ AI providers; configurable host + API key stored in settings DB
 - **Provider badges** — model picker shows which provider each model is from
 - **LLM Provider Abstraction** — unified `LLMProvider` interface; swap backends without touching chat logic
 
@@ -23,13 +24,21 @@ A modern, production-grade local AI chat interface built with **React 19**, **Ho
 Each persona injects a specialized system prompt and restricts the tool set accordingly.
 
 ### 🛠 Agentic Tool System
-- **Agent loop** — iterative tool execution mid-stream with deduplication and max-iteration cap
+- **Agent loop** — iterative tool execution mid-stream with deduplication and max-iteration cap (7)
 - **Web Search** (`search_web`) — DuckDuckGo integration, toggle per-session
 - **Read URL** (`read_url`) — fetch and extract text from any web page
 - **Read File** (`read_file`) — read local project files, path-traversal safe
 - **List Directory** (`list_directory`) — browse project trees up to configurable depth
 - **Run Command** (`run_command`) — sandboxed shell commands (git log/status, npm test/lint)
 - All tools: 30s timeout, dedup, rich `tool_event` stream events to frontend
+
+### 🎓 Agent Skills
+- **Skill catalog** — curated list from `anthropics/skills` GitHub repo (frontend-design, canvas-design, algorithmic-art, brand-guidelines, claude-api, skill-creator, and more)
+- **Install/uninstall** — fetches `SKILL.md` from GitHub, parses YAML frontmatter, caches content in SQLite
+- **Custom skills** — paste raw `SKILL.md` content to install any custom skill
+- **Enable/disable** — toggle per skill without uninstalling
+- **System prompt injection** — all enabled skills are injected as `[Skill: name]` blocks into every chat system prompt automatically
+- **Sidebar panel** — manage installed skills from the left sidebar
 
 ### 🔬 Deep Research Pipeline
 POST `/api/research` streams a multi-stage research workflow:
@@ -42,13 +51,13 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 ### 🧬 Semantic Memory
 - **Vector memory** — embeddings via Ollama `nomic-embed-text`, stored in SQLite
 - **Auto-injection** — relevant memories injected into every system prompt automatically
+- **Memories tab** — manage stored memories from the Settings modal
 - **API** — `/api/memory` for search, store, delete, and index past chats
 
 ### 📁 Projects & Workspaces
 - **Multi-project** — organize chats into named projects with custom instructions and shared memory
 - **Project root** — bind a filesystem path for Coder mode (auto-lists directory structure)
 - **System prompt** — per-chat popover, saved to SQLite and restored on reload
-- **Skills** — reusable prompt templates and tool sequences
 
 ### 💬 Conversation
 - **Streaming** — NDJSON token-by-token rendering with typing cursor
@@ -73,9 +82,9 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 
 ### 🗄 Backend & Data
 - **Rate limiting** — 20 req/min on `/api/chat`, 60 req/min on `/api/models`
-- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v6), safe upgrades from any state
+- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v7), safe upgrades from any state
 - **Export/Import** — full workspace backup and restore as JSON
-- **Settings API** — `/api/settings` key-value store for user preferences and onboarding state
+- **Settings API** — `/api/settings` key-value store for user preferences, API keys, and onboarding state
 
 ---
 
@@ -85,9 +94,9 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 |-------|------------|
 | Frontend | React 19, Vite, TypeScript, Vanilla CSS |
 | Backend | Hono (Node.js), TypeScript |
-| Database | SQLite (`better-sqlite3`), 6 versioned migrations |
+| Database | SQLite (`better-sqlite3`), 7 versioned migrations |
 | Local AI | Ollama daemon (auto-started) |
-| Cloud AI | OpenAI-compatible API (OpenAI, OpenRouter) |
+| Cloud AI | OpenAI-compatible API (OpenAI, OpenRouter, 9Router) |
 | Search | DuckDuckGo (`duck-duck-scrape`) |
 | Embeddings | Ollama `nomic-embed-text` (768-dim, cosine similarity) |
 
@@ -102,12 +111,12 @@ src/
 │   ├── middleware/
 │   │   └── rateLimiter.ts        # Sliding-window rate limiter
 │   ├── routes/
-│   │   ├── chat.ts               # POST /api/chat — agent loop + tool execution
+│   │   ├── chat.ts               # POST /api/chat — agent loop + tool execution + skill injection
 │   │   ├── research.ts           # POST /api/research — deep research pipeline
 │   │   ├── memory.ts             # /api/memory — vector memory CRUD + search
 │   │   ├── personas.ts           # /api/personas — list + get personas
 │   │   ├── settings.ts           # /api/settings — key-value settings store
-│   │   ├── skills.ts             # /api/skills — reusable prompt templates
+│   │   ├── skills.ts             # /api/skills — catalog, install, enable/disable, custom
 │   │   ├── models.ts             # /api/models — multi-provider model list
 │   │   ├── projects.ts           # /api/projects CRUD
 │   │   ├── chats.ts              # /api/chats CRUD
@@ -117,26 +126,29 @@ src/
 │       ├── provider.ts           # LLMProvider interface + types
 │       ├── ollamaProvider.ts     # Ollama implementation
 │       ├── openaiProvider.ts     # OpenAI-compatible implementation
+│       ├── nineRouterProvider.ts # 9Router implementation (40+ provider proxy)
 │       ├── providerRegistry.ts   # Provider routing by model prefix
 │       ├── streamAdapter.ts      # OpenAI SSE → Ollama NDJSON converter
 │       ├── embedding.ts          # EmbeddingService (nomic-embed-text)
 │       ├── personas.ts           # Persona definitions + system prompts
-│       ├── tools.ts              # Tool registry + execution (4 built-in + read_url)
+│       ├── tools.ts              # Tool registry + execution (5 built-in + search_web)
 │       ├── toolInterface.ts      # Tool / ToolSchema interfaces
-│       ├── database.ts           # SQLite + all table CRUD
-│       ├── migrations.ts         # Schema migrations v1–v6
+│       ├── database.ts           # SQLite + all table CRUD (incl. skills)
+│       ├── migrations.ts         # Schema migrations v1–v7
 │       └── ollama.ts             # Ollama daemon management
 └── frontend/
     ├── App.tsx                   # Shell + onboarding wizard mount
     ├── context/ChatContext.tsx   # Single React Context
     ├── components/
     │   ├── OnboardingWizard      # First-run setup wizard
-    │   ├── Sidebar               # Chat history, projects, skills
+    │   ├── Sidebar               # Chat history, projects, skills panel
     │   ├── ChatHeader            # Model info, thinking timer, tokens
     │   ├── ChatLog               # Message renderer + tool events
     │   ├── Composer              # Input, persona selector, model selector
     │   ├── ModelSelector         # Provider-grouped model dropdown
-    │   └── ProjectDetail         # Project settings panel
+    │   ├── ProjectDetail         # Project settings panel
+    │   ├── Skills                # Agent skills catalog + management UI
+    │   └── SettingsModal         # Settings + Memories tab
     └── hooks/
         ├── useChatApp.ts         # Root hook — assembles all sub-hooks
         ├── useChatSession.ts     # Streaming, abort, send, conversation state
@@ -159,7 +171,7 @@ src/
 | npm | ≥ 9 | Included with Node.js |
 | Ollama | latest | [ollama.com](https://ollama.com) — for local models |
 
-> **Cloud-only users**: If you only use OpenAI or OpenRouter, Ollama is optional. The app will start without it.
+> **Cloud-only users**: If you only use OpenAI, OpenRouter, or 9Router, Ollama is optional. The app will start without it.
 
 ---
 
@@ -186,6 +198,9 @@ export OPENAI_API_KEY=sk-...           # OpenAI
 # OR for OpenRouter:
 export OPENAI_API_KEY=sk-or-...
 export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+# OR for 9Router:
+export NINE_ROUTER_API_KEY=...
+export NINE_ROUTER_BASE_URL=http://localhost:20128/v1
 
 # 6. Start
 npm run dev
@@ -301,13 +316,21 @@ npm run dev
 | `PORT` | random (49152–65535) | Force a specific backend port |
 | `OPENAI_API_KEY` | — | API key for OpenAI or OpenRouter |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for OpenRouter or other OpenAI-compatible APIs |
+| `NINE_ROUTER_API_KEY` | — | API key for 9Router (also configurable via Settings UI) |
+| `NINE_ROUTER_BASE_URL` | `http://localhost:20128/v1` | 9Router host (also configurable via Settings UI) |
 
-> You can also configure these in the **first-run onboarding wizard** — no env vars needed for basic use.
+> You can also configure API keys and hosts in the **first-run onboarding wizard** or **Settings modal** — no env vars needed for basic use.
 
 **OpenRouter example:**
 ```bash
 export OPENAI_API_KEY=sk-or-v1-...
 export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
+**9Router example:**
+```bash
+export NINE_ROUTER_API_KEY=your-key
+export NINE_ROUTER_BASE_URL=http://localhost:20128/v1
 ```
 
 ---
@@ -316,12 +339,36 @@ export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 
 On first launch, a setup wizard guides you through:
 
-1. **LLM Setup** — choose Ollama (local), OpenAI, or OpenRouter and enter credentials
+1. **LLM Setup** — choose Ollama (local), OpenAI, OpenRouter, or 9Router and enter credentials
 2. **Profile** — optional name and role (personalizes AI responses)
 3. **Memory & Instructions** — base instructions injected into every conversation
 4. **Done** — tips on using personas, web search, and memory
 
 Settings are saved to the SQLite `settings` table and cached in `localStorage`. To re-run the wizard, clear `localStorage` key `vanaila_onboarding_done` in browser DevTools.
+
+---
+
+## Agent Skills
+
+Skills inject specialized instructions into every chat's system prompt, extending what the AI can do without changing its model.
+
+**Install a skill** from the sidebar → Agent Skills → catalog, or paste a custom `SKILL.md`:
+
+```
+SKILL.md format:
+---
+name: my-skill
+description: What this skill does
+---
+Skill body content injected into system prompt...
+```
+
+**How injection works**: at request time, all enabled skills are appended as `[Skill: name]\n{content}` blocks in the system prompt — before the user's messages reach the LLM.
+
+**Built-in catalog** (fetched from `anthropics/skills` on GitHub):
+- `frontend-design`, `canvas-design`, `algorithmic-art`, `brand-guidelines`
+- `claude-api`, `skill-creator`, `mcp-builder`, `theme-factory`
+- `doc-coauthoring`, `internal-comms`, `web-artifacts-builder`, `webapp-testing`
 
 ---
 
@@ -331,6 +378,7 @@ Once your API key is configured (via onboarding or env var), cloud models appear
 
 - **OpenAI models** — prefixed as `openai:gpt-4o`, `openai:o1`, etc.
 - **OpenRouter models** — same prefix convention, routed to `openrouter.ai`
+- **9Router models** — prefixed as `9router:model-name`, routed to your 9Router instance
 
 The provider registry automatically routes requests based on the model prefix.
 
@@ -396,6 +444,9 @@ Memory features degrade gracefully — chat still works without it.
 
 **Models not appearing after adding API key**
 Click the refresh button (↺) in the model picker, or restart the backend.
+
+**9Router models not appearing**
+Verify your API key and host are set in Settings → Provider Keys, or via `NINE_ROUTER_API_KEY` env var. The provider only lists models when a valid key is present.
 
 **Windows: folder picker not working**
 Type the path manually in the "Project Root" field in Coder mode. The native picker requires `zenity`/`kdialog` (Linux/macOS only).

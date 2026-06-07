@@ -50,16 +50,16 @@
 
 .message__content {
   font-family: var(--font-serif);
-  font-size: 17px;
-  line-height: 1.6;
-  color: var(--text-main);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .message--assistant .message__content {
   background: var(--bg-surface-strong);
-  padding: 24px;
+  padding: 18px;
   border-radius: var(--radius-lg);
   max-width: 90%;
 }
@@ -67,12 +67,12 @@
 .message--user .message__content {
   padding: 12px 20px;
   background: var(--bg-accent-soft);
-  color: var(--text-main);
+  color: var(--text-primary);
   border-radius: var(--radius-lg);
   margin-left: auto;
   max-width: 80%;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .chat-container {
@@ -87,10 +87,10 @@
   height: 100%;
   min-height: 0;
   overflow-y: auto;
-  padding: 40px 0;
+  padding: 24px 0;
   display: grid;
   align-content: start;
-  gap: 32px;
+  gap: 20px;
   justify-items: center;
 }
 
@@ -104,11 +104,11 @@
 
 .message {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   max-width: 840px;
-  padding: 24px 32px;
-  border-radius: 32px;
+  padding: 18px 24px;
+  border-radius: 24px;
   border: 1px solid var(--border-soft);
   background: var(--bg-glass);
   backdrop-filter: blur(10px);
@@ -209,16 +209,16 @@
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.65;
 }
 
 .message__prose {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   color: var(--text-primary);
-  font-size: 15px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.65;
 }
 
 .message__prose>* {
@@ -230,21 +230,22 @@
 .message__prose h2,
 .message__prose h3 {
   font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.08;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
   text-wrap: balance;
 }
 
 .message__prose h1 {
-  font-size: 28px;
+  font-size: 20px;
 }
 
 .message__prose h2 {
-  font-size: 23px;
+  font-size: 16px;
 }
 
 .message__prose h3 {
-  font-size: 18px;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 .message__prose p,
@@ -263,7 +264,7 @@
 
 .message__prose blockquote {
   padding-left: 14px;
-  border-left: 3px solid rgba(201, 111, 59, 0.4);
+  border-left: 3px solid rgba(var(--accent-rgb), 0.4);
   color: var(--text-secondary);
 }
 

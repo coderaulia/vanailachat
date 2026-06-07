@@ -148,7 +148,7 @@
 }
 
 .sidebar-search:focus-within {
-  border-color: rgba(201, 111, 59, 0.4);
+  border-color: rgba(var(--accent-rgb), 0.4);
 }
 
 .sidebar-search__icon {
@@ -205,6 +205,8 @@
   background: rgba(255, 255, 255, 0.04);
   width: 36px;
   height: 36px;
+  min-height: 36px;
+  border-radius: var(--radius-full);
   padding: 0;
   display: flex;
   align-items: center;
@@ -381,8 +383,8 @@
 }
 
 .history-item__title-input:focus {
-  outline: 2px solid rgba(201, 111, 59, 0.4);
-  border-color: rgba(201, 111, 59, 0.6);
+  outline: 2px solid rgba(var(--accent-rgb), 0.4);
+  border-color: rgba(var(--accent-rgb), 0.6);
 }
 
 .history-item__meta {
@@ -417,9 +419,9 @@
 .history-item:focus-visible,
 [role="button"].history-item:focus-visible,
 .copy-code-btn:focus-visible {
-  outline: 3px solid rgba(201, 111, 59, 0.26);
+  outline: 3px solid rgba(var(--accent-rgb), 0.26);
   outline-offset: 2px;
-  border-color: rgba(201, 111, 59, 0.5);
+  border-color: rgba(var(--accent-rgb), 0.5);
 }
 
 @media (min-width: 861px) {
