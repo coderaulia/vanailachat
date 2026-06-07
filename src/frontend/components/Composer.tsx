@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
-import { FRONTEND_PERSONAS, ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
+import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import './Composer.css';
 
@@ -61,20 +61,10 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     onSelectRole(role);
     const personaId = ROLE_TO_PERSONA[role] ?? 'general';
     setPersona(personaId);
-    const persona = FRONTEND_PERSONAS[personaId];
+    const persona = getPersonaForRole(role);
     if (persona) {
       onSetSystemPrompt(persona.systemPrompt);
       // Auto-save so the backend gets the updated prompt
-      setTimeout(() => onSaveSystemPrompt(), 0);
-    }
-  };
-
-  /** Change persona dropdown: sync system prompt */
-  const handlePersonaChange = (personaId: string) => {
-    setPersona(personaId);
-    const p = FRONTEND_PERSONAS[personaId];
-    if (p) {
-      onSetSystemPrompt(p.systemPrompt);
       setTimeout(() => onSaveSystemPrompt(), 0);
     }
   };
@@ -199,20 +189,6 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
             {/* Right: model, context, actions */}
             <div className="composer-toolbar__right">
-              {/* Persona selector */}
-              <div className="composer-persona">
-                <label>Assistant</label>
-                <select
-                  className="select composer-select composer-select--persona"
-                  value={persona}
-                  onChange={(e) => handlePersonaChange(e.target.value)}
-                >
-                  {Object.values(FRONTEND_PERSONAS).map((p) => (
-                    <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Model selector */}
               <div className="composer-model">
                 <label>Model</label>
