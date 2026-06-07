@@ -110,7 +110,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
 
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
 
-      // Inject relevant vector memories into system prompt
+      // Embed user message → search relevant memories + auto-save as memory
       try {
         const lastUserMessage = incomingMessages
           .slice()
@@ -120,16 +120,37 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           const userText = normalizeMessageContent(lastUserMessage.content).content;
           if (userText.trim()) {
             const { EmbeddingService } = await import('../services/embedding.js');
-            const memories = await EmbeddingService.search(userText, 3, 0.3);
+            const { DatabaseService } = await import('../services/database.js');
+
+            // One embedding call used for both search and save
+            const queryVec = await EmbeddingService.embed(userText);
+
+            // Search for relevant past memories to inject
+            const memories = EmbeddingService.searchWithVector(queryVec, 3, 0.3);
             if (memories.length > 0) {
               memoryContextBlock = memories
                 .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
                 .join('\n\n');
             }
+
+            // Auto-save user message as memory (skip trivial short messages)
+            if (userText.trim().length >= 20) {
+              DatabaseService.upsertMemory({
+                type: 'conversation',
+                content: userText.slice(0, 4000),
+                embedding: JSON.stringify(Array.from(queryVec)),
+                metadata: JSON.stringify({
+                  role: 'user',
+                  chatId: body.chatId ?? null,
+                  chatTitle: chatRecord?.title ?? null,
+                }),
+                sourceId: body.chatId ?? null,
+              });
+            }
           }
         }
       } catch {
-        // Embedding model unavailable — skip memory injection
+        // Embedding model unavailable — skip memory operations
       }
 
       if (memoryContextBlock) {

@@ -57,15 +57,14 @@ export class EmbeddingService {
   }
 
   /**
-   * Find the most similar entries to a query text.
-   * Uses brute-force cosine similarity (fine for <10k entries).
+   * Find the most similar entries to a pre-computed query vector.
+   * Synchronous — caller is responsible for generating the vector via embed().
    */
-  static async search(
-    queryText: string,
+  static searchWithVector(
+    queryVec: Float32Array,
     topK: number = 5,
     threshold: number = 0.3,
-  ): Promise<Array<{ id: string; content: string; score: number; metadata: string | null }>> {
-    const queryVec = await this.embed(queryText);
+  ): Array<{ id: string; content: string; score: number; metadata: string | null }> {
     const entries = DatabaseService.getAllMemoryEntries();
 
     const scored = entries
@@ -89,5 +88,18 @@ export class EmbeddingService {
       score: Math.round(score * 100) / 100,
       metadata: entry.metadata,
     }));
+  }
+
+  /**
+   * Find the most similar entries to a query text.
+   * Uses brute-force cosine similarity (fine for <10k entries).
+   */
+  static async search(
+    queryText: string,
+    topK: number = 5,
+    threshold: number = 0.3,
+  ): Promise<Array<{ id: string; content: string; score: number; metadata: string | null }>> {
+    const queryVec = await this.embed(queryText);
+    return this.searchWithVector(queryVec, topK, threshold);
   }
 }
