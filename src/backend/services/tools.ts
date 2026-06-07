@@ -45,7 +45,7 @@ function parseNumberField(args: unknown, key: string): number | null {
 
 function resolveWithinRoot(root: string, requestedPath: string): string {
   const resolvedPath = path.resolve(root, requestedPath);
-  if (!resolvedPath.startsWith(root)) {
+  if (resolvedPath !== root && !resolvedPath.startsWith(root + path.sep)) {
     throw new Error('Access denied: path outside project directory');
   }
 
@@ -106,7 +106,7 @@ export class ToolService {
     }
 
     const resolvedRoot = path.resolve(cwd, projectRoot);
-    if (!resolvedRoot.startsWith(cwd)) {
+    if (resolvedRoot !== cwd && !resolvedRoot.startsWith(cwd + path.sep)) {
       return cwd;
     }
 

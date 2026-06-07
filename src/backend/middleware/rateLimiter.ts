@@ -10,18 +10,6 @@ interface RateLimitStore {
   resetAt: number;
 }
 
-const stores = new Map<string, RateLimitStore>();
-
-// Clean up expired entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, store] of stores) {
-    if (now > store.resetAt) {
-      stores.delete(key);
-    }
-  }
-}, 300_000).unref();
-
 export interface RateLimitConfig {
   /** Max requests allowed in the window */
   maxRequests: number;
@@ -31,12 +19,23 @@ export interface RateLimitConfig {
 
 /**
  * Create a Hono rate limiter middleware.
+ * Each call creates an isolated store so different routes don't share counts.
  *
  * Example:
  *   app.use('/api/chat', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
  */
 export function rateLimiter(config: RateLimitConfig) {
   const { maxRequests, windowMs } = config;
+
+  const stores = new Map<string, RateLimitStore>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, store] of stores) {
+      if (now > store.resetAt) {
+        stores.delete(key);
+      }
+    }
+  }, 300_000).unref();
 
   return async (c: Context, next: Next) => {
     const ip =

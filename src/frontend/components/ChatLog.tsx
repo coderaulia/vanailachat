@@ -1,9 +1,68 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
-
+import type { Message } from '../types/chat';
 import { useChat } from '../context/ChatContext';
+
+interface MessageItemProps {
+  message: Message;
+  isTyping: boolean;
+  showTokens: boolean;
+  isCopied: boolean;
+  renderMarkdown: (content: string) => string;
+  onCopy: (id: string, content: string) => void;
+}
+
+const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, renderMarkdown, onCopy }: MessageItemProps) {
+  const html = useMemo(() => renderMarkdown(message.content), [renderMarkdown, message.content]);
+
+  return (
+    <div
+      className={`message ${message.role} ${isTyping ? 'is-typing' : ''}`}
+    >
+      <div className="message__meta">
+        <span className="message__role">{message.role}</span>
+        <div className="message__meta-right">
+          <span className="message__time">{DATE_FORMATTER.format(message.timestamp)}</span>
+          {message.role === 'assistant' && (
+            <button
+              type="button"
+              className={`message__copy-btn ${isCopied ? 'is-copied' : ''}`}
+              title="Copy response as Markdown"
+              onClick={() => onCopy(message.id, message.content)}
+            >
+              {isCopied ? (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Copied
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  Copy
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="message__body">
+        <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
+        {showTokens && message.role === 'assistant' ? (
+          <div className="message__tokens">
+            ↑ {message.promptTokens ?? 0} ↓ {message.completionTokens ?? 0} tokens
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+});
 
 interface ChatLogProps {
   showTokens: boolean;
@@ -78,56 +137,19 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
           </div>
         ) : (
           conversation.map((message, index) => (
-            <div
+            <MessageItem
               key={message.id}
-              className={`message ${message.role} ${
+              message={message}
+              isTyping={
                 isCurrentChatSending &&
                 message.role === 'assistant' &&
                 index === conversation.length - 1
-                  ? 'is-typing'
-                  : ''
-              }`}
-            >
-              <div className="message__meta">
-                <span className="message__role">{message.role}</span>
-                <div className="message__meta-right">
-                  <span className="message__time">{DATE_FORMATTER.format(message.timestamp)}</span>
-                  {message.role === 'assistant' && (
-                    <button
-                      type="button"
-                      className={`message__copy-btn ${copiedIds.has(message.id) ? 'is-copied' : ''}`}
-                      title="Copy response as Markdown"
-                      onClick={() => handleCopyMessage(message.id, message.content)}
-                    >
-                      {copiedIds.has(message.id) ? (
-                        <>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="message__body">
-                <div className="message__prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }} />
-                {showTokens && message.role === 'assistant' ? (
-                  <div className="message__tokens">
-                    ↑ {message.promptTokens ?? 0} ↓ {message.completionTokens ?? 0} tokens
-                  </div>
-                ) : null}
-              </div>
-            </div>
+              }
+              showTokens={showTokens}
+              isCopied={copiedIds.has(message.id)}
+              renderMarkdown={renderMarkdown}
+              onCopy={handleCopyMessage}
+            />
           ))
         )}
 

@@ -13,6 +13,7 @@ interface ComposerProps {
 
 export function Composer({ thinkingSeconds }: ComposerProps) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [isResearchEnabled, setIsResearchEnabled] = useState(false);
 
   const {
     attachedFiles,
@@ -71,9 +72,13 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   const activePersona = getPersonaForRole(selectedRole);
 
+  const handleSubmit = (event: React.FormEvent) => {
+    onSend(event);
+  };
+
   return (
     <footer className="app-footer">
-      <form className="chat-form" onSubmit={onSend}>
+      <form className="chat-form" onSubmit={handleSubmit}>
         <div className="composer">
 
           {/* System prompt popover */}
@@ -182,7 +187,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   onClick={() => handleRoleClick(role as ModelRole)}
                   title={getPersonaForRole(role).description}
                 >
-                  {label}
+                  <span className="role-chip__icon">{getPersonaForRole(role).icon}</span> {label}
                 </button>
               ))}
             </div>
@@ -236,6 +241,25 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   </svg>
                 </button>
 
+                {/* Deep Research */}
+                <button
+                  type="button"
+                  className={`btn btn-secondary icon-btn research-toggle ${isResearchEnabled ? 'active' : ''} ${
+                    isCurrentChatSending && isResearchEnabled ? 'is-loading' : ''
+                  }`}
+                  onClick={() => setIsResearchEnabled((prev: boolean) => !prev)}
+                  title={isCurrentChatSending && isResearchEnabled ? 'Researching…' : 'Enable Deep Research'}
+                  aria-busy={isCurrentChatSending && isResearchEnabled}
+                  disabled={isCurrentChatSending}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path>
+                    <path d="M8.5 2h7"></path>
+                    <path d="M7 16h10"></path>
+                  </svg>
+                  {isResearchEnabled && <span className="research-label">Research</span>}
+                </button>
+
                 {/* Attach */}
                 <button
                   type="button"
@@ -255,8 +279,8 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   title="System Prompt"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M5 12H3M12 3V1M12 23v-2"></path>
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
                   </svg>
                 </button>
               </div>

@@ -221,6 +221,14 @@
   padding: 6px 12px;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.role-chip__icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .role-chip:hover {
@@ -364,5 +372,50 @@
 
   .send-btn {
     width: 100%;
+  }
+}
+
+/* Deep Research styling */
+.research-toggle {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.research-toggle.active {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  padding: 0 14px;
+  width: auto;
+}
+
+.research-toggle.active svg {
+  animation: pulse-gear 2.5s linear infinite;
+}
+
+.research-label {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: fade-in-slide-right 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes pulse-gear {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fade-in-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }

@@ -314,19 +314,6 @@ export function useChatSession(deps: {
       }
     }));
 
-    void upsertChat({
-      id: chatId,
-      projectId: activeProjectId,
-      title,
-      pinned: existingChat?.pinned ?? false,
-      role: existingChat?.role ?? selectedRole,
-      model: resolvedModel,
-      projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
-      systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
-      createdAt,
-      updatedAt: startedAt,
-    }).catch(err => { console.error(err); setStatusText('Failed to save chat'); });
-
     let requestFailed = false;
     let requestAborted = false;
     let fullContent = '';
@@ -334,6 +321,7 @@ export function useChatSession(deps: {
     let promptTokens: number | undefined;
     let completionTokens: number | undefined;
     let assistantContentForSave = '';
+    let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
 
     try {
       const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
@@ -397,28 +385,21 @@ export function useChatSession(deps: {
 
         if (!contentChunk && !data.done) return;
 
-        updateHistories(prev => {
-          const chat = prev[chatId];
-          if (!chat || chat.conversation.length === 0) return prev;
-          const updatedConversation = [...chat.conversation];
-          const lastIndex = updatedConversation.length - 1;
-          if (updatedConversation[lastIndex]?.role === 'assistant') {
-            updatedConversation[lastIndex] = { ...updatedConversation[lastIndex], content: fullContent };
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (currentChatIdRef.current === chatId) {
+            setConversation(prev => {
+              if (prev.length === 0) return prev;
+              const updated = [...prev];
+              const lastIndex = updated.length - 1;
+              if (updated[lastIndex]?.role === 'assistant') {
+                updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
+              }
+              return updated;
+            });
           }
-          return { ...prev, [chatId]: { ...chat, conversation: updatedConversation, updatedAt: Date.now(), usage: finalUsage || chat.usage } };
         });
-
-        if (currentChatIdRef.current === chatId) {
-          setConversation(prev => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            if (updated[lastIndex]?.role === 'assistant') {
-              updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
-            }
-            return updated;
-          });
-        }
       };
 
       while (true) {
@@ -498,6 +479,11 @@ export function useChatSession(deps: {
         }
       }
     } finally {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+
       const isActiveRequest = activeRequestIdRef.current === requestId;
       const finishedAt = Date.now();
       const assistantMessageToPersist: Message = { id: assistantMessage.id, role: 'assistant', content: assistantContentForSave, timestamp: assistantMessage.timestamp, promptTokens: promptTokens ?? null, completionTokens: completionTokens ?? null };
@@ -508,9 +494,14 @@ export function useChatSession(deps: {
         const updatedConversation = [...chat.conversation];
         const lastIndex = updatedConversation.length - 1;
         if (updatedConversation[lastIndex]?.role === 'assistant') {
-          updatedConversation[lastIndex] = { ...updatedConversation[lastIndex], promptTokens: assistantMessageToPersist.promptTokens, completionTokens: assistantMessageToPersist.completionTokens };
+          updatedConversation[lastIndex] = {
+            ...updatedConversation[lastIndex],
+            content: assistantContentForSave,
+            promptTokens: assistantMessageToPersist.promptTokens,
+            completionTokens: assistantMessageToPersist.completionTokens,
+          };
         }
-        return { ...prev, [chatId]: { ...chat, conversation: updatedConversation } };
+        return { ...prev, [chatId]: { ...chat, conversation: updatedConversation, updatedAt: finishedAt, usage: finalUsage || chat.usage } };
       });
 
       if (currentChatIdRef.current === chatId) {
@@ -519,7 +510,12 @@ export function useChatSession(deps: {
           const updated = [...prev];
           const lastIndex = updated.length - 1;
           if (updated[lastIndex]?.role === 'assistant') {
-            updated[lastIndex] = { ...updated[lastIndex], promptTokens: assistantMessageToPersist.promptTokens, completionTokens: assistantMessageToPersist.completionTokens };
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              content: assistantContentForSave,
+              promptTokens: assistantMessageToPersist.promptTokens,
+              completionTokens: assistantMessageToPersist.completionTokens,
+            };
           }
           return updated;
         });
@@ -562,6 +558,170 @@ export function useChatSession(deps: {
     }
   };
 
+  /**
+   * Deep Research handler:
+   * Calls /api/research with the current prompt, streams progress + report content
+   * back as NDJSON, and renders it as an assistant message.
+   */
+  const handleResearch = async (event?: FormEvent) => {
+    if (event) event.preventDefault();
+    if (!prompt.trim()) return;
+
+    const resolvedModel = selectedModel;
+    if (!resolvedModel) {
+      setStatusText('No model selected. Please select a model first.');
+      return;
+    }
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+      activeRequestIdRef.current = null;
+      setSendingChatIds({});
+    }
+
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const requestId = `research_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    activeRequestIdRef.current = requestId;
+
+    const startedAt = Date.now();
+    const chatId = `research_${startedAt}`;
+
+    // Create optimistic research message
+    const userMessage: Message = {
+      id: `${startedAt}_user`,
+      role: 'user',
+      content: `🔍 Research: ${prompt}`,
+      timestamp: startedAt,
+    };
+    const assistantMessage: Message = {
+      id: `${startedAt}_assistant`,
+      role: 'assistant',
+      content: '',
+      timestamp: startedAt + 1,
+    };
+
+    setConversation(prev => [...prev, userMessage, assistantMessage]);
+    setPrompt('');
+    setCurrentChatId(chatId);
+    currentChatIdRef.current = chatId;
+    setSendingChatIds(prev => ({ ...prev, [chatId]: true }));
+    setStatusText('Starting research…');
+
+    let researchContent = '';
+    const stageMessages: string[] = [];
+
+    try {
+      const response = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
+        body: JSON.stringify({
+          query: prompt,
+          model: resolvedModel,
+          maxSources: 5,
+          depth: 'standard',
+        }),
+      });
+
+      if (!response.ok) throw new Error(await response.text());
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const event = JSON.parse(trimmed);
+            if (event.stage === 'chunk' && event.content) {
+              researchContent += event.content;
+              setConversation(prev => {
+                if (prev.length < 2) return prev;
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  content: researchContent,
+                };
+                return updated;
+              });
+            } else if (event.stage === 'searching') {
+              stageMessages.push(`🔎 ${event.message}`);
+              setStatusText(event.message as string);
+            } else if (event.stage === 'reading') {
+              stageMessages.push(`📄 ${event.message}`);
+              setStatusText(event.message as string);
+            } else if (event.stage === 'synthesizing') {
+              setStatusText('Synthesizing report…');
+            } else if (event.stage === 'streaming') {
+              setStatusText('Generating report…');
+            } else if (event.stage === 'error') {
+              researchContent += `\n\n> [!CAUTION]\n> ${event.message}\n\n`;
+              setStatusText('Research error');
+            } else if (event.stage === 'done') {
+              const stageSummary = stageMessages.map(m => `> ${m}`).join('\n');
+              const fullContent = stageSummary
+                ? `${stageSummary}\n\n---\n\n${researchContent}`
+                : researchContent;
+              setConversation(prev => {
+                if (prev.length < 2) return prev;
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  content: fullContent,
+                };
+                return updated;
+              });
+              setStatusText('Research complete');
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
+      }
+    } catch (error) {
+      const isAbort = (error instanceof DOMException && error.name === 'AbortError') ||
+                      (error instanceof Error && error.name === 'AbortError');
+      if (!isAbort) {
+        const message = error instanceof Error ? error.message : 'Research failed';
+        researchContent += `\n\n> [!CAUTION]\n> ${message}\n\n`;
+        setStatusText('Research failed');
+      }
+      if (researchContent) {
+        setConversation(prev => {
+          if (prev.length < 2) return prev;
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            content: researchContent,
+          };
+          return updated;
+        });
+      }
+    } finally {
+      setSendingChatIds(prev => {
+        if (!prev[chatId]) return prev;
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+      abortRef.current = null;
+      activeRequestIdRef.current = null;
+    }
+  };
+
   const contextPercentage = useMemo(() => Math.min(100, (contextWindow.current / contextWindow.total) * 100), [contextWindow]);
   const isCurrentChatSending = useMemo(() => (currentChatId ? Boolean(sendingChatIds[currentChatId]) : false), [currentChatId, sendingChatIds]);
 
@@ -599,6 +759,7 @@ export function useChatSession(deps: {
     handlePickProjectRoot,
     handleSend,
     handleAbort,
+    handleResearch,
     contextPercentage,
     isCurrentChatSending,
   };

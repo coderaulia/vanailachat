@@ -201,7 +201,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'profile',      label: 'Profile',         icon: '🪪' },
     { id: 'instructions', label: 'Instructions',    icon: '📋' },
     { id: 'memories',     label: 'Memories',        icon: '🧩' },
-    { id: 'about',        label: 'About',           icon: '⚙️' },
+    { id: 'about',        label: 'About',           icon: 'ℹ️' },
   ];
 
   return (

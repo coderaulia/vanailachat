@@ -106,7 +106,7 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
     return () => clearInterval(interval);
   }, [fetchModels]);
 
-  const filteredAvailableModels = useMemo(() => availableModels, [availableModels]);
+  const filteredAvailableModels = availableModels;
 
   useEffect(() => {
     if (availableModels.length === 0) return;
