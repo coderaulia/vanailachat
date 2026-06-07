@@ -9,6 +9,7 @@ import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { OnboardingWizard, useOnboarding } from './components/OnboardingWizard';
+import { SettingsModal } from './components/SettingsModal';
 
 const AppShell = () => {
   const renderMarkdown = useMarkdownRenderer();
@@ -16,6 +17,7 @@ const AppShell = () => {
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [showTokens, setShowTokens] = useState(false);
   const { show: showOnboarding, markDone } = useOnboarding();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const {
     currentChatId,
@@ -68,7 +70,8 @@ const AppShell = () => {
   return (
     <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
       {showOnboarding && <OnboardingWizard onDone={markDone} />}
-      <Sidebar />
+      {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
+      <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="main-content">
         {(viewMode === 'chat' || currentChatId) ? (

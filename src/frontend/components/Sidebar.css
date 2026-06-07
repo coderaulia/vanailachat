@@ -194,10 +194,30 @@
 
 .sidebar-footer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto 1fr 1fr;
   gap: 8px;
   padding: 10px 4px 0;
 }
+
+.sidebar-settings-btn {
+  color: rgba(247, 241, 232, 0.65);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-settings-btn:hover {
+  color: rgba(247, 241, 232, 0.95);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
 
 .history-item {
   position: relative;

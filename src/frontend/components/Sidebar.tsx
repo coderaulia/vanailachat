@@ -7,7 +7,7 @@ import './Sidebar.css';
 import { useChat } from '../context/ChatContext';
 import { Skills } from './Skills';
 
-export function Sidebar() {
+export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
     isSidebarOpen: isOpen,
     closeSidebar: onClose,
@@ -360,6 +360,18 @@ export function Sidebar() {
             </div>
 
             <div className="sidebar-footer">
+              <button
+                className="btn btn-secondary icon-btn sidebar-settings-btn"
+                type="button"
+                aria-label="Open Settings"
+                title="Settings"
+                onClick={onOpenSettings}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-2M5 12H3M12 3V1M12 23v-2" />
+                </svg>
+              </button>
               <button className="btn btn-secondary btn-block" type="button" onClick={onExport}>
                 Export
               </button>

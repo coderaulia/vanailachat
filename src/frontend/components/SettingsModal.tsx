@@ -1,0 +1,351 @@
+import { useState, useEffect, useCallback } from 'react';
+import './SettingsModal.css';
+
+interface AllSettings {
+  ollama_host?: string;
+  openai_api_key?: string;
+  openai_base_url?: string;
+  user_name?: string;
+  user_role?: string;
+  base_instructions?: string;
+  onboarding_done?: string;
+}
+
+type Tab = 'ai' | 'profile' | 'memory' | 'about';
+type LlmMode = 'ollama' | 'openai' | 'openrouter';
+
+const STORAGE_KEY = 'vanaila_onboarding_done';
+
+async function saveSetting(key: string, value: string) {
+  await fetch(`/api/settings/${key}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value }),
+  });
+}
+
+export function SettingsModal({ onClose }: { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<Tab>('ai');
+  const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  // AI Connection
+  const [llmMode, setLlmMode] = useState<LlmMode>('ollama');
+  const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
+  const [openaiKey, setOpenaiKey] = useState('');
+  const [openrouterKey, setOpenrouterKey] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+
+  // Profile
+  const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState('');
+
+  // Memory
+  const [baseInstructions, setBaseInstructions] = useState('');
+
+  const flash = (label: string) => {
+    setSaved(label);
+    setTimeout(() => setSaved(null), 1800);
+  };
+
+  // Load all settings at once on open
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data: { settings?: AllSettings }) => {
+        const s = data.settings ?? {};
+        if (s.ollama_host) setOllamaHost(s.ollama_host);
+        if (s.openai_api_key) {
+          // Detect mode from base_url
+          if (s.openai_base_url?.includes('openrouter')) {
+            setLlmMode('openrouter');
+            setOpenrouterKey(s.openai_api_key);
+          } else {
+            setLlmMode('openai');
+            setOpenaiKey(s.openai_api_key);
+          }
+        } else {
+          setLlmMode('ollama');
+        }
+        if (s.user_name) setUserName(s.user_name);
+        if (s.user_role) setUserRole(s.user_role);
+        if (s.base_instructions) setBaseInstructions(s.base_instructions);
+      })
+      .catch(() => {/* best-effort */})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const saveOllamaHost = useCallback(async () => {
+    await saveSetting('ollama_host', ollamaHost);
+    flash('Saved');
+  }, [ollamaHost]);
+
+  const saveOpenaiKey = useCallback(async () => {
+    await saveSetting('openai_api_key', openaiKey);
+    await saveSetting('openai_base_url', 'https://api.openai.com/v1');
+    flash('Saved');
+  }, [openaiKey]);
+
+  const saveOpenrouterKey = useCallback(async () => {
+    await saveSetting('openai_api_key', openrouterKey);
+    await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
+    flash('Saved');
+  }, [openrouterKey]);
+
+  const saveUserName = useCallback(async () => {
+    if (userName.trim()) { await saveSetting('user_name', userName.trim()); flash('Saved'); }
+  }, [userName]);
+
+  const saveUserRole = useCallback(async () => {
+    if (userRole.trim()) { await saveSetting('user_role', userRole.trim()); flash('Saved'); }
+  }, [userRole]);
+
+  const saveBaseInstructions = useCallback(async () => {
+    await saveSetting('base_instructions', baseInstructions.trim());
+    flash('Saved');
+  }, [baseInstructions]);
+
+  const testConnection = async () => {
+    setTestStatus('testing');
+    try {
+      const res = await fetch('/api/models');
+      setTestStatus(res.ok ? 'ok' : 'fail');
+    } catch {
+      setTestStatus('fail');
+    }
+    setTimeout(() => setTestStatus('idle'), 3000);
+  };
+
+  const rerunSetup = async () => {
+    await saveSetting('onboarding_done', 'false');
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  };
+
+  const TABS: { id: Tab; label: string; icon: string }[] = [
+    { id: 'ai',      label: 'AI Connection',  icon: '🧠' },
+    { id: 'profile', label: 'Profile',         icon: '🪪' },
+    { id: 'memory',  label: 'Instructions',    icon: '🗂️' },
+    { id: 'about',   label: 'About',           icon: '⚙️' },
+  ];
+
+  return (
+    <div
+      className="settings-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="settings-card">
+        {/* Header */}
+        <div className="settings-header">
+          <h2 className="settings-title">Settings</h2>
+          {saved && <span className="settings-saved-badge">✓ {saved}</span>}
+          <button
+            type="button"
+            className="settings-close"
+            aria-label="Close settings"
+            onClick={onClose}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tab bar */}
+        <div className="settings-tabs" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === t.id}
+              className={`settings-tab ${activeTab === t.id ? 'is-active' : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              <span>{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="settings-body">
+          {loading ? (
+            <div className="settings-loading">Loading…</div>
+          ) : (
+            <>
+              {/* ── AI Connection ── */}
+              {activeTab === 'ai' && (
+                <div className="settings-section">
+                  <div className="settings-llm-tabs">
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'ollama' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('ollama')}
+                    >🦙 Ollama (Local)</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'openai' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('openai')}
+                    >⚡ OpenAI</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'openrouter' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('openrouter')}
+                    >🔀 OpenRouter</button>
+                  </div>
+
+                  {llmMode === 'ollama' && (
+                    <div className="settings-field">
+                      <label className="settings-label">Ollama Host URL</label>
+                      <input
+                        className="settings-input"
+                        value={ollamaHost}
+                        onChange={(e) => setOllamaHost(e.target.value)}
+                        onBlur={saveOllamaHost}
+                        placeholder="http://localhost:11434"
+                      />
+                      <p className="settings-hint">Default works if Ollama is running locally. Change for remote hosts.</p>
+                    </div>
+                  )}
+
+                  {llmMode === 'openai' && (
+                    <div className="settings-field">
+                      <label className="settings-label">OpenAI API Key</label>
+                      <input
+                        className="settings-input"
+                        type="password"
+                        value={openaiKey}
+                        onChange={(e) => setOpenaiKey(e.target.value)}
+                        onBlur={saveOpenaiKey}
+                        placeholder="sk-..."
+                      />
+                      <p className="settings-hint">Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></p>
+                    </div>
+                  )}
+
+                  {llmMode === 'openrouter' && (
+                    <div className="settings-field">
+                      <label className="settings-label">OpenRouter API Key</label>
+                      <input
+                        className="settings-input"
+                        type="password"
+                        value={openrouterKey}
+                        onChange={(e) => setOpenrouterKey(e.target.value)}
+                        onBlur={saveOpenrouterKey}
+                        placeholder="sk-or-..."
+                      />
+                      <p className="settings-hint">Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a></p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className={`settings-test-btn ${testStatus}`}
+                    onClick={testConnection}
+                    disabled={testStatus === 'testing'}
+                  >
+                    {testStatus === 'idle'    && '🔌 Test Connection'}
+                    {testStatus === 'testing' && '⏳ Testing…'}
+                    {testStatus === 'ok'      && '✅ Connected'}
+                    {testStatus === 'fail'    && '❌ Failed — check settings'}
+                  </button>
+                </div>
+              )}
+
+              {/* ── Profile ── */}
+              {activeTab === 'profile' && (
+                <div className="settings-section">
+                  <div className="settings-field">
+                    <label className="settings-label">Your Name <span className="settings-optional">(optional)</span></label>
+                    <input
+                      className="settings-input"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      onBlur={saveUserName}
+                      placeholder="e.g. Alex"
+                    />
+                  </div>
+                  <div className="settings-field">
+                    <label className="settings-label">Your Role <span className="settings-optional">(optional)</span></label>
+                    <input
+                      className="settings-input"
+                      value={userRole}
+                      onChange={(e) => setUserRole(e.target.value)}
+                      onBlur={saveUserRole}
+                      placeholder="e.g. Software engineer, Product manager…"
+                    />
+                    <p className="settings-hint">Helps the AI tailor responses to your background.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Memory & Instructions ── */}
+              {activeTab === 'memory' && (
+                <div className="settings-section">
+                  <div className="settings-field">
+                    <label className="settings-label">
+                      Base Instructions <span className="settings-optional">(optional)</span>
+                    </label>
+                    <textarea
+                      className="settings-textarea"
+                      rows={8}
+                      value={baseInstructions}
+                      onChange={(e) => setBaseInstructions(e.target.value)}
+                      onBlur={saveBaseInstructions}
+                      placeholder={`e.g. Always respond concisely. Prefer TypeScript over JavaScript. When writing code, add comments for non-obvious logic.`}
+                    />
+                    <p className="settings-hint">These instructions are injected into every conversation as system context.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── About / Danger Zone ── */}
+              {activeTab === 'about' && (
+                <div className="settings-section">
+                  <div className="settings-about-row">
+                    <span className="settings-about-label">App</span>
+                    <span className="settings-about-value">VanailaChat</span>
+                  </div>
+                  <div className="settings-about-row">
+                    <span className="settings-about-label">Backend</span>
+                    <span className="settings-about-value">Hono + SQLite</span>
+                  </div>
+                  <div className="settings-about-row">
+                    <span className="settings-about-label">LLM Runtime</span>
+                    <span className="settings-about-value">Ollama / OpenAI-compatible</span>
+                  </div>
+
+                  <div className="settings-divider" />
+
+                  <div className="settings-danger-zone">
+                    <p className="settings-danger-title">⚠️ Danger Zone</p>
+                    <p className="settings-hint">Re-running setup will clear your current configuration and restart the onboarding wizard.</p>
+                    <button
+                      type="button"
+                      className="settings-danger-btn"
+                      onClick={rerunSetup}
+                    >
+                      Re-run Setup Wizard
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
