@@ -1,9 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ApiProject } from '../types/chat';
 import { DATE_FORMATTER } from '../lib/date';
 import './ProjectDetail.css';
 import { Composer } from './Composer';
 import { useChat } from '../context/ChatContext';
+
+const MODEL_ROLE_EMOJI: Record<string, string> = {
+  coding: '💻',
+  creative: '✨',
+  vision: '👁️',
+  general: '🤖',
+};
 
 export function ProjectDetail() {
   const {
@@ -17,28 +24,49 @@ export function ProjectDetail() {
   } = useChat();
 
   const project = projects.find(p => p.id === selectedProjectId);
-  
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingInstructions, setIsEditingInstructions] = useState(false);
   const [isEditingMemory, setIsEditingMemory] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
 
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
   const [memory, setMemory] = useState('');
 
   useEffect(() => {
     if (project) {
+      setName(project.name || '');
       setDescription(project.description || '');
       setInstructions(project.instructions || '');
       setMemory(project.memory || '');
     }
   }, [project]);
 
+  const projectChats = useMemo(
+    () => chats.filter(([_, chat]) => chat.projectId === project?.id),
+    [chats, project?.id]
+  );
+
+  const filteredChats = useMemo(() => {
+    if (!chatSearch.trim()) return projectChats;
+    return projectChats.filter(([_, chat]) =>
+      chat.title?.toLowerCase().includes(chatSearch.toLowerCase())
+    );
+  }, [projectChats, chatSearch]);
+
+  const totalTokens = useMemo(
+    () => projectChats.reduce((sum, [_, chat]) => sum + (chat.usage ?? 0), 0),
+    [projectChats]
+  );
+
   if (!project) return null;
 
   const onBack = () => setViewMode('chat');
-  
+
   const onSelectChatLocal = (id: string) => {
     handleSelectChat(id);
     setViewMode('chat');
@@ -48,49 +76,104 @@ export function ProjectDetail() {
     onUpdateProject(project.id, { [field]: value });
   };
 
+  const formatTokens = (n: number) =>
+    n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` :
+    n >= 1_000 ? `${(n / 1_000).toFixed(1)}k` : String(n);
+
   return (
     <div className="project-detail">
+      {/* Header */}
       <header className="project-detail__header">
-        <button className="btn-back" onClick={onBack}>
-          ← All projects
-        </button>
+        <div className="project-detail__breadcrumb">
+          <button className="btn-back" type="button" onClick={onBack}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Projects
+          </button>
+          <span className="project-detail__breadcrumb-sep">/</span>
+          {isEditingName ? (
+            <input
+              className="project-detail__name-input"
+              value={name}
+              autoFocus
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => {
+                setIsEditingName(false);
+                if (name.trim()) saveProjectField('name', name.trim());
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setIsEditingName(false);
+                  if (name.trim()) saveProjectField('name', name.trim());
+                }
+                if (e.key === 'Escape') setIsEditingName(false);
+              }}
+            />
+          ) : (
+            <span
+              className="project-detail__breadcrumb-name"
+              onDoubleClick={() => setIsEditingName(true)}
+              title="Double-click to rename"
+            >
+              {project.name}
+            </span>
+          )}
+        </div>
+
         <div className="project-detail__title-row">
           <h1 className="project-detail__name">{project.name}</h1>
           <div className="project-detail__actions">
-            <div className="project-detail__menu-container" style={{ position: 'relative' }}>
+            <button
+              className={`icon-btn ${project.pinned ? 'icon-btn--active' : ''}`}
+              type="button"
+              onClick={() => onUpdateProject(project.id, { pinned: !project.pinned })}
+              title={project.pinned ? 'Unfavorite' : 'Favorite'}
+            >
+              {project.pinned ? '★' : '☆'}
+            </button>
+            <div className="project-detail__menu-container">
               <button
                 className="icon-btn"
+                type="button"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                title="Project settings"
+                title="Project options"
               >
-                ⋮
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="5" r="1" fill="currentColor" />
+                  <circle cx="12" cy="12" r="1" fill="currentColor" />
+                  <circle cx="12" cy="19" r="1" fill="currentColor" />
+                </svg>
               </button>
               {isMenuOpen && (
                 <div className="project-menu-dropdown">
                   <button
+                    className="menu-item"
+                    type="button"
+                    onClick={() => { setIsEditingName(true); setIsMenuOpen(false); }}
+                  >
+                    ✏️ Rename project
+                  </button>
+                  <div className="menu-divider" />
+                  <button
                     className="menu-item menu-item--danger"
+                    type="button"
                     onClick={() => {
-                      if (confirm('Are you sure you want to delete this project and all its chats?')) {
+                      if (confirm('Delete this project and all its chats?')) {
                         onDeleteProject(project.id);
                       }
                       setIsMenuOpen(false);
                     }}
                   >
-                    Delete Project
+                    🗑️ Delete project
                   </button>
                 </div>
               )}
             </div>
-            <button
-              className={`icon-btn ${project.pinned ? 'icon-btn--active' : ''}`}
-              onClick={() => onUpdateProject(project.id, { pinned: !project.pinned })}
-              title={project.pinned ? "Unfavorite" : "Favorite"}
-            >
-              {project.pinned ? '★' : '☆'}
-            </button>
           </div>
         </div>
 
+        {/* Description */}
         {isEditingDescription ? (
           <input
             className="project-detail__desc-input"
@@ -106,55 +189,160 @@ export function ProjectDetail() {
                 setIsEditingDescription(false);
                 saveProjectField('description', description);
               }
+              if (e.key === 'Escape') setIsEditingDescription(false);
             }}
+            placeholder="Add a short description…"
           />
         ) : (
           <p
-            className="project-detail__description"
+            className={`project-detail__description ${!description ? 'is-placeholder' : ''}`}
             onClick={() => setIsEditingDescription(true)}
+            title="Click to edit description"
           >
-            {description || 'Add a description for this project...'}
+            {description || 'Click to add a description…'}
           </p>
         )}
+
+        {/* Stats row */}
+        <div className="project-detail__stats">
+          <div className="project-stat">
+            <span className="project-stat__value">{projectChats.length}</span>
+            <span className="project-stat__label">Conversations</span>
+          </div>
+          <div className="project-stat__divider" />
+          {totalTokens > 0 && (
+            <>
+              <div className="project-stat">
+                <span className="project-stat__value">{formatTokens(totalTokens)}</span>
+                <span className="project-stat__label">Tokens used</span>
+              </div>
+              <div className="project-stat__divider" />
+            </>
+          )}
+          <div className="project-stat">
+            <span className="project-stat__value">
+              {DATE_FORMATTER.format(project.createdAt)}
+            </span>
+            <span className="project-stat__label">Created</span>
+          </div>
+        </div>
       </header>
 
       <main className="project-detail__content">
+        {/* Main column */}
         <div className="project-detail__main-col">
+          {/* Quick-start composer */}
           <div className="project-detail__composer-wrap">
             <Composer thinkingSeconds={0} />
           </div>
 
+          {/* Chat history */}
           <section className="project-detail__chats">
-            <h3 className="project-detail__section-label">Recent Conversations</h3>
-            <div className="project-detail__chat-list">
-              {chats.filter(([_, chat]) => chat.projectId === project.id).map(([id, chat]) => (
-                <div
-                  key={id}
-                  className="project-detail__chat-card"
-                  onClick={() => onSelectChatLocal(id)}
-                >
-                  <h4 className="project-detail__chat-title">{chat.title || 'Untitled chat'}</h4>
-                  <p className="project-detail__chat-meta">
-                    Last message {DATE_FORMATTER.format(chat.updatedAt)}
-                  </p>
+            <div className="project-detail__chats-header">
+              <h3 className="project-detail__section-label">Conversations</h3>
+              {projectChats.length > 4 && (
+                <div className="project-detail__chat-search">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    placeholder="Filter conversations…"
+                    value={chatSearch}
+                    onChange={(e) => setChatSearch(e.target.value)}
+                    className="project-detail__chat-search-input"
+                  />
                 </div>
-              ))}
+              )}
             </div>
+
+            {filteredChats.length === 0 ? (
+              <div className="project-detail__chat-empty">
+                {chatSearch ? (
+                  <>
+                    <span className="project-detail__chat-empty-icon">🔍</span>
+                    <p>No conversations match "<strong>{chatSearch}</strong>"</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="project-detail__chat-empty-icon">💬</span>
+                    <p>No conversations yet. Start one above!</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="project-detail__chat-list">
+                {filteredChats.map(([id, chat]) => {
+                  const roleEmoji = MODEL_ROLE_EMOJI[chat.role ?? 'general'] ?? '🤖';
+                  const modelShort = chat.model
+                    ? chat.model.split(':')[0].split('/').pop() ?? chat.model
+                    : null;
+                  return (
+                    <div
+                      key={id}
+                      className="project-detail__chat-card"
+                      onClick={() => onSelectChatLocal(id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onSelectChatLocal(id);
+                        }
+                      }}
+                    >
+                      <div className="project-detail__chat-card-left">
+                        <span className="project-detail__chat-role-icon">{roleEmoji}</span>
+                      </div>
+                      <div className="project-detail__chat-card-body">
+                        <h4 className="project-detail__chat-title">
+                          {chat.title || 'Untitled conversation'}
+                          {chat.pinned && <span className="project-detail__chat-pin" title="Pinned">📌</span>}
+                        </h4>
+                        <div className="project-detail__chat-meta-row">
+                          {modelShort && (
+                            <span className="project-detail__chat-model-badge">{modelShort}</span>
+                          )}
+                          {chat.usage != null && chat.usage > 0 && (
+                            <span className="project-detail__chat-tokens">
+                              {formatTokens(chat.usage)} tokens
+                            </span>
+                          )}
+                          <span className="project-detail__chat-date">
+                            {DATE_FORMATTER.format(chat.updatedAt)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="project-detail__chat-card-arrow">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
 
+        {/* Side column */}
         <aside className="project-detail__side-col">
+          {/* Memory */}
           <div className="project-card project-card--memory">
             <div className="project-card__header">
-              <h3 className="project-card__title">Memory</h3>
+              <h3 className="project-card__title">
+                🧠 Memory
+              </h3>
               <div className="project-card__actions">
-                <span className="badge-lock">🔒 Only you</span>
+                <span className="badge-lock">🔒 Private</span>
                 <button
                   className="icon-btn-edit"
+                  type="button"
                   onClick={() => setIsEditingMemory(!isEditingMemory)}
-                >
-                  ✎
-                </button>
+                  title="Edit memory"
+                >✎</button>
               </div>
             </div>
             {isEditingMemory ? (
@@ -167,24 +355,30 @@ export function ProjectDetail() {
                   setIsEditingMemory(false);
                   saveProjectField('memory', memory);
                 }}
-                placeholder="Key facts about this project that the AI should remember..."
+                placeholder="Key facts the AI should remember about this project…"
               />
             ) : (
-              <p className="project-card__text">
-                {memory || 'Add key project context...'}
+              <p
+                className={`project-card__text ${!memory ? 'is-placeholder' : ''}`}
+                onClick={() => setIsEditingMemory(true)}
+              >
+                {memory || 'Click to add key context the AI should remember…'}
               </p>
             )}
           </div>
 
+          {/* Instructions */}
           <div className="project-card project-card--instructions">
             <div className="project-card__header">
-              <h3 className="project-card__title">Instructions</h3>
+              <h3 className="project-card__title">
+                📋 Instructions
+              </h3>
               <button
                 className="icon-btn-edit"
+                type="button"
                 onClick={() => setIsEditingInstructions(!isEditingInstructions)}
-              >
-                ✎
-              </button>
+                title="Edit instructions"
+              >✎</button>
             </div>
             {isEditingInstructions ? (
               <textarea
@@ -196,27 +390,47 @@ export function ProjectDetail() {
                   setIsEditingInstructions(false);
                   saveProjectField('instructions', instructions);
                 }}
-                placeholder="General instructions for the AI when working on this project..."
+                placeholder="Project-wide instructions for the AI (tone, output format, constraints)…"
               />
             ) : (
-              <p className="project-card__text">
-                {instructions || 'Add project-wide instructions...'}
+              <p
+                className={`project-card__text ${!instructions ? 'is-placeholder' : ''}`}
+                onClick={() => setIsEditingInstructions(true)}
+              >
+                {instructions || 'Click to add project-wide AI instructions…'}
               </p>
             )}
           </div>
 
-          <div className="project-card project-card--files">
+          {/* Quick actions */}
+          <div className="project-card project-card--actions">
             <div className="project-card__header">
-              <h3 className="project-card__title">Files</h3>
-              <button className="icon-btn-add">+</button>
+              <h3 className="project-card__title">⚡ Quick Actions</h3>
             </div>
-            <div className="project-card__empty-files">
-              <div className="files-placeholder-icons">
-                <div className="file-icon"></div>
-                <div className="file-icon"></div>
-                <div className="file-icon"></div>
-              </div>
-              <p>Add PDFs, documents, or other text to reference in this project.</p>
+            <div className="project-quick-actions">
+              <button
+                className="project-quick-action"
+                type="button"
+                onClick={() => { setViewMode('chat'); }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New conversation
+              </button>
+              <button
+                className="project-quick-action"
+                type="button"
+                onClick={() => { setIsEditingMemory(true); }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                Update memory
+              </button>
             </div>
           </div>
         </aside>
