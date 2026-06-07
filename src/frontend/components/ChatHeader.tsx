@@ -42,7 +42,7 @@ export function ChatHeader({
           <div className="status-group">
             <div className="status-pill">
               <span className="status-pill__label">Model</span>
-              <span className="status-pill__value">{selectedModel || 'Loading…'}</span>
+              <span className="status-pill__value">{selectedModel || 'Not selected'}</span>
             </div>
             <div className="status-pill">
               <span className="status-pill__label">Ollama</span>

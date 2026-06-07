@@ -244,6 +244,11 @@ export function useChatSession(deps: {
   const handleSend = async (event?: FormEvent) => {
     if (event) event.preventDefault();
     if (!prompt.trim() && attachedFiles.length === 0) return;
+    const resolvedModel = selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null;
+    if (!resolvedModel) {
+      setStatusText('No model selected. Please wait for models to load or pick one.');
+      return;
+    }
     lastSentPromptRef.current = prompt;
 
     if (abortRef.current) {
@@ -302,7 +307,7 @@ export function useChatSession(deps: {
         updatedAt: startedAt,
         pinned: existingChat?.pinned ?? false,
         role: existingChat?.role ?? selectedRole,
-        model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
+        model: resolvedModel,
         projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
         systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
         usage: existingChat?.usage || 0,
@@ -315,7 +320,7 @@ export function useChatSession(deps: {
       title,
       pinned: existingChat?.pinned ?? false,
       role: existingChat?.role ?? selectedRole,
-      model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
+      model: resolvedModel,
       projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
       systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
       createdAt,
@@ -337,7 +342,7 @@ export function useChatSession(deps: {
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
-          model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
+          model: resolvedModel,
           chatId,
           messages: [
             ...recentConversation.map(m => ({ role: m.role, content: m.content })),
@@ -527,7 +532,7 @@ export function useChatSession(deps: {
           title,
           pinned: existingChat?.pinned ?? false,
           role: existingChat?.role ?? selectedRole,
-          model: selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null,
+          model: resolvedModel,
           projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
           systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
           createdAt,

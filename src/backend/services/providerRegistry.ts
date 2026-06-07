@@ -37,7 +37,8 @@ export class ProviderRegistry {
     return first.value;
   }
 
-  /** Resolve provider from model name prefix (e.g. "openai:gpt-4o" → openai provider) */
+  /** Resolve provider from model name prefix (e.g. "openai:gpt-4o" → openai provider).
+   *  Only strips known provider prefixes; leaves Ollama tags (like "qwen3.5:latest") intact. */
   getByModel(model: string): LLMProvider {
     const colonIndex = model.indexOf(':');
     if (colonIndex > 0) {
@@ -46,6 +47,23 @@ export class ProviderRegistry {
       if (provider) return provider;
     }
     return this.get();
+  }
+
+  /**
+   * Resolve provider AND strip known prefix from model name.
+   * Only strips when the prefix matches a registered provider ID.
+   * Handles Ollama tag colons correctly (e.g. "qwen3.5:latest" stays as-is).
+   */
+  resolveModel(model: string): { provider: LLMProvider; modelName: string } {
+    const colonIndex = model.indexOf(':');
+    if (colonIndex > 0) {
+      const prefix = model.slice(0, colonIndex);
+      const provider = this.providers.get(prefix);
+      if (provider) {
+        return { provider, modelName: model.slice(colonIndex + 1) };
+      }
+    }
+    return { provider: this.get(), modelName: model };
   }
 
   /** Strip provider prefix from model name (e.g. "openai:gpt-4o" → "gpt-4o") */

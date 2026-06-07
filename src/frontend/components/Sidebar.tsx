@@ -266,11 +266,18 @@ export function Sidebar() {
 
             <div className="history-list">
               {filteredHistories.map(([id, chat]) => (
-                <button
+                <div
                   key={id}
+                  role="button"
+                  tabIndex={0}
                   className={`history-item ${currentChatId === id ? 'is-active' : ''} ${chat.pinned ? 'is-pinned' : ''}`}
-                  type="button"
                   onClick={() => onSelectChatLocal(id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectChatLocal(id);
+                    }
+                  }}
                 >
                   <div className="history-item__content">
                     {editingChatId === id ? (
@@ -348,7 +355,7 @@ export function Sidebar() {
                       &times;
                     </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
 

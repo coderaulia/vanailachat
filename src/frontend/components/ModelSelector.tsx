@@ -78,6 +78,16 @@ export function ModelSelector({
       {isOpen && (
         <div className="model-selector__dropdown">
           <div className="model-selector__list">
+            {availableModels.length === 0 && (
+              <div className="model-selector__empty">
+                <span className="model-selector__empty-icon">🦙</span>
+                <p className="model-selector__empty-title">No models installed</p>
+                <p className="model-selector__empty-hint">
+                  Run <code>ollama pull &lt;model&gt;</code> to get started.
+                  Try <code>ollama pull llama3.2</code>
+                </p>
+              </div>
+            )}
             {availableModels.map((model) => {
               const info = getModelInfo(model, modelMetadata[model]);
               const isActive = model === selectedModel;

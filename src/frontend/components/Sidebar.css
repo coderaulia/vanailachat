@@ -395,6 +395,7 @@
 .select:focus-visible,
 .textarea:focus-visible,
 .history-item:focus-visible,
+[role="button"].history-item:focus-visible,
 .copy-code-btn:focus-visible {
   outline: 3px solid rgba(201, 111, 59, 0.26);
   outline-offset: 2px;

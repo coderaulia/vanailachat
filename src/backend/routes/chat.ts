@@ -15,9 +15,9 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         return context.json({ error: 'Model required' }, 400);
       }
 
-      // Resolve provider from model name (supports "openai:gpt-4o" prefix syntax)
-      const provider = dependencies.providerRegistry.getByModel(body.model);
-      const modelName = ProviderRegistry.stripPrefix(body.model);
+      // Resolve provider from model name (supports "openai:gpt-4o" prefix syntax,
+      // leaves Ollama tags like "qwen3.5:latest" intact)
+      const { provider, modelName } = dependencies.providerRegistry.resolveModel(body.model);
 
       // Validate model availability
       const isAvailable = await provider.isModelAvailable(modelName);
