@@ -12,8 +12,10 @@
 }
 
 .settings-card {
-  width: 560px;
+  width: 65vw;
+  min-width: 540px;
   max-width: calc(100vw - 32px);
+  min-height: 50vh;
   max-height: calc(100vh - 64px);
   background: var(--bg-surface);
   border: 1px solid var(--border-soft);
