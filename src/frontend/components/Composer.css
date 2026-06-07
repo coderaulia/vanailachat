@@ -99,6 +99,29 @@
   padding: 0;
 }
 
+.system-prompt-persona-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg-accent-strong);
+  background: var(--bg-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--bg-accent) 35%, transparent);
+  padding: 2px 10px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.system-prompt-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg-surface) 50%, transparent);
+}
+
+
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }

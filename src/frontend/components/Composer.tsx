@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
+import { FRONTEND_PERSONAS, ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import './Composer.css';
 
@@ -55,6 +56,31 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   const onToggleSearch = () => setIsSearchEnabled((prev: boolean) => !prev);
 
+  /** Click a role chip: set role, sync persona, populate system prompt */
+  const handleRoleClick = (role: ModelRole) => {
+    onSelectRole(role);
+    const personaId = ROLE_TO_PERSONA[role] ?? 'general';
+    setPersona(personaId);
+    const persona = FRONTEND_PERSONAS[personaId];
+    if (persona) {
+      onSetSystemPrompt(persona.systemPrompt);
+      // Auto-save so the backend gets the updated prompt
+      setTimeout(() => onSaveSystemPrompt(), 0);
+    }
+  };
+
+  /** Change persona dropdown: sync system prompt */
+  const handlePersonaChange = (personaId: string) => {
+    setPersona(personaId);
+    const p = FRONTEND_PERSONAS[personaId];
+    if (p) {
+      onSetSystemPrompt(p.systemPrompt);
+      setTimeout(() => onSaveSystemPrompt(), 0);
+    }
+  };
+
+  const activePersona = getPersonaForRole(selectedRole);
+
   return (
     <footer className="app-footer">
       <form className="chat-form" onSubmit={onSend}>
@@ -65,6 +91,9 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
             <div className="system-prompt-popover">
               <div className="system-prompt-popover__header">
                 <span className="system-prompt-popover__title">System Prompt</span>
+                <span className="system-prompt-persona-badge">
+                  {activePersona.icon} {activePersona.name} — edit freely
+                </span>
                 <button
                   type="button"
                   className="icon-btn system-prompt-close"
@@ -79,12 +108,18 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
               </div>
               <textarea
                 className="textarea system-prompt-textarea"
-                rows={4}
+                rows={6}
                 value={systemPrompt}
                 onChange={(event) => onSetSystemPrompt(event.target.value)}
                 onBlur={onSaveSystemPrompt}
-                placeholder="You are a helpful assistant."
+                placeholder={activePersona.systemPrompt}
               ></textarea>
+              <div className="system-prompt-hint">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Injected as system context on every message. Switching roles reloads the default prompt.
+              </div>
             </div>
           )}
 
@@ -154,7 +189,8 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   key={role}
                   type="button"
                   className={`role-chip ${selectedRole === role ? 'active' : ''}`}
-                  onClick={() => onSelectRole(role as ModelRole)}
+                  onClick={() => handleRoleClick(role as ModelRole)}
+                  title={getPersonaForRole(role).description}
                 >
                   {label}
                 </button>
@@ -169,11 +205,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 <select
                   className="select composer-select composer-select--persona"
                   value={persona}
-                  onChange={(e) => setPersona(e.target.value)}
+                  onChange={(e) => handlePersonaChange(e.target.value)}
                 >
-                  <option value="general">🤖 General</option>
-                  <option value="coder">💻 Coder</option>
-                  <option value="creator">✨ Creator</option>
+                  {Object.values(FRONTEND_PERSONAS).map((p) => (
+                    <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
+                  ))}
                 </select>
               </div>
 

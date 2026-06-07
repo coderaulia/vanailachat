@@ -94,12 +94,19 @@ export function chatRouter(dependencies: AppDependencies): Hono {
       }
 
       // --- Inject Persona (Coder / Creator / General) ---
+      // The persona system prompt is pre-populated into the chat's systemPrompt textarea by
+      // the frontend when a role chip is clicked. We only inject it here as a fallback when
+      // the chat has no saved system prompt (e.g. a brand-new chat before first save).
       const personaId = (body as Record<string, unknown>).persona as string | undefined;
-      const personaPrompt = getPersonaSystemPrompt(personaId);
-      if (personaPrompt) {
-        systemPrompt += `\n\n${personaPrompt}`;
+      const hasChatSystemPrompt = chatPrompt && chatPrompt.trim();
+      if (!hasChatSystemPrompt) {
+        const personaPrompt = getPersonaSystemPrompt(personaId);
+        if (personaPrompt) {
+          systemPrompt += `\n\n${personaPrompt}`;
+        }
       }
       const personaToolAllowlist = getPersonaToolAllowlist(personaId);
+
 
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
 
