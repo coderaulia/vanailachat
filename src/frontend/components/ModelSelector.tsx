@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import './ModelSelector.css';
-import { getModelInfo } from '../config/modelMetadata';
+import { getModelInfo, PROVIDER_DISPLAY } from '../config/modelMetadata';
 import type { ModelMetadataMap } from '../config/modelMetadata';
 
 interface ModelSelectorProps {
@@ -22,7 +22,21 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const selectedInfo = getModelInfo(selectedModel, modelMetadata[selectedModel]);
+
+  const selectedProvider = providers?.find((p) => p.name === selectedModel)?.provider;
+  const selectedInfo = getModelInfo(selectedModel, modelMetadata[selectedModel], selectedProvider);
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const model of availableModels) {
+      const provider = providers?.find((p) => p.name === model)?.provider ?? 'ollama';
+      if (!groups.has(provider)) groups.set(provider, []);
+      groups.get(provider)!.push(model);
+    }
+    return groups;
+  }, [availableModels, providers]);
+
+  const hasMultipleProviders = grouped.size > 1;
 
   const toggleDropdown = () => {
     const nextState = !isOpen;
@@ -87,45 +101,55 @@ export function ModelSelector({
                 </p>
               </div>
             )}
-            {availableModels.map((model) => {
-              const info = getModelInfo(model, modelMetadata[model]);
-              const isActive = model === selectedModel;
-              const provider = providers?.find((p) => p.name === model)?.provider;
-              return (
-                <button
-                  key={model}
-                  type="button"
-                  className={`model-selector__option ${isActive ? 'is-active' : ''}`}
-                  onClick={() => {
-                    onSelectModel(model);
-                    setIsOpen(false);
-                  }}
-                >
-                  <span className="model-selector__option-icon">{info.icon}</span>
-                  <div className="model-selector__option-content">
-                    <div className="model-selector__option-header">
-                      <span className="model-selector__option-name">{info.displayName}</span>
-                      {provider && provider !== 'ollama' && (
-                        <span className="model-selector__provider-badge">{provider}</span>
-                      )}
-                      {isActive && (
-                        <svg className="model-selector__check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <p className="model-selector__option-desc">{info.description}</p>
-                    <div className="model-selector__option-badges">
-                      {info.capabilities.map((cap) => (
-                        <span key={cap} className="model-selector__option-badge">
-                          {cap}
-                        </span>
-                      ))}
-                    </div>
+            {Array.from(grouped.entries()).map(([provider, models]) => (
+              <div key={provider} className="model-selector__group">
+                {hasMultipleProviders && (
+                  <div className="model-selector__group-header">
+                    <span className="model-selector__group-icon">
+                      {PROVIDER_DISPLAY[provider]?.icon ?? '🤖'}
+                    </span>
+                    <span className="model-selector__group-label">
+                      {PROVIDER_DISPLAY[provider]?.label ?? provider}
+                    </span>
                   </div>
-                </button>
-              );
-            })}
+                )}
+                {models.map((model) => {
+                  const info = getModelInfo(model, modelMetadata[model], provider);
+                  const isActive = model === selectedModel;
+                  return (
+                    <button
+                      key={model}
+                      type="button"
+                      className={`model-selector__option ${isActive ? 'is-active' : ''}`}
+                      onClick={() => {
+                        onSelectModel(model);
+                        setIsOpen(false);
+                      }}
+                    >
+                      <span className="model-selector__option-icon">{info.icon}</span>
+                      <div className="model-selector__option-content">
+                        <div className="model-selector__option-header">
+                          <span className="model-selector__option-name">{info.displayName}</span>
+                          {isActive && (
+                            <svg className="model-selector__check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                        <p className="model-selector__option-desc">{info.description}</p>
+                        <div className="model-selector__option-badges">
+                          {info.capabilities.map((cap) => (
+                            <span key={cap} className="model-selector__option-badge">
+                              {cap}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       )}

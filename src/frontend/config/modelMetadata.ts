@@ -34,6 +34,16 @@ const CAPABILITY_LABELS: Record<string, string> = {
   vision: 'Vision',
 };
 
+// Provider IDs that use prefix:modelname format (not Ollama tag format)
+const EXTERNAL_PROVIDER_PREFIXES = new Set(['openai', '9router', 'openrouter']);
+
+export const PROVIDER_DISPLAY: Record<string, { label: string; icon: string; description: string }> = {
+  ollama:     { label: 'Ollama',     icon: '🦙', description: 'Local Ollama model' },
+  openai:     { label: 'OpenAI',     icon: '✨', description: 'OpenAI model' },
+  '9router':  { label: '9Router',    icon: '⚡', description: '9Router cloud model' },
+  openrouter: { label: 'OpenRouter', icon: '🌐', description: 'OpenRouter model' },
+};
+
 const toTitleCase = (value: string): string =>
   value
     .replace(/[-_]+/g, ' ')
@@ -44,7 +54,17 @@ const toTitleCase = (value: string): string =>
 
 const getModelBaseName = (name: string): string => {
   const withoutNamespace = name.split('/').pop() || name;
-  return withoutNamespace.split(':')[0] || withoutNamespace;
+  const colonIdx = withoutNamespace.indexOf(':');
+  if (colonIdx > 0) {
+    const prefix = withoutNamespace.slice(0, colonIdx);
+    if (EXTERNAL_PROVIDER_PREFIXES.has(prefix)) {
+      // External provider prefix — take the actual model name after the colon
+      return withoutNamespace.slice(colonIdx + 1);
+    }
+    // Ollama tag format (e.g., "llama3.2:latest") — strip tag
+    return withoutNamespace.slice(0, colonIdx);
+  }
+  return withoutNamespace;
 };
 
 const formatDisplayName = (name: string): string => toTitleCase(getModelBaseName(name));
@@ -81,8 +101,10 @@ const getCapabilityLabels = (metadata?: ModelMetadata): string[] => {
   ]).slice(0, 4);
 };
 
-const getDescription = (metadata?: ModelMetadata): string => {
-  if (!metadata) return 'Ollama model';
+const getDescription = (metadata?: ModelMetadata, provider?: string): string => {
+  if (!metadata) {
+    return PROVIDER_DISPLAY[provider ?? 'ollama']?.description ?? 'Local model';
+  }
 
   const parameterSize = metadata.parameterSize || metadata.parameters;
   const architecture = metadata.architecture || metadata.family;
@@ -93,17 +115,19 @@ const getDescription = (metadata?: ModelMetadata): string => {
     metadata.contextWindow ? `${metadata.contextWindow.toLocaleString()} context` : null,
   ]);
 
-  return details.length > 0 ? details.join(' - ') : 'Ollama model';
+  return details.length > 0 ? details.join(' - ') : (PROVIDER_DISPLAY[provider ?? 'ollama']?.description ?? 'Local model');
 };
 
-const getIcon = (metadata?: ModelMetadata): string => {
+const getIcon = (metadata?: ModelMetadata, provider?: string): string => {
   const capabilities = metadata?.capabilities?.map((capability) => capability.toLowerCase()) ?? [];
-  return capabilities.some((capability) => capability === 'image' || capability === 'vision') ? '🎨' : '🤖';
+  if (capabilities.some((capability) => capability === 'image' || capability === 'vision')) return '🎨';
+  return PROVIDER_DISPLAY[provider ?? 'ollama']?.icon ?? '🤖';
 };
 
 export const getModelInfo = (
   modelName: string | null | undefined,
-  metadata?: ModelMetadata
+  metadata?: ModelMetadata,
+  provider?: string,
 ): ModelInfo => {
   const name = modelName || '';
   if (!name) return { name: '', displayName: 'Select Model', description: '', capabilities: [], icon: '🤖' };
@@ -111,8 +135,8 @@ export const getModelInfo = (
   return {
     name,
     displayName: formatDisplayName(name),
-    description: getDescription(metadata),
+    description: getDescription(metadata, provider),
     capabilities: getCapabilityLabels(metadata),
-    icon: getIcon(metadata),
+    icon: getIcon(metadata, provider),
   };
 };

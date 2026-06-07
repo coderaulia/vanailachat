@@ -91,6 +91,32 @@
   overflow-y: auto;
 }
 
+.model-selector__group + .model-selector__group {
+  border-top: 1px solid var(--border-soft);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.model-selector__group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 4px;
+}
+
+.model-selector__group-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.model-selector__group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
 .model-selector__option {
   width: 100%;
   padding: 10px;
