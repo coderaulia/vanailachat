@@ -34,10 +34,12 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
 
   // LLM step state
-  const [llmMode, setLlmMode] = useState<'ollama' | 'openai' | 'openrouter'>('ollama');
+  const [llmMode, setLlmMode] = useState<'ollama' | 'openai' | 'openrouter' | '9router'>('ollama');
   const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [nineRouterHost, setNineRouterHost] = useState('http://localhost:20128/v1');
+  const [nineRouterKey, setNineRouterKey] = useState('');
 
   // Profile step state
   const [userName, setUserName] = useState('');
@@ -60,6 +62,9 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
       } else if (llmMode === 'openrouter') {
         await saveSetting('openai_api_key', openrouterKey);
         await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
+      } else if (llmMode === '9router') {
+        await saveSetting('nine_router_host', nineRouterHost);
+        await saveSetting('nine_router_api_key', nineRouterKey);
       }
     }
 
@@ -144,6 +149,13 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 >
                   🔀 OpenRouter
                 </button>
+                <button
+                  className={`onboarding-tab ${llmMode === '9router' ? 'is-active' : ''}`}
+                  onClick={() => setLlmMode('9router')}
+                  type="button"
+                >
+                  🔄 9Router
+                </button>
               </div>
 
               {llmMode === 'ollama' && (
@@ -189,6 +201,37 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                   />
                   <p className="onboarding-hint">
                     Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a>
+                  </p>
+                </div>
+              )}
+
+              {llmMode === '9router' && (
+                <div className="onboarding-field">
+                  <label>9Router Host URL</label>
+                  <input
+                    className="onboarding-input"
+                    value={nineRouterHost}
+                    onChange={(e) => setNineRouterHost(e.target.value)}
+                    placeholder="http://localhost:20128/v1"
+                  />
+                  <p className="onboarding-hint">
+                    Default works if 9Router is running locally.
+                  </p>
+                </div>
+              )}
+
+              {llmMode === '9router' && (
+                <div className="onboarding-field">
+                  <label>9Router API Key</label>
+                  <input
+                    className="onboarding-input"
+                    type="password"
+                    value={nineRouterKey}
+                    onChange={(e) => setNineRouterKey(e.target.value)}
+                    placeholder="Copy from 9Router dashboard →"
+                  />
+                  <p className="onboarding-hint">
+                    Get your key at <a href="http://localhost:20128/dashboard" target="_blank" rel="noreferrer">9Router Dashboard</a>
                   </p>
                 </div>
               )}

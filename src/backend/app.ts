@@ -5,6 +5,7 @@ import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
 import { OpenAIProvider } from './services/openaiProvider.js';
+import { NineRouterProvider } from './services/nineRouterProvider.js';
 import { ToolService } from './services/tools.js';
 import { providerRegistry } from './services/providerRegistry.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
@@ -26,6 +27,11 @@ import { researchRouter } from './routes/research.js';
 providerRegistry.register(new OllamaProvider());
 try {
   providerRegistry.register(new OpenAIProvider());
+} catch {
+  // Ignore
+}
+try {
+  providerRegistry.register(new NineRouterProvider());
 } catch {
   // Ignore
 }

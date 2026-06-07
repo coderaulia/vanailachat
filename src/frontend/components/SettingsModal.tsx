@@ -5,6 +5,8 @@ interface AllSettings {
   ollama_host?: string;
   openai_api_key?: string;
   openai_base_url?: string;
+  nine_router_host?: string;
+  nine_router_api_key?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
@@ -22,7 +24,7 @@ interface MemoryEntry {
 }
 
 type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'about';
-type LlmMode = 'ollama' | 'openai' | 'openrouter';
+type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
 
@@ -44,6 +46,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [nineRouterHost, setNineRouterHost] = useState('http://localhost:20128/v1');
+  const [nineRouterKey, setNineRouterKey] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
   // Profile
@@ -71,7 +75,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       .then((data: { settings?: AllSettings }) => {
         const s = data.settings ?? {};
         if (s.ollama_host) setOllamaHost(s.ollama_host);
-        if (s.openai_api_key) {
+        if (s.nine_router_api_key) {
+          setLlmMode('9router');
+          setNineRouterKey(s.nine_router_api_key);
+        } else if (s.openai_api_key) {
           // Detect mode from base_url
           if (s.openai_base_url?.includes('openrouter')) {
             setLlmMode('openrouter');
@@ -83,6 +90,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         } else {
           setLlmMode('ollama');
         }
+        if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
@@ -151,6 +159,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
     flash('Saved');
   }, [openrouterKey]);
+
+  const saveNineRouterConfig = useCallback(async () => {
+    await saveSetting('nine_router_host', nineRouterHost);
+    await saveSetting('nine_router_api_key', nineRouterKey);
+    flash('Saved');
+  }, [nineRouterHost, nineRouterKey]);
 
   const saveUserName = useCallback(async () => {
     if (userName.trim()) { await saveSetting('user_name', userName.trim()); flash('Saved'); }
@@ -258,6 +272,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       className={`settings-llm-tab ${llmMode === 'openrouter' ? 'is-active' : ''}`}
                       onClick={() => setLlmMode('openrouter')}
                     >🔀 OpenRouter</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === '9router' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('9router')}
+                    >🔄 9Router</button>
                   </div>
 
                   {llmMode === 'ollama' && (
@@ -301,6 +320,35 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         placeholder="sk-or-..."
                       />
                       <p className="settings-hint">Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a></p>
+                    </div>
+                  )}
+
+                  {llmMode === '9router' && (
+                    <div className="settings-field">
+                      <label className="settings-label">9Router Host URL</label>
+                      <input
+                        className="settings-input"
+                        value={nineRouterHost}
+                        onChange={(e) => setNineRouterHost(e.target.value)}
+                        onBlur={saveNineRouterConfig}
+                        placeholder="http://localhost:20128/v1"
+                      />
+                      <p className="settings-hint">Default works if 9Router is running locally. Change for remote hosts.</p>
+                    </div>
+                  )}
+
+                  {llmMode === '9router' && (
+                    <div className="settings-field">
+                      <label className="settings-label">9Router API Key</label>
+                      <input
+                        className="settings-input"
+                        type="password"
+                        value={nineRouterKey}
+                        onChange={(e) => setNineRouterKey(e.target.value)}
+                        onBlur={saveNineRouterConfig}
+                        placeholder="Copy from 9Router dashboard →"
+                      />
+                      <p className="settings-hint">Get your API key at <a href="http://localhost:20128/dashboard" target="_blank" rel="noreferrer">9Router Dashboard</a></p>
                     </div>
                   )}
 
