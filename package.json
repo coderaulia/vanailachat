@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "sh scripts/predev.sh",
+    "predev": "node scripts/predev.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "tsx watch src/backend/index.ts",
     "dev:frontend": "vite",
