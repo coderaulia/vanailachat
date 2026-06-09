@@ -13,6 +13,7 @@ A modern, production-grade local AI chat interface built with **React 19**, **Ho
 - **9Router** — OpenAI-compatible proxy routing to 40+ AI providers; configurable host + API key stored in settings DB
 - **Provider badges** — model picker shows which provider each model is from
 - **LLM Provider Abstraction** — unified `LLMProvider` interface; swap backends without touching chat logic
+- **Fully injectable** — `ProviderRegistry` built fresh per `createApp()` call with injected `fetchFn`/`getBaseUrl`; enables clean unit tests without a live Ollama instance
 
 ### 🤖 Assistant Personas
 | Persona | Icon | Best For |
@@ -49,7 +50,8 @@ POST `/api/research` streams a multi-stage research workflow:
 Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 
 ### 🧬 Semantic Memory
-- **Vector memory** — embeddings via Ollama `nomic-embed-text`, stored in SQLite
+- **Vector memory** — embeddings via Ollama `nomic-embed-text`, stored as BLOB (binary Float32Array) in SQLite — ~4× smaller and faster than JSON text
+- **Search cap** — vector search scans latest 1,000 entries for consistent sub-ms latency
 - **Auto-injection** — relevant memories injected into every system prompt automatically
 - **Memories tab** — manage stored memories from the Settings modal
 - **API** — `/api/memory` for search, store, delete, and index past chats
@@ -62,6 +64,7 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 ### 💬 Conversation
 - **Streaming** — NDJSON token-by-token rendering with typing cursor
 - **Abort** — cancel any generation; previous prompt auto-restored
+- **Auto-title** — AI generates a short chat title in the background after the first reply
 - **Copy** — copies raw Markdown source (not rendered HTML)
 - **Token badges** — toggle per-message prompt/completion counts
 - **Multi-modal** — attach images (base64 to vision models) and text files
@@ -77,12 +80,12 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
   |----------|--------|
   | `Ctrl+N` | New chat |
   | `Ctrl+/` | Toggle sidebar |
-  | `Ctrl+Shift+S` | Toggle web search |
+  | `Alt+S` | Toggle web search |
   | `Escape` | Abort generation |
 
 ### 🗄 Backend & Data
 - **Rate limiting** — 20 req/min on `/api/chat`, 60 req/min on `/api/models`
-- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v7), safe upgrades from any state
+- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v8), safe upgrades from any state
 - **Export/Import** — full workspace backup and restore as JSON
 - **Settings API** — `/api/settings` key-value store for user preferences, API keys, and onboarding state
 
@@ -94,7 +97,7 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 |-------|------------|
 | Frontend | React 19, Vite, TypeScript, Vanilla CSS |
 | Backend | Hono (Node.js), TypeScript |
-| Database | SQLite (`better-sqlite3`), 7 versioned migrations |
+| Database | SQLite (`better-sqlite3`), 8 versioned migrations |
 | Local AI | Ollama daemon (auto-started) |
 | Cloud AI | OpenAI-compatible API (OpenAI, OpenRouter, 9Router) |
 | Search | DuckDuckGo (`duck-duck-scrape`) |
@@ -133,8 +136,8 @@ src/
 │       ├── personas.ts           # Persona definitions + system prompts
 │       ├── tools.ts              # Tool registry + execution (5 built-in + search_web)
 │       ├── toolInterface.ts      # Tool / ToolSchema interfaces
-│       ├── database.ts           # SQLite + all table CRUD (incl. skills)
-│       ├── migrations.ts         # Schema migrations v1–v7
+│       ├── database.ts           # SQLite + all table CRUD (incl. skills, memory BLOB)
+│       ├── migrations.ts         # Schema migrations v1–v8 (v8: embeddings as BLOB)
 │       └── ollama.ts             # Ollama daemon management
 └── frontend/
     ├── App.tsx                   # Shell + onboarding wizard mount
@@ -151,7 +154,9 @@ src/
     │   └── SettingsModal         # Settings + Memories tab
     └── hooks/
         ├── useChatApp.ts         # Root hook — assembles all sub-hooks
-        ├── useChatSession.ts     # Streaming, abort, send, conversation state
+        ├── useChatSession.ts     # Coordinator: shared state + refs, delegates to sub-hooks
+        ├── useSendMessage.ts     # Send logic, streaming, abort, AI title generation
+        ├── useResearch.ts        # Deep research pipeline + chat persistence
         ├── useModelManager.ts    # Model list + provider data
         ├── usePersistence.ts     # API calls to SQLite backend
         ├── useUIState.ts         # Sidebar, theme, status
@@ -189,8 +194,8 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2
 
 # 4. Clone and install
-git clone https://github.com/your-org/vanaila-chat.git
-cd vanaila-chat
+git clone https://github.com/coderaulia/vanailachat.git
+cd vanailachat
 npm install
 
 # 5. (Optional) Set cloud API keys
@@ -239,8 +244,8 @@ ollama serve &
 ollama pull llama3.2
 
 # 4. Clone and install
-git clone https://github.com/your-org/vanaila-chat.git
-cd vanaila-chat
+git clone https://github.com/coderaulia/vanailachat.git
+cd vanailachat
 npm install
 
 # 5. (Optional) Set cloud API keys
@@ -271,8 +276,8 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2
-git clone https://github.com/your-org/vanaila-chat.git
-cd vanaila-chat
+git clone https://github.com/coderaulia/vanailachat.git
+cd vanailachat
 npm install
 npm run dev
 # → Open http://localhost:5173 in your Windows browser
@@ -293,8 +298,8 @@ npm run dev
 
 4. **Clone and run** (in PowerShell or Command Prompt):
    ```powershell
-   git clone https://github.com/your-org/vanaila-chat.git
-   cd vanaila-chat
+   git clone https://github.com/coderaulia/vanailachat.git
+   cd vanailachat
    npm install
 
    # Optional: set cloud API keys
@@ -305,7 +310,7 @@ npm run dev
 
 5. **Open** `http://localhost:5173` in your browser.
 
-> **Note**: The folder picker (`/api/pick-directory`) uses `zenity`/`kdialog` which aren't available on Windows. You can still type the path manually in Coder mode.
+> **Note**: `npm run dev` uses a Node.js predev script (`scripts/predev.js`) — no `sh`/bash dependency on Windows. The folder picker (`/api/pick-directory`) uses `zenity`/`kdialog` which aren't available on Windows; type the path manually in Coder mode instead.
 
 ---
 
