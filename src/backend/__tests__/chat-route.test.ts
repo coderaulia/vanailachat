@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { createApp } from '../app';
+import { OllamaService } from '../services/ollama';
 
 describe('chat route', () => {
+  beforeEach(() => {
+    // OllamaProvider.isModelAvailable → OllamaService.getInstalledModels (real HTTP).
+    // Stub it so tests don't need a running Ollama instance.
+    vi.spyOn(OllamaService, 'getInstalledModels').mockResolvedValue(['llama3']);
+  });
+
   it('pipes Ollama chat stream and normalizes multimodal messages', async () => {
     const streamPayload = [
       JSON.stringify({ message: { role: 'assistant', content: 'Here ' }, done: false }),

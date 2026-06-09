@@ -6,6 +6,20 @@ import { useModelManager } from '../hooks/useModelManager';
 const fetchMock = vi.fn<typeof fetch>();
 global.fetch = fetchMock;
 
+// Provide a localStorage stub in case the jsdom environment doesn't supply one
+const localStorageStore: Record<string, string> = {};
+const localStorageMock = {
+  clear: () => { for (const k of Object.keys(localStorageStore)) delete localStorageStore[k]; },
+  getItem: (k: string) => localStorageStore[k] ?? null,
+  setItem: (k: string, v: string) => { localStorageStore[k] = v; },
+  removeItem: (k: string) => { delete localStorageStore[k]; },
+  get length() { return Object.keys(localStorageStore).length; },
+  key: (i: number) => Object.keys(localStorageStore)[i] ?? null,
+};
+try {
+  Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
+} catch { /* already defined — jsdom provided one */ }
+
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -15,7 +29,7 @@ const jsonResponse = (body: unknown) =>
 describe('useModelManager hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    localStorageMock.clear();
     fetchMock.mockResolvedValue(jsonResponse({ models: [], metadata: {} }));
   });
 

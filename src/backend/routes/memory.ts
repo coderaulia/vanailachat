@@ -1,14 +1,12 @@
 import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
-import { EmbeddingService } from '../services/embedding.js';
-import { DatabaseService } from '../services/database.js';
 
 export function memoryRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   /** List all stored memories */
   app.get('/', (context) => {
-    const entries = DatabaseService.getAllMemoryEntries();
+    const entries = dependencies.getAllMemoryEntries();
     return context.json({ memories: entries, count: entries.length });
   });
 
@@ -21,7 +19,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
     const topK = parseInt(context.req.query('k') || '5', 10);
 
     try {
-      const results = await EmbeddingService.search(query, topK);
+      const results = await dependencies.searchMemoriesByText(query, topK);
       return context.json({ results });
     } catch (error) {
       return context.json({ error: error instanceof Error ? error.message : 'Search failed' }, 500);
@@ -36,8 +34,8 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
         return context.json({ error: 'Content required' }, 400);
       }
 
-      const embedding = await EmbeddingService.embed(body.content);
-      const record = DatabaseService.upsertMemory({
+      const embedding = await dependencies.embed(body.content);
+      const record = dependencies.upsertMemory({
         type: body.type ?? 'manual',
         content: body.content,
         embedding,
@@ -53,7 +51,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
   /** Delete a memory by ID */
   app.delete('/:id', (context) => {
     const id = context.req.param('id');
-    const deleted = DatabaseService.deleteMemory(id);
+    const deleted = dependencies.deleteMemory(id);
     return context.json({ deleted });
   });
 
@@ -71,8 +69,8 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
         if (msg.role !== 'user' && msg.role !== 'assistant') continue;
         if (!msg.content?.trim()) continue;
 
-        const embedding = await EmbeddingService.embed(msg.content);
-        DatabaseService.upsertMemory({
+        const embedding = await dependencies.embed(msg.content);
+        dependencies.upsertMemory({
           type: 'conversation',
           content: msg.content.slice(0, 4000),
           embedding,
@@ -96,7 +94,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
     }
 
     try {
-      const results = await EmbeddingService.search(query, 3, 0.25);
+      const results = await dependencies.searchMemoriesByText(query, 3, 0.25);
       if (results.length === 0) {
         return context.json({ context: '' });
       }

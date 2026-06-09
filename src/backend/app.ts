@@ -2,12 +2,13 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { DatabaseService } from './services/database.js';
+import { EmbeddingService } from './services/embedding.js';
 import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
 import { OpenAIProvider } from './services/openaiProvider.js';
 import { NineRouterProvider } from './services/nineRouterProvider.js';
 import { ToolService } from './services/tools.js';
-import { providerRegistry } from './services/providerRegistry.js';
+import { ProviderRegistry } from './services/providerRegistry.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import type { AppDependencies } from './types.js';
 
@@ -23,20 +24,7 @@ import { personasRouter } from './routes/personas.js';
 import { skillsRouter } from './routes/skills.js';
 import { researchRouter } from './routes/research.js';
 
-// Register providers at startup
-providerRegistry.register(new OllamaProvider());
-try {
-  providerRegistry.register(new OpenAIProvider());
-} catch {
-  // Ignore
-}
-try {
-  providerRegistry.register(new NineRouterProvider());
-} catch {
-  // Ignore
-}
-
-const defaultDependencies: AppDependencies = {
+const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
   fetchFn: fetch,
   getBaseUrl: OllamaService.getBaseUrl.bind(OllamaService),
@@ -55,6 +43,13 @@ const defaultDependencies: AppDependencies = {
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
   insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
+  listEnabledSkills: DatabaseService.listEnabledSkills.bind(DatabaseService),
+  getAllMemoryEntries: DatabaseService.getAllMemoryEntries.bind(DatabaseService),
+  upsertMemory: DatabaseService.upsertMemory.bind(DatabaseService),
+  deleteMemory: DatabaseService.deleteMemory.bind(DatabaseService),
+  embed: EmbeddingService.embed.bind(EmbeddingService),
+  searchMemories: EmbeddingService.searchWithVector.bind(EmbeddingService),
+  searchMemoriesByText: EmbeddingService.search.bind(EmbeddingService),
   pickDirectory: async () => {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
@@ -75,11 +70,31 @@ const defaultDependencies: AppDependencies = {
       }
     }
   },
-  providerRegistry,
 };
 
+/** Build a fresh ProviderRegistry using injected fetchFn and getBaseUrl so tests can mock them. */
+function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string): ProviderRegistry {
+  const registry = new ProviderRegistry();
+  registry.register(new OllamaProvider(fetchFn, getBaseUrl));
+  try {
+    registry.register(new OpenAIProvider());
+  } catch {
+    // Ignore — missing API key at startup is fine
+  }
+  try {
+    registry.register(new NineRouterProvider());
+  } catch {
+    // Ignore
+  }
+  return registry;
+}
+
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
-  const dependencies = { ...defaultDependencies, ...overrides };
+  // Merge non-registry deps first so fetchFn override is visible when building registry
+  const baseDeps = { ...defaultDependencies, ...overrides };
+  const registry = overrides.providerRegistry ?? buildProviderRegistry(baseDeps.fetchFn, baseDeps.getBaseUrl);
+  const dependencies: AppDependencies = { ...baseDeps, providerRegistry: registry };
+
   const app = new Hono();
 
   app.use('*', logger());

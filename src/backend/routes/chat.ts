@@ -2,10 +2,29 @@ import { Hono } from 'hono';
 import type { AppDependencies, ChatRequestBody } from '../types.js';
 import { normalizeMessageContent } from '../helpers/index.js';
 import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
-import { DatabaseService } from '../services/database.js';
-import { EmbeddingService } from '../services/embedding.js';
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
+
+// ── validation ────────────────────────────────────────────────────────────────
+
+function validateChatRequest(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return 'Request body must be a JSON object';
+  const b = body as Record<string, unknown>;
+  if (!b.model || typeof b.model !== 'string') return 'model: required string';
+  if (b.messages !== undefined && !Array.isArray(b.messages)) return 'messages: must be an array';
+  if (b.stream !== undefined && typeof b.stream !== 'boolean') return 'stream: must be boolean';
+  if (b.search !== undefined && typeof b.search !== 'boolean') return 'search: must be boolean';
+  if (b.chatId !== undefined && b.chatId !== null && typeof b.chatId !== 'string')
+    return 'chatId: must be string';
+  if (Array.isArray(b.messages)) {
+    for (const msg of b.messages) {
+      if (!msg || typeof msg !== 'object') return 'messages[]: each item must be an object';
+      if (typeof (msg as Record<string, unknown>).role !== 'string')
+        return 'messages[].role: must be a string';
+    }
+  }
+  return null;
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,7 +64,11 @@ async function buildSystemPrompt(
   if (chatRecord?.projectRoot) {
     systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
     try {
-      const listing = await deps.executeTool('list_directory', { path: '.', maxDepth: 2 }, chatRecord.projectRoot);
+      const listing = await deps.executeTool(
+        'list_directory',
+        { path: '.', maxDepth: 2 },
+        chatRecord.projectRoot,
+      );
       systemPrompt += `\n\n[Project Structure]\n${listing}`;
     } catch (error) {
       console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
@@ -54,9 +77,9 @@ async function buildSystemPrompt(
 
   systemPrompt += '\n\nYou can also read local project files using read_file.';
 
-  // Enabled skills
+  // Enabled skills (via injected dep — no direct DB import)
   try {
-    const enabledSkills = DatabaseService.listEnabledSkills();
+    const enabledSkills = deps.listEnabledSkills();
     for (const skill of enabledSkills) {
       systemPrompt += `\n\n[Skill: ${skill.name}]\n${skill.content}`;
     }
@@ -78,9 +101,9 @@ async function buildSystemPrompt(
     const userText = normalizeMessageContent(lastUserMsg.content).content;
     if (userText.trim()) {
       try {
-        const queryVec = await EmbeddingService.embed(userText);
+        const queryVec = await deps.embed(userText);
 
-        const memories = EmbeddingService.searchWithVector(queryVec, 3, 0.3);
+        const memories = deps.searchMemories(queryVec, 3, 0.3);
         if (memories.length > 0) {
           const block = memories
             .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
@@ -89,7 +112,7 @@ async function buildSystemPrompt(
         }
 
         if (userText.trim().length >= 20) {
-          DatabaseService.upsertMemory({
+          deps.upsertMemory({
             type: 'conversation',
             content: userText.slice(0, 4000),
             embedding: queryVec,
@@ -187,9 +210,7 @@ async function runAgentLoop(
       signal,
     );
 
-    if (!upstreamResponse.ok) {
-      throw new Error(await upstreamResponse.text());
-    }
+    if (!upstreamResponse.ok) throw new Error(await upstreamResponse.text());
     if (!upstreamResponse.body) throw new Error('No stream body from provider');
 
     const reader = upstreamResponse.body.getReader();
@@ -204,7 +225,6 @@ async function runAgentLoop(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       streamBuffer += decoder.decode(value, { stream: true });
       const lines = streamBuffer.split('\n');
       streamBuffer = lines.pop() ?? '';
@@ -230,10 +250,7 @@ async function runAgentLoop(
       if (!isToolCall) controller.enqueue(encoder.encode(streamBuffer + '\n'));
     }
 
-    if (!isToolCall) {
-      controller.close();
-      return;
-    }
+    if (!isToolCall) { controller.close(); return; }
 
     currentMessages.push(assistantMessage as AnyMessage);
 
@@ -242,12 +259,9 @@ async function runAgentLoop(
       const toolName = tc.function?.name ?? 'unknown';
       const toolArgs = tc.function?.arguments;
 
-      // Sort keys to avoid dedup misses from key-order differences
+      // Sort keys to prevent dedup misses from key-order differences
       const callKey = `${toolName}:${JSON.stringify(toolArgs ?? {}, Object.keys(toolArgs ?? {}).sort())}`;
-      if (toolCallHistory.has(callKey)) {
-        skippedCount++;
-        continue;
-      }
+      if (toolCallHistory.has(callKey)) { skippedCount++; continue; }
       toolCallHistory.add(callKey);
 
       enqueueToolEvent(toolName, 'start');
@@ -267,7 +281,6 @@ async function runAgentLoop(
     }
   }
 
-  // Max iterations reached
   enqueue({
     message: {
       role: 'assistant',
@@ -284,14 +297,20 @@ export function chatRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   app.post('/', async (context) => {
-    const body = (await context.req.json()) as ChatRequestBody;
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
+    const validationError = validateChatRequest(body);
+    if (validationError) return context.json({ error: validationError }, 400);
+
+    const typedBody = body as ChatRequestBody;
 
     try {
-      if (!body.model || typeof body.model !== 'string') {
-        return context.json({ error: 'Model required' }, 400);
-      }
-
-      const { provider, modelName } = dependencies.providerRegistry.resolveModel(body.model);
+      const { provider, modelName } = dependencies.providerRegistry.resolveModel(typedBody.model!);
 
       const isAvailable = await provider.isModelAvailable(modelName);
       if (!isAvailable) {
@@ -301,15 +320,17 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         );
       }
 
-      const clientWantsStreaming = body.stream !== false;
+      const clientWantsStreaming = typedBody.stream !== false;
       const chatRecord =
-        typeof body.chatId === 'string' && body.chatId ? dependencies.getChat(body.chatId) : null;
-      const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
+        typeof typedBody.chatId === 'string' && typedBody.chatId
+          ? dependencies.getChat(typedBody.chatId)
+          : null;
+      const incomingMessages = Array.isArray(typedBody.messages) ? typedBody.messages : [];
 
       const { systemPrompt, personaToolAllowlist } = await buildSystemPrompt(
         dependencies,
         chatRecord,
-        body,
+        typedBody,
         incomingMessages,
       );
 
@@ -333,7 +354,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         dependencies.getToolDefinitions() as Record<string, unknown>[],
         capabilities.includes('tools'),
         personaToolAllowlist,
-        body.search ?? false,
+        typedBody.search ?? false,
       );
 
       // Non-streaming path
@@ -374,11 +395,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
             const error = err as any;
             if (error.name === 'AbortError' || error.code === 'ERR_INVALID_STATE') return;
             console.error('[CHAT ERROR]', err);
-            try {
-              controller.error(err);
-            } catch {
-              // ignore
-            }
+            try { controller.error(err); } catch { /* ignore */ }
           }
         },
       });

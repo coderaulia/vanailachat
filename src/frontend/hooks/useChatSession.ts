@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { FormEvent, ChangeEvent } from 'react';
-import type { Attachment, ContextWindow, Message, ApiChat, ApiProject, SendMessagePart, StreamEvent, Chat } from '../types/chat';
+import type { ChangeEvent } from 'react';
+import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW, MAX_CONVERSATION_HISTORY } from '../config/constants';
-import { toModelRole, parseUsage, parseStreamLine } from '../utils/chatUtils';
+import { DEFAULT_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW } from '../config/constants';
+import { toModelRole } from '../utils/chatUtils';
+import { useSendMessage } from './useSendMessage';
+import { useResearch } from './useResearch';
 
 export function useChatSession(deps: {
   selectedModel: string;
@@ -14,9 +16,9 @@ export function useChatSession(deps: {
   statusText: string;
   setStatusText: (text: string) => void;
   closeSidebar: () => void;
-  saveMessage: (chatId: string, message: Message, options?: any) => Promise<void>;
-  upsertChat: (chat: any) => Promise<void>;
-  patchChat: (id: string, updates: any) => Promise<any>;
+  saveMessage: (chatId: string, message: Message, options?: { promptTokens?: number; completionTokens?: number }) => Promise<void>;
+  upsertChat: (chat: ApiChat) => Promise<void>;
+  patchChat: (id: string, updates: Partial<ApiChat>) => Promise<ApiChat>;
   loadMessages: (id: string) => Promise<Message[]>;
   updateHistories: (updater: (prev: Record<string, Chat>) => Record<string, Chat>) => void;
   setSelectedModel: (model: string) => void;
@@ -28,52 +30,78 @@ export function useChatSession(deps: {
   setAttachedFiles: (files: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
   persona?: string;
 }) {
-  const {
-    selectedModel,
-    selectedRole,
-    selectedProjectId,
-    projects,
-    chatHistories,
-    setStatusText,
-    closeSidebar,
-    saveMessage,
-    upsertChat,
-    patchChat,
-    loadMessages,
-    updateHistories,
-    setSelectedModel,
-    setSelectedRole,
-    setSelectedProjectId,
-    prompt,
-    setPrompt,
-    attachedFiles,
-    setAttachedFiles,
-    persona: personaId,
-  } = deps;
-
+  // ── shared state ───────────────────────────────────────────────────────────
   const [conversation, setConversation] = useState<Message[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  // removed local attachedFiles state
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [projectRoot, setProjectRoot] = useState('');
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
 
-  const lastSentPromptRef = useRef<string>('');
   const currentChatIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    currentChatIdRef.current = currentChatId;
-  }, [currentChatId]);
+  useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
+
+  // ── sub-hooks ──────────────────────────────────────────────────────────────
+
+  const { handleSend, lastSentPromptRef } = useSendMessage({
+    selectedModel: deps.selectedModel,
+    selectedRole: deps.selectedRole,
+    selectedProjectId: deps.selectedProjectId,
+    projects: deps.projects,
+    chatHistories: deps.chatHistories,
+    personaId: deps.persona,
+    prompt: deps.prompt,
+    setPrompt: deps.setPrompt,
+    attachedFiles: deps.attachedFiles,
+    setAttachedFiles: deps.setAttachedFiles,
+    conversation,
+    setConversation,
+    systemPrompt,
+    projectRoot,
+    isSearchEnabled,
+    currentChatId,
+    setCurrentChatId,
+    currentChatIdRef,
+    abortRef,
+    activeRequestIdRef,
+    setSendingChatIds,
+    setContextWindow,
+    setStatusText: deps.setStatusText,
+    updateHistories: deps.updateHistories,
+    saveMessage: deps.saveMessage,
+    upsertChat: deps.upsertChat,
+    patchChat: deps.patchChat,
+  });
+
+  const { handleResearch } = useResearch({
+    selectedModel: deps.selectedModel,
+    selectedProjectId: deps.selectedProjectId,
+    projects: deps.projects,
+    prompt: deps.prompt,
+    setPrompt: deps.setPrompt,
+    setConversation,
+    currentChatIdRef,
+    abortRef,
+    activeRequestIdRef,
+    setSendingChatIds,
+    setStatusText: deps.setStatusText,
+    setCurrentChatId,
+    updateHistories: deps.updateHistories,
+    saveMessage: deps.saveMessage,
+    upsertChat: deps.upsertChat,
+  });
+
+  // ── simple handlers ────────────────────────────────────────────────────────
 
   const handleAbort = () => {
     if (abortRef.current) {
       abortRef.current.abort();
-      setPrompt(lastSentPromptRef.current);
+      deps.setPrompt(lastSentPromptRef.current);
     }
   };
 
@@ -81,15 +109,15 @@ export function useChatSession(deps: {
     setConversation([]);
     setCurrentChatId(null);
     currentChatIdRef.current = null;
-    setPrompt('');
-    setAttachedFiles([]);
+    deps.setPrompt('');
+    deps.setAttachedFiles([]);
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     setProjectRoot('');
     setContextWindow(DEFAULT_CONTEXT_WINDOW);
   };
 
   const handleSelectChat = (id: string) => {
-    const chat = chatHistories[id];
+    const chat = deps.chatHistories[id];
     if (!chat) {
       console.warn(`[HISTORY] Chat ${id} not found in history`);
       return;
@@ -98,34 +126,25 @@ export function useChatSession(deps: {
     setConversation(chat.conversation);
     setCurrentChatId(id);
     currentChatIdRef.current = id;
-    setSelectedProjectId(chat.projectId);
-    if (chat.model) {
-      setSelectedModel(chat.model);
-    }
-    
-    if (chat.role) {
-      setSelectedRole(toModelRole(chat.role));
-    }
-    
+    deps.setSelectedProjectId(chat.projectId);
+    if (chat.model) deps.setSelectedModel(chat.model);
+    if (chat.role) deps.setSelectedRole(toModelRole(chat.role));
     setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     setProjectRoot(chat.projectRoot || '');
-    setContextWindow((previous) => ({ ...previous, current: chat.usage || 0 }));
+    setContextWindow(prev => ({ ...prev, current: chat.usage || 0 }));
 
     void (async () => {
       try {
-        const messages = await loadMessages(id);
-        updateHistories((previous) => {
-          const current = previous[id];
-          if (!current) return previous;
-          return { ...previous, [id]: { ...current, conversation: messages } };
+        const messages = await deps.loadMessages(id);
+        deps.updateHistories(prev => {
+          const current = prev[id];
+          if (!current) return prev;
+          return { ...prev, [id]: { ...current, conversation: messages } };
         });
-
-        if (currentChatIdRef.current === id) {
-          setConversation(messages);
-        }
+        if (currentChatIdRef.current === id) setConversation(messages);
       } catch (error) {
         console.error(error);
-        setStatusText('Failed to load messages');
+        deps.setStatusText('Failed to load messages');
       }
     })();
   };
@@ -134,29 +153,24 @@ export function useChatSession(deps: {
     const files = event.target.files;
     if (!files) return;
 
-    const filePromises = Array.from(files).map((file) => {
-      return new Promise<void>((resolve) => {
+    await Promise.all(Array.from(files).map(file =>
+      new Promise<void>(resolve => {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = e => {
           const content = e.target?.result as string;
           const type = file.type.startsWith('image/') ? 'image' : 'text';
-          setAttachedFiles((prev) => [...prev, { name: file.name, content, type }]);
+          deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type } as Attachment]);
           resolve();
         };
-        if (file.type.startsWith('image/')) {
-          reader.readAsDataURL(file);
-        } else {
-          reader.readAsText(file);
-        }
-      });
-    });
-
-    await Promise.all(filePromises);
+        if (file.type.startsWith('image/')) reader.readAsDataURL(file);
+        else reader.readAsText(file);
+      })
+    ));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeAttachment = (index: number) => {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+    deps.setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleProjectRootChange = (value: string) => setProjectRoot(value);
@@ -165,596 +179,91 @@ export function useChatSession(deps: {
   const handleSaveSystemPrompt = () => {
     const chatId = currentChatIdRef.current;
     if (!chatId) return;
-    const normalizedPrompt = systemPrompt.trim() ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
+    const normalized = systemPrompt.trim() ? systemPrompt : DEFAULT_SYSTEM_PROMPT;
     const updatedAt = Date.now();
-
-    updateHistories((prev) => {
+    deps.updateHistories(prev => {
       const chat = prev[chatId];
       if (!chat) return prev;
-      return { ...prev, [chatId]: { ...chat, systemPrompt: normalizedPrompt, updatedAt } };
+      return { ...prev, [chatId]: { ...chat, systemPrompt: normalized, updatedAt } };
     });
-
-    void patchChat(chatId, { systemPrompt: normalizedPrompt, updatedAt })
-      .then((updated) => {
-        updateHistories((prev) => {
+    void deps.patchChat(chatId, { systemPrompt: normalized, updatedAt })
+      .then(updated => {
+        const u = updated as ApiChat;
+        deps.updateHistories(prev => {
           const chat = prev[chatId];
           if (!chat) return prev;
-          return { ...prev, [chatId]: { ...chat, systemPrompt: updated.systemPrompt || normalizedPrompt, updatedAt: updated.updatedAt || chat.updatedAt } };
+          return { ...prev, [chatId]: { ...chat, systemPrompt: u.systemPrompt || normalized, updatedAt: u.updatedAt || chat.updatedAt } };
         });
       })
-      .catch((err) => {
-        console.error(err);
-        setStatusText('Failed to save system prompt');
-      });
+      .catch(err => { console.error(err); deps.setStatusText('Failed to save system prompt'); });
   };
 
   const handleSaveProjectRoot = () => {
     const chatId = currentChatIdRef.current;
     if (!chatId) return;
-    const normalizedRoot = projectRoot.trim() || null;
+    const normalized = projectRoot.trim() || null;
     const updatedAt = Date.now();
-
-    updateHistories((prev) => {
+    deps.updateHistories(prev => {
       const chat = prev[chatId];
       if (!chat) return prev;
-      return { ...prev, [chatId]: { ...chat, projectRoot: normalizedRoot, updatedAt } };
+      return { ...prev, [chatId]: { ...chat, projectRoot: normalized, updatedAt } };
     });
-
-    void patchChat(chatId, { projectRoot: normalizedRoot, updatedAt })
-      .then((updated) => {
-        updateHistories((prev) => {
+    void deps.patchChat(chatId, { projectRoot: normalized, updatedAt })
+      .then(updated => {
+        const u = updated as ApiChat;
+        deps.updateHistories(prev => {
           const chat = prev[chatId];
           if (!chat) return prev;
-          return { ...prev, [chatId]: { ...chat, projectRoot: updated.projectRoot ?? normalizedRoot, updatedAt: updated.updatedAt || chat.updatedAt } };
+          return { ...prev, [chatId]: { ...chat, projectRoot: u.projectRoot ?? normalized, updatedAt: u.updatedAt || chat.updatedAt } };
         });
       })
-      .catch((err) => {
-        console.error(err);
-        setStatusText('Failed to save project root');
-      });
+      .catch(err => { console.error(err); deps.setStatusText('Failed to save project root'); });
   };
 
   const handlePickProjectRoot = async () => {
     try {
       const response = await fetch('/api/pick-directory', { method: 'POST' });
       if (!response.ok) throw new Error('Failed to pick directory');
-      const { path } = await response.json();
+      const { path } = await response.json() as { path?: string };
       if (path) {
         setProjectRoot(path);
-        
-        // Auto-save if there's an active chat
         const chatId = currentChatIdRef.current;
         if (chatId) {
           const updatedAt = Date.now();
-          updateHistories((prev) => {
+          deps.updateHistories(prev => {
             const chat = prev[chatId];
             if (!chat) return prev;
             return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
           });
-          void patchChat(chatId, { projectRoot: path, updatedAt });
+          void deps.patchChat(chatId, { projectRoot: path, updatedAt });
         }
       }
     } catch (error) {
       console.error(error);
-      setStatusText('Failed to open directory picker');
+      deps.setStatusText('Failed to open directory picker');
     }
   };
 
-  // handleSend implementation
-  const handleSend = async (event?: FormEvent) => {
-    if (event) event.preventDefault();
-    if (!prompt.trim() && attachedFiles.length === 0) return;
-    const resolvedModel = selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null;
-    if (!resolvedModel) {
-      setStatusText('No model selected. Please wait for models to load or pick one.');
-      return;
-    }
-    lastSentPromptRef.current = prompt;
+  // ── derived ────────────────────────────────────────────────────────────────
 
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-      setSendingChatIds({});
-    }
-
-    const abortController = new AbortController();
-    abortRef.current = abortController;
-    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    activeRequestIdRef.current = requestId;
-
-    const activeChatId = currentChatId;
-    const textMessagePart: Extract<SendMessagePart, { type: 'text' }> = { type: 'text', text: prompt };
-    const messageContent: SendMessagePart[] = [textMessagePart];
-    attachedFiles.filter(f => f.type === 'image').forEach(f => messageContent.push({ type: 'image_url', image_url: { url: f.content } }));
-
-    const fileContext = attachedFiles.filter(f => f.type === 'text').map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``).join('\n\n');
-    const finalPrompt = fileContext ? `${fileContext}\n\n${prompt}` : prompt;
-    if (fileContext) textMessagePart.text = finalPrompt;
-
-    const startedAt = Date.now();
-    const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).slice(2, 11)}`;
-    const existingChat = chatHistories[chatId];
-    const activeProjectId = existingChat?.projectId || selectedProjectId || projects[0]?.id || 'default';
-    const createdAt = existingChat?.createdAt || startedAt;
-
-    const userMessage: Message = { id: `${startedAt}_user_${Math.random().toString(36).slice(2, 8)}`, role: 'user', content: finalPrompt, timestamp: startedAt };
-    const assistantMessage: Message = { id: `${startedAt}_assistant_${Math.random().toString(36).slice(2, 8)}`, role: 'assistant', content: '', timestamp: startedAt + 1 };
-
-    const optimisticConversation = [...conversation, userMessage, assistantMessage];
-    setConversation(optimisticConversation);
-    setPrompt('');
-    setAttachedFiles([]);
-
-    if (!activeChatId) {
-      setCurrentChatId(chatId);
-      currentChatIdRef.current = chatId;
-    }
-
-    setSendingChatIds(prev => ({ ...prev, [chatId]: true }));
-    setStatusText('Thinking…');
-
-    const title = existingChat?.title && existingChat.title.trim() && existingChat.title !== 'Untitled chat' ? existingChat.title : userMessage.content.slice(0, 50) || 'Untitled chat';
-
-    updateHistories(prev => ({
-      ...prev,
-      [chatId]: {
-        id: chatId,
-        projectId: activeProjectId,
-        title,
-        conversation: optimisticConversation,
-        createdAt,
-        updatedAt: startedAt,
-        pinned: existingChat?.pinned ?? false,
-        role: existingChat?.role ?? selectedRole,
-        model: resolvedModel,
-        projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
-        systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
-        usage: existingChat?.usage || 0,
-      }
-    }));
-
-    let requestFailed = false;
-    let requestAborted = false;
-    let fullContent = '';
-    let finalUsage = existingChat?.usage || 0;
-    let promptTokens: number | undefined;
-    let completionTokens: number | undefined;
-    let assistantContentForSave = '';
-    let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
-
-    try {
-      const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          model: resolvedModel,
-          chatId,
-          messages: [
-            ...recentConversation.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: messageContent },
-          ],
-          stream: true,
-          search: isSearchEnabled,
-          persona: personaId || 'general',
-        }),
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No reader');
-
-      const decoder = new TextDecoder();
-      let streamBuffer = '';
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const applyStreamEventLocal = (data: StreamEvent | any) => {
-        if (data.tool_event) {
-           let msg = 'Thinking…';
-           if (data.tool === 'read_file') msg = 'Reading file…';
-           if (data.tool === 'search_web') msg = 'Searching the web…';
-           if (data.tool === 'list_directory') msg = 'Analyzing directory…';
-           if (data.tool === 'run_command') msg = 'Executing command…';
-           setStatusText(msg);
-           return;
-        }
-
-        const contentChunk = data.message?.content || '';
-        if (contentChunk) {
-          fullContent += contentChunk;
-          assistantContentForSave = fullContent;
-        }
-
-        if (data.usage) {
-          finalUsage = parseUsage(data.usage);
-          if (typeof data.usage.prompt_tokens === 'number') promptTokens = data.usage.prompt_tokens;
-          if (typeof data.usage.completion_tokens === 'number') completionTokens = data.usage.completion_tokens;
-        }
-
-        if (typeof data.prompt_eval_count === 'number' && typeof data.eval_count === 'number') {
-          promptTokens = data.prompt_eval_count;
-          completionTokens = data.eval_count;
-          finalUsage = data.prompt_eval_count + data.eval_count;
-        }
-
-        if (currentChatIdRef.current === chatId && finalUsage > 0) {
-          setContextWindow(prev => ({ ...prev, current: finalUsage }));
-        }
-
-        if (!contentChunk && !data.done) return;
-
-        if (rafId !== null) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          if (currentChatIdRef.current === chatId) {
-            setConversation(prev => {
-              if (prev.length === 0) return prev;
-              const updated = [...prev];
-              const lastIndex = updated.length - 1;
-              if (updated[lastIndex]?.role === 'assistant') {
-                updated[lastIndex] = { ...updated[lastIndex], content: fullContent };
-              }
-              return updated;
-            });
-          }
-        });
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        streamBuffer += decoder.decode(value, { stream: true });
-        const lines = streamBuffer.split('\n');
-        streamBuffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const data = parseStreamLine(line);
-          if (data) applyStreamEventLocal(data);
-        }
-      }
-
-      streamBuffer += decoder.decode();
-      if (streamBuffer.trim()) {
-        const data = parseStreamLine(streamBuffer);
-        if (data) applyStreamEventLocal(data);
-      }
-      assistantContentForSave = fullContent;
-    } catch (error) {
-      const isAbortError = (error instanceof DOMException && error.name === 'AbortError') || (error instanceof Error && error.name === 'AbortError');
-      if (isAbortError) {
-        requestAborted = true;
-        if (!assistantContentForSave) {
-          updateHistories(prev => {
-            const chat = prev[chatId];
-            if (!chat || chat.conversation.length === 0) return prev;
-            const updatedConversation = [...chat.conversation];
-            const lastIndex = updatedConversation.length - 1;
-            if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) updatedConversation.pop();
-            return { ...prev, [chatId]: { ...chat, conversation: updatedConversation, updatedAt: Date.now() } };
-          });
-          if (currentChatIdRef.current === chatId) {
-            setConversation(prev => {
-              if (prev.length === 0) return prev;
-              const updated = [...prev];
-              const lastIndex = updated.length - 1;
-              if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) updated.pop();
-              return updated;
-            });
-          }
-        }
-      } else {
-        requestFailed = true;
-        let message = error instanceof Error ? error.message : 'Unknown error';
-        
-        if (message.includes('requires') && message.includes('available') && (message.includes('GiB') || message.includes('MiB'))) {
-          message = `Insufficient Memory: ${message}. Try using a smaller model or quantize your model further.`;
-        }
-
-        const errorText = `Error: ${message}`;
-        if (!assistantContentForSave) assistantContentForSave = errorText;
-        if (currentChatIdRef.current === chatId) setStatusText(errorText);
-
-        updateHistories(prev => {
-          const chat = prev[chatId];
-          if (!chat || chat.conversation.length === 0) return prev;
-          const updatedConversation = [...chat.conversation];
-          const lastIndex = updatedConversation.length - 1;
-          if (updatedConversation[lastIndex]?.role === 'assistant' && !updatedConversation[lastIndex].content) {
-            updatedConversation[lastIndex] = { ...updatedConversation[lastIndex], content: errorText };
-          }
-          return { ...prev, [chatId]: { ...chat, conversation: updatedConversation, updatedAt: Date.now() } };
-        });
-
-        if (currentChatIdRef.current === chatId) {
-          setConversation(prev => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            const lastIndex = updated.length - 1;
-            if (updated[lastIndex]?.role === 'assistant' && !updated[lastIndex].content) {
-              updated[lastIndex] = { ...updated[lastIndex], content: errorText };
-            }
-            return updated;
-          });
-        }
-      }
-    } finally {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-
-      const isActiveRequest = activeRequestIdRef.current === requestId;
-      const finishedAt = Date.now();
-      const assistantMessageToPersist: Message = { id: assistantMessage.id, role: 'assistant', content: assistantContentForSave, timestamp: assistantMessage.timestamp, promptTokens: promptTokens ?? null, completionTokens: completionTokens ?? null };
-
-      updateHistories(prev => {
-        const chat = prev[chatId];
-        if (!chat || chat.conversation.length === 0) return prev;
-        const updatedConversation = [...chat.conversation];
-        const lastIndex = updatedConversation.length - 1;
-        if (updatedConversation[lastIndex]?.role === 'assistant') {
-          updatedConversation[lastIndex] = {
-            ...updatedConversation[lastIndex],
-            content: assistantContentForSave,
-            promptTokens: assistantMessageToPersist.promptTokens,
-            completionTokens: assistantMessageToPersist.completionTokens,
-          };
-        }
-        return { ...prev, [chatId]: { ...chat, conversation: updatedConversation, updatedAt: finishedAt, usage: finalUsage || chat.usage } };
-      });
-
-      if (currentChatIdRef.current === chatId) {
-        setConversation(prev => {
-          if (prev.length === 0) return prev;
-          const updated = [...prev];
-          const lastIndex = updated.length - 1;
-          if (updated[lastIndex]?.role === 'assistant') {
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              content: assistantContentForSave,
-              promptTokens: assistantMessageToPersist.promptTokens,
-              completionTokens: assistantMessageToPersist.completionTokens,
-            };
-          }
-          return updated;
-        });
-      }
-
-      try {
-        await upsertChat({
-          id: chatId,
-          projectId: activeProjectId,
-          title,
-          pinned: existingChat?.pinned ?? false,
-          role: existingChat?.role ?? selectedRole,
-          model: resolvedModel,
-          projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
-          systemPrompt: existingChat?.systemPrompt ?? systemPrompt,
-          createdAt,
-          updatedAt: finishedAt,
-        });
-
-        await saveMessage(chatId, userMessage);
-        if (assistantMessageToPersist.content.trim().length > 0 || !requestAborted) {
-          await saveMessage(chatId, assistantMessageToPersist, { promptTokens, completionTokens });
-        }
-      } catch (error) {
-        console.error(error);
-        setStatusText('Failed to persist messages');
-      }
-
-      if (isActiveRequest) {
-        activeRequestIdRef.current = null;
-        abortRef.current = null;
-        setSendingChatIds(prev => {
-          if (!prev[chatId]) return prev;
-          const next = { ...prev };
-          delete next[chatId];
-          return next;
-        });
-        if (currentChatIdRef.current === chatId && !requestFailed) setStatusText('Ready');
-      }
-    }
-  };
-
-  /**
-   * Deep Research handler:
-   * Calls /api/research with the current prompt, streams progress + report content
-   * back as NDJSON, and renders it as an assistant message.
-   */
-  const handleResearch = async (event?: FormEvent) => {
-    if (event) event.preventDefault();
-    if (!prompt.trim()) return;
-
-    const resolvedModel = selectedModel;
-    const originalPrompt = prompt; // capture before setPrompt clears it
-    if (!resolvedModel) {
-      setStatusText('No model selected. Please select a model first.');
-      return;
-    }
-
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-      setSendingChatIds({});
-    }
-
-    const abortController = new AbortController();
-    abortRef.current = abortController;
-    const requestId = `research_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    activeRequestIdRef.current = requestId;
-
-    const startedAt = Date.now();
-    const chatId = `research_${startedAt}`;
-
-    // Create optimistic research message
-    const userMessage: Message = {
-      id: `${startedAt}_user`,
-      role: 'user',
-      content: `🔍 Research: ${prompt}`,
-      timestamp: startedAt,
-    };
-    const assistantMessage: Message = {
-      id: `${startedAt}_assistant`,
-      role: 'assistant',
-      content: '',
-      timestamp: startedAt + 1,
-    };
-
-    setConversation(prev => [...prev, userMessage, assistantMessage]);
-    setPrompt('');
-    setCurrentChatId(chatId);
-    currentChatIdRef.current = chatId;
-    setSendingChatIds(prev => ({ ...prev, [chatId]: true }));
-    setStatusText('Starting research…');
-
-    let researchContent = '';
-    const stageMessages: string[] = [];
-
-    try {
-      const response = await fetch('/api/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          query: prompt,
-          model: resolvedModel,
-          maxSources: 5,
-          depth: 'standard',
-        }),
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const event = JSON.parse(trimmed);
-            if (event.stage === 'chunk' && event.content) {
-              researchContent += event.content;
-              setConversation(prev => {
-                if (prev.length < 2) return prev;
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: researchContent,
-                };
-                return updated;
-              });
-            } else if (event.stage === 'searching') {
-              stageMessages.push(`🔎 ${event.message}`);
-              setStatusText(event.message as string);
-            } else if (event.stage === 'reading') {
-              stageMessages.push(`📄 ${event.message}`);
-              setStatusText(event.message as string);
-            } else if (event.stage === 'synthesizing') {
-              setStatusText('Synthesizing report…');
-            } else if (event.stage === 'streaming') {
-              setStatusText('Generating report…');
-            } else if (event.stage === 'error') {
-              researchContent += `\n\n> [!CAUTION]\n> ${event.message}\n\n`;
-              setStatusText('Research error');
-            } else if (event.stage === 'done') {
-              const stageSummary = stageMessages.map(m => `> ${m}`).join('\n');
-              const fullContent = stageSummary
-                ? `${stageSummary}\n\n---\n\n${researchContent}`
-                : researchContent;
-              setConversation(prev => {
-                if (prev.length < 2) return prev;
-                const updated = [...prev];
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: fullContent,
-                };
-                return updated;
-              });
-              setStatusText('Research complete');
-            }
-          } catch {
-            // Skip malformed lines
-          }
-        }
-      }
-    } catch (error) {
-      const isAbort = (error instanceof DOMException && error.name === 'AbortError') ||
-                      (error instanceof Error && error.name === 'AbortError');
-      if (!isAbort) {
-        const message = error instanceof Error ? error.message : 'Research failed';
-        researchContent += `\n\n> [!CAUTION]\n> ${message}\n\n`;
-        setStatusText('Research failed');
-      }
-      if (researchContent) {
-        setConversation(prev => {
-          if (prev.length < 2) return prev;
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            content: researchContent,
-          };
-          return updated;
-        });
-      }
-    } finally {
-      setSendingChatIds(prev => {
-        if (!prev[chatId]) return prev;
-        const next = { ...prev };
-        delete next[chatId];
-        return next;
-      });
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-
-      // Persist research chat + messages so they survive reload
-      try {
-        const activeProjectId = selectedProjectId || projects[0]?.id || 'default';
-        const finishedAt = Date.now();
-        await upsertChat({
-          id: chatId,
-          projectId: activeProjectId,
-          title: `Research: ${originalPrompt.slice(0, 45)}`,
-          model: resolvedModel,
-          createdAt: startedAt,
-          updatedAt: finishedAt,
-        });
-        await saveMessage(chatId, userMessage);
-        if (researchContent.trim()) {
-          await saveMessage(chatId, { ...assistantMessage, content: researchContent });
-        }
-      } catch (persistErr) {
-        console.error('[Research] Failed to persist:', persistErr);
-      }
-    }
-  };
-
-  const contextPercentage = useMemo(() => Math.min(100, (contextWindow.current / contextWindow.total) * 100), [contextWindow]);
-  const isCurrentChatSending = useMemo(() => (currentChatId ? Boolean(sendingChatIds[currentChatId]) : false), [currentChatId, sendingChatIds]);
+  const contextPercentage = useMemo(
+    () => Math.min(100, (contextWindow.current / contextWindow.total) * 100),
+    [contextWindow],
+  );
+  const isCurrentChatSending = useMemo(
+    () => (currentChatId ? Boolean(sendingChatIds[currentChatId]) : false),
+    [currentChatId, sendingChatIds],
+  );
 
   return {
-    prompt,
-    setPrompt,
+    prompt: deps.prompt,
+    setPrompt: deps.setPrompt,
     conversation,
     setConversation,
     currentChatId,
     setCurrentChatId,
-    attachedFiles,
-    setAttachedFiles,
+    attachedFiles: deps.attachedFiles,
+    setAttachedFiles: deps.setAttachedFiles,
     systemPrompt,
     setSystemPrompt,
     projectRoot,

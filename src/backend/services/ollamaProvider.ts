@@ -11,13 +11,15 @@ export class OllamaProvider implements LLMProvider {
   readonly label = 'Ollama (Local)';
 
   private fetchFn: typeof fetch;
+  private baseUrlFn: () => string;
 
-  constructor(fetchImpl?: typeof fetch) {
+  constructor(fetchImpl?: typeof fetch, getBaseUrl?: () => string) {
     this.fetchFn = fetchImpl ?? fetch;
+    this.baseUrlFn = getBaseUrl ?? (() => OllamaService.getBaseUrl());
   }
 
   private getBaseUrl(): string {
-    return OllamaService.getBaseUrl();
+    return this.baseUrlFn();
   }
 
   async listModels(): Promise<string[]> {

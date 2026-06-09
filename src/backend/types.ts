@@ -2,8 +2,10 @@ import type {
   ChatRecord,
   CreateProjectInput,
   InsertMessageInput,
+  MemoryEntryRecord,
   MessageRecord,
   ProjectRecord,
+  SkillRecord,
   UpdateProjectInput,
   UpsertChatInput,
 } from './services/database.js';
@@ -41,4 +43,27 @@ export interface AppDependencies {
   pickDirectory: () => Promise<string | null>;
   /** Provider registry for multi-provider support */
   providerRegistry: ProviderRegistry;
+  // ── Memory / Embedding (injected so routes stay testable) ────────────────
+  listEnabledSkills: () => SkillRecord[];
+  getAllMemoryEntries: (limit?: number) => MemoryEntryRecord[];
+  upsertMemory: (input: {
+    id?: string;
+    type?: string;
+    content: string;
+    embedding: Float32Array;
+    metadata?: string | null;
+    sourceId?: string | null;
+  }) => MemoryEntryRecord;
+  deleteMemory: (id: string) => boolean;
+  embed: (text: string) => Promise<Float32Array>;
+  searchMemories: (
+    queryVec: Float32Array,
+    topK?: number,
+    threshold?: number,
+  ) => Array<{ id: string; content: string; score: number; metadata: string | null }>;
+  searchMemoriesByText: (
+    text: string,
+    topK?: number,
+    threshold?: number,
+  ) => Promise<Array<{ id: string; content: string; score: number; metadata: string | null }>>;
 }
