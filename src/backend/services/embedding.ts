@@ -65,13 +65,16 @@ export class EmbeddingService {
     topK: number = 5,
     threshold: number = 0.3,
   ): Array<{ id: string; content: string; score: number; metadata: string | null }> {
-    const entries = DatabaseService.getAllMemoryEntries();
+    // Cap at 1000 most recent entries to keep search O(1000) not O(∞)
+    const entries = DatabaseService.getAllMemoryEntries(1000);
 
     const scored = entries
       .map((entry) => {
         let score = 0;
         try {
-          const vec = new Float32Array(JSON.parse(entry.embedding));
+          // embedding is base64-encoded Float32Array bytes
+          const buf = Buffer.from(entry.embedding, 'base64');
+          const vec = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
           score = this.cosineSimilarity(queryVec, vec);
         } catch {
           // Invalid embedding stored

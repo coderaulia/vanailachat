@@ -40,7 +40,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
       const record = DatabaseService.upsertMemory({
         type: body.type ?? 'manual',
         content: body.content,
-        embedding: JSON.stringify(Array.from(embedding)),
+        embedding,
         sourceId: body.sourceId ?? null,
       });
 
@@ -75,7 +75,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
         DatabaseService.upsertMemory({
           type: 'conversation',
           content: msg.content.slice(0, 4000),
-          embedding: JSON.stringify(Array.from(embedding)),
+          embedding,
           metadata: JSON.stringify({ role: msg.role, chatId, chatTitle: chat.title }),
           sourceId: chatId,
         });

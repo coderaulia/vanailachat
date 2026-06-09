@@ -130,7 +130,7 @@ interface MemoryEntryRow {
   id: string;
   type: string;
   content: string;
-  embedding: string;
+  embedding: Buffer;
   metadata: string | null;
   source_id: string | null;
   created_at: number;
@@ -592,16 +592,19 @@ export class DatabaseService {
 
   // ─── Vector Memory ───
 
-  static getAllMemoryEntries(): MemoryEntryRecord[] {
+  static getAllMemoryEntries(limit?: number): MemoryEntryRecord[] {
     const db = this.getDb();
-    const rows = db
-      .prepare('SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at DESC')
-      .all() as MemoryEntryRow[];
+    const query = limit
+      ? `SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at DESC LIMIT ${limit}`
+      : 'SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at DESC';
+    const rows = db.prepare(query).all() as MemoryEntryRow[];
     return rows.map((row) => ({
       id: row.id,
       type: row.type,
       content: row.content,
-      embedding: row.embedding,
+      embedding: Buffer.isBuffer(row.embedding)
+        ? row.embedding.toString('base64')
+        : row.embedding as unknown as string, // legacy TEXT fallback
       metadata: row.metadata,
       sourceId: row.source_id,
       createdAt: row.created_at,
@@ -612,7 +615,7 @@ export class DatabaseService {
     id?: string;
     type?: string;
     content: string;
-    embedding: string;
+    embedding: Float32Array;
     metadata?: string | null;
     sourceId?: string | null;
   }): MemoryEntryRecord {
@@ -620,6 +623,8 @@ export class DatabaseService {
     const id = input.id ?? generateId('mem');
     const type = input.type ?? 'conversation';
     const createdAt = Date.now();
+    const embeddingBlob = Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength);
+    const embeddingBase64 = embeddingBlob.toString('base64');
 
     db.prepare(
       `INSERT INTO memories (id, type, content, embedding, metadata, source_id, created_at)
@@ -634,13 +639,13 @@ export class DatabaseService {
       id,
       type,
       content: input.content,
-      embedding: input.embedding,
+      embedding: embeddingBlob,
       metadata: input.metadata ?? null,
       source_id: input.sourceId ?? null,
       created_at: createdAt,
     });
 
-    return { id, type, content: input.content, embedding: input.embedding, metadata: input.metadata ?? null, sourceId: input.sourceId ?? null, createdAt };
+    return { id, type, content: input.content, embedding: embeddingBase64, metadata: input.metadata ?? null, sourceId: input.sourceId ?? null, createdAt };
   }
 
   static deleteMemory(id: string): boolean {

@@ -132,5 +132,53 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_skills_enabled ON skills(enabled);
       `);
     }
+  },
+  {
+    version: 8,
+    name: 'memories_blob_embedding',
+    up: (db) => {
+      // Recreate memories table with BLOB embedding (3-4x smaller, faster parse)
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memories_new (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL DEFAULT 'conversation',
+          content TEXT NOT NULL,
+          embedding BLOB NOT NULL,
+          metadata TEXT,
+          source_id TEXT,
+          created_at INTEGER NOT NULL
+        );
+      `);
+
+      // Migrate existing rows: JSON text → Float32Array → Buffer
+      const rows = db.prepare(
+        'SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories'
+      ).all() as Array<{
+        id: string; type: string; content: string; embedding: string;
+        metadata: string | null; source_id: string | null; created_at: number;
+      }>;
+
+      const insert = db.prepare(
+        'INSERT OR IGNORE INTO memories_new (id, type, content, embedding, metadata, source_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      const insertAll = db.transaction(() => {
+        for (const row of rows) {
+          try {
+            const arr = new Float32Array(JSON.parse(row.embedding));
+            insert.run(row.id, row.type, row.content, Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength), row.metadata, row.source_id, row.created_at);
+          } catch {
+            // skip malformed embeddings
+          }
+        }
+      });
+      insertAll();
+
+      db.exec(`
+        DROP TABLE memories;
+        ALTER TABLE memories_new RENAME TO memories;
+        CREATE INDEX IF NOT EXISTS idx_memories_type_created ON memories(type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
+      `);
+    }
   }
 ];

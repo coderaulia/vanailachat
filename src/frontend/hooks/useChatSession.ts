@@ -568,6 +568,7 @@ export function useChatSession(deps: {
     if (!prompt.trim()) return;
 
     const resolvedModel = selectedModel;
+    const originalPrompt = prompt; // capture before setPrompt clears it
     if (!resolvedModel) {
       setStatusText('No model selected. Please select a model first.');
       return;
@@ -719,6 +720,26 @@ export function useChatSession(deps: {
       });
       abortRef.current = null;
       activeRequestIdRef.current = null;
+
+      // Persist research chat + messages so they survive reload
+      try {
+        const activeProjectId = selectedProjectId || projects[0]?.id || 'default';
+        const finishedAt = Date.now();
+        await upsertChat({
+          id: chatId,
+          projectId: activeProjectId,
+          title: `Research: ${originalPrompt.slice(0, 45)}`,
+          model: resolvedModel,
+          createdAt: startedAt,
+          updatedAt: finishedAt,
+        });
+        await saveMessage(chatId, userMessage);
+        if (researchContent.trim()) {
+          await saveMessage(chatId, { ...assistantMessage, content: researchContent });
+        }
+      } catch (persistErr) {
+        console.error('[Research] Failed to persist:', persistErr);
+      }
     }
   };
 
