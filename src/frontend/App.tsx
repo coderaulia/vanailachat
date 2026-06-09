@@ -36,7 +36,7 @@ const AppShell = () => {
   const shortcutsMap = useMemo(() => ({
     'ctrl+n': () => { handleNewChat(); setViewMode('chat'); },
     'ctrl+/': () => toggleSidebar(),
-    'ctrl+shift+s': () => setIsSearchEnabled((prev: boolean) => !prev),
+    'alt+s': () => setIsSearchEnabled((prev: boolean) => !prev),
     'escape': () => { if (isCurrentChatSending) handleAbort(); },
   }), [handleNewChat, toggleSidebar, setIsSearchEnabled, isCurrentChatSending, handleAbort, setViewMode]);
 

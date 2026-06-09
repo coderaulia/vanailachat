@@ -231,7 +231,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                     isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''
                   }`}
                   onClick={onToggleSearch}
-                  title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Enable Web Search'}
+                  title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Toggle Web Search (Alt+S)'}
                   aria-busy={isCurrentChatSending && isSearchEnabled}
                   disabled={isCurrentChatSending}
                 >
