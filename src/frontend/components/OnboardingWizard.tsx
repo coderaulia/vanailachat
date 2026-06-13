@@ -316,6 +316,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
 }
 
 /** Check if onboarding has been completed (localStorage fast-path) */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useOnboarding() {
   const [show, setShow] = useState(false);
   const [checked, setChecked] = useState(false);

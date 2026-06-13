@@ -179,7 +179,7 @@ async function runAgentLoop(
   chatRecord: ChatRecord | null,
   signal: AbortSignal,
 ): Promise<void> {
-  let currentMessages = [...initialMessages];
+  const currentMessages = [...initialMessages];
   let iteration = 0;
   const maxIterations = 7;
   const toolCallHistory = new Set<string>();
@@ -221,7 +221,7 @@ async function runAgentLoop(
     const reader = upstreamResponse.body.getReader();
     let isToolCall = false;
     let streamBuffer = '';
-    let assistantMessage: {
+    const assistantMessage: {
       role: string;
       content: string;
       tool_calls: Array<{ id?: string; function?: { name?: string; arguments?: unknown }; type?: string }>;

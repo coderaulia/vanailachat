@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { DATE_FORMATTER } from '../lib/date';
-import type { Chat } from '../types/chat';
 import './Sidebar.css';
 
 import { useChat } from '../context/ChatContext';

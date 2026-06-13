@@ -24,7 +24,7 @@ export function useUIState() {
   useEffect(() => {
     const theme = isDarkMode ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', theme);
-  }, []);
+  }, [isDarkMode]);
 
   return {
     isSidebarOpen,

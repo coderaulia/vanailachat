@@ -24,7 +24,6 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     isCurrentChatSending,
     isSearchEnabled,
     modelMetadata,
-    persona,
     setPersona,
     prompt,
     projectRoot,

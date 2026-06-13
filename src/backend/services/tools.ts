@@ -5,7 +5,7 @@ import dns from 'node:dns/promises';
 import net from 'node:net';
 import { promisify } from 'node:util';
 import { SafeSearchType, search } from 'duck-duck-scrape';
-import type { Tool, ToolSchema, ToolExecutionResult } from './toolInterface.js';
+import type { Tool, ToolExecutionResult } from './toolInterface.js';
 import { toToolDefinition } from './toolInterface.js';
 
 const execFilePromise = promisify(execFile);
@@ -241,7 +241,7 @@ export class ToolService {
         },
         required: ['query'],
       },
-      execute: async (args: unknown, projectRoot: string | null) => {
+      execute: async (args: unknown, _projectRoot: string | null) => {
         const query = parseStringField(args, 'query');
         if (!query) {
           return 'Search failed: missing query';
@@ -495,7 +495,6 @@ export class ToolService {
     }
 
     const timeoutMs = tool.timeoutMs ?? 30_000;
-    const start = performance.now();
 
     try {
       const result = await Promise.race([
@@ -504,7 +503,6 @@ export class ToolService {
           setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs),
         ),
       ]);
-      const durationMs = Math.round(performance.now() - start);
       return result;
     } catch (error) {
       return `Tool failed: ${getErrorMessage(error)}`;

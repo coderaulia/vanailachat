@@ -20,7 +20,9 @@ function backendProxyPlugin(): Plugin {
       const raw = readFileSync(portFile, 'utf-8').trim();
       const p = Number(raw);
       if (p > 0 && Number.isFinite(p)) targetPort = p;
-    } catch {}
+    } catch {
+      // .port file missing or unreadable — backend not started yet
+    }
   }
 
   return {

@@ -1,8 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Chat, ApiChat, ApiMessage, ApiProject, Message, MessageRole } from '../types/chat';
 
-const DEFAULT_MODEL_ROLE = 'general';
-
 function toMessageRole(role: string): MessageRole {
   if (role === 'user' || role === 'assistant' || role === 'system') {
     return role;

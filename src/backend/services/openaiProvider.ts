@@ -1,4 +1,4 @@
-import type { LLMProvider, ChatMessage, ChatRequest } from './provider.js';
+import type { LLMProvider, ChatRequest } from './provider.js';
 import { openAIStreamToNDJSON } from './streamAdapter.js';
 
 /**

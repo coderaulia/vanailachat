@@ -47,19 +47,19 @@ export function ProjectDetail() {
   }, [project]);
 
   const projectChats = useMemo(
-    () => chats.filter(([_, chat]) => chat.projectId === project?.id),
+    () => chats.filter((entry) => entry[1].projectId === project?.id),
     [chats, project?.id]
   );
 
   const filteredChats = useMemo(() => {
     if (!chatSearch.trim()) return projectChats;
-    return projectChats.filter(([_, chat]) =>
-      chat.title?.toLowerCase().includes(chatSearch.toLowerCase())
+    return projectChats.filter((entry) =>
+      entry[1].title?.toLowerCase().includes(chatSearch.toLowerCase())
     );
   }, [projectChats, chatSearch]);
 
   const totalTokens = useMemo(
-    () => projectChats.reduce((sum, [_, chat]) => sum + (chat.usage ?? 0), 0),
+    () => projectChats.reduce((sum, entry) => sum + (entry[1].usage ?? 0), 0),
     [projectChats]
   );
 

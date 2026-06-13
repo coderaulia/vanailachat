@@ -1,6 +1,6 @@
 // Refactored useChatApp.ts with explicit exports
 import { useEffect, useState } from 'react';
-import type { ApiProject, Chat } from '../types/chat';
+import type { ApiProject, Attachment, Chat } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { useModelManager } from './useModelManager';
 import { usePersistence } from './usePersistence';
@@ -10,7 +10,7 @@ import { DEFAULT_MODEL_ROLE } from '../config/constants';
 
 export function useChatApp() {
   const [prompt, setPrompt] = useState('');
-  const [attachedFiles, setAttachedFiles] = useState<any[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
   const [persona, setPersona] = useState('general');
   const hasImageAttachment = attachedFiles.some(f => f.type === 'image');
 
@@ -104,6 +104,10 @@ export function useChatApp() {
       }
     };
     initialize();
+    // Intentional mount-only initialization. Re-running this with full deps
+    // would refetch projects/chats on every closure change and wipe
+    // selectedProjectId mid-session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSelectRole = (role: ModelRole) => {

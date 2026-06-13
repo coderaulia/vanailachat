@@ -28,7 +28,7 @@ export function useResearch(deps: ResearchDeps) {
       prompt, setPrompt, selectedModel, selectedProjectId, projects,
       setConversation, currentChatIdRef,
       abortRef, activeRequestIdRef, setSendingChatIds, setStatusText,
-      setCurrentChatId, updateHistories, saveMessage, upsertChat,
+      setCurrentChatId, saveMessage, upsertChat,
     } = deps;
 
     const resolvedModel = selectedModel;
