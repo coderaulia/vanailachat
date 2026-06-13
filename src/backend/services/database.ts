@@ -645,6 +645,22 @@ export class DatabaseService {
       created_at: createdAt,
     });
 
+    // Cap memory table size — delete oldest rows beyond the cap.
+    // Default 5000; override with MEMORY_TABLE_CAP env var (>= 100, <= 100000).
+    const cap = (() => {
+      const raw = process.env.MEMORY_TABLE_CAP;
+      if (!raw) return 5000;
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed)) return 5000;
+      return Math.max(100, Math.min(100_000, parsed));
+    })();
+
+    db.prepare(
+      `DELETE FROM memories WHERE id IN (
+         SELECT id FROM memories ORDER BY created_at DESC LIMIT -1 OFFSET ?
+       )`,
+    ).run(cap);
+
     return { id, type, content: input.content, embedding: embeddingBase64, metadata: input.metadata ?? null, sourceId: input.sourceId ?? null, createdAt };
   }
 
