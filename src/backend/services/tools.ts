@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 import { promisify } from 'node:util';
 import { SafeSearchType, search } from 'duck-duck-scrape';
 import type { Tool, ToolSchema, ToolExecutionResult } from './toolInterface.js';
@@ -76,6 +78,91 @@ function isIgnoredPath(relativePath: string, patterns: string[]): boolean {
 
     return normalizedNoSlash === clean || normalizedNoSlash.startsWith(`${clean}/`);
   });
+}
+
+/**
+ * Detect IPs that should never be reached by the agent: loopback, link-local,
+ * private RFC1918, cloud metadata services, reserved ranges.
+ *
+ * IPv4: 0.0.0.0/8, 10/8, 100.64/10 (CGNAT), 127/8, 169.254/16, 172.16/12,
+ *       192.168/16, 198.18/15, 224/4 (multicast), 240/4 (reserved).
+ * IPv6: ::1, fc00::/7 (ULA), fe80::/10 (link-local), ::ffff:* (IPv4-mapped).
+ */
+function isBlockedIp(ip: string): boolean {
+  const family = net.isIP(ip);
+  if (family === 4) {
+    const parts = ip.split('.').map(Number);
+    const [a, b] = parts;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    if (a >= 224) return true;
+    return false;
+  }
+  if (family === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower === '::') return true;
+    if (lower.startsWith('fe8') || lower.startsWith('fe9') ||
+        lower.startsWith('fea') || lower.startsWith('feb')) return true;
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true;
+    if (lower.startsWith('::ffff:')) {
+      const mapped = lower.slice(7);
+      if (net.isIP(mapped) === 4) return isBlockedIp(mapped);
+    }
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Validate an outbound URL: scheme must be http(s), hostname must not resolve
+ * to a blocked IP range. Mitigates SSRF (cloud metadata, internal services,
+ * Ollama, etc.).
+ */
+async function assertSafeOutboundUrl(rawUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('invalid URL');
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`scheme not allowed: ${parsed.protocol}`);
+  }
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  if (!hostname) throw new Error('missing hostname');
+
+  // Reject localhost aliases explicitly
+  const lowered = hostname.toLowerCase();
+  if (lowered === 'localhost' || lowered.endsWith('.localhost') ||
+      lowered === 'metadata' || lowered === 'metadata.google.internal') {
+    throw new Error('hostname not allowed');
+  }
+
+  // If literal IP, check directly
+  if (net.isIP(hostname)) {
+    if (isBlockedIp(hostname)) throw new Error(`IP not allowed: ${hostname}`);
+    return;
+  }
+
+  // Otherwise resolve DNS and check every returned address
+  let addresses: { address: string; family: number }[];
+  try {
+    addresses = await dns.lookup(hostname, { all: true });
+  } catch {
+    throw new Error(`DNS resolution failed for ${hostname}`);
+  }
+
+  for (const { address } of addresses) {
+    if (isBlockedIp(address)) {
+      throw new Error(`hostname resolves to blocked IP: ${address}`);
+    }
+  }
 }
 
 function isAllowedCommand(command: string, args: string[]): boolean {
@@ -166,12 +253,19 @@ export class ToolService {
         console.log(`[TOOL] Reading URL: ${url}`);
 
         try {
+          await assertSafeOutboundUrl(url);
+
           const response = await fetch(url, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (compatible; VanailaChat/1.0; +research-agent)',
               'Accept': 'text/html,text/plain',
             },
+            redirect: 'manual',
           });
+
+          if (response.status >= 300 && response.status < 400) {
+            return `read_url failed: redirect to ${response.headers.get('location') ?? 'unknown'} not followed (SSRF protection)`;
+          }
 
           if (!response.ok) {
             return `HTTP ${response.status}: ${response.statusText}`;
