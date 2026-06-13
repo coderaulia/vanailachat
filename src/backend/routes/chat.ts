@@ -5,6 +5,59 @@ import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/per
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
 
+// ── caches ────────────────────────────────────────────────────────────────────
+
+/**
+ * Cache list_directory output per (chatId, projectRoot, depth) so we don't
+ * walk the project tree on every chat turn. Refreshed when TTL expires.
+ */
+interface DirCacheEntry { listing: string; expiresAt: number }
+const dirListingCache = new Map<string, DirCacheEntry>();
+const DIR_CACHE_TTL_MS = 5 * 60_000;
+
+async function getCachedDirListing(
+  deps: AppDependencies,
+  chatId: string,
+  projectRoot: string,
+): Promise<string> {
+  const key = `${chatId}::${projectRoot}::2`;
+  const now = Date.now();
+  const hit = dirListingCache.get(key);
+  if (hit && hit.expiresAt > now) return hit.listing;
+
+  const listing = await deps.executeTool('list_directory', { path: '.', maxDepth: 2 }, projectRoot);
+  dirListingCache.set(key, { listing, expiresAt: now + DIR_CACHE_TTL_MS });
+
+  // Bound cache size
+  if (dirListingCache.size > 200) {
+    for (const [k, v] of dirListingCache) {
+      if (v.expiresAt <= now) dirListingCache.delete(k);
+    }
+  }
+  return listing;
+}
+
+/**
+ * Cache whether the embedding model is available so a single missing-model
+ * failure doesn't add ~100ms+ DNS/HTTP latency to every chat turn.
+ * Re-checks every EMBED_AVAIL_TTL_MS so a later `ollama pull` is noticed.
+ */
+let embedAvailableUntil = 0;
+let embedAvailable = true;
+const EMBED_AVAIL_TTL_MS = 60_000;
+function markEmbedUnavailable() {
+  embedAvailable = false;
+  embedAvailableUntil = Date.now() + EMBED_AVAIL_TTL_MS;
+}
+function isEmbedLikelyAvailable(): boolean {
+  if (embedAvailable) return true;
+  if (Date.now() > embedAvailableUntil) {
+    embedAvailable = true;
+    return true;
+  }
+  return false;
+}
+
 // ── validation ────────────────────────────────────────────────────────────────
 
 function validateChatRequest(body: unknown): string | null {
@@ -61,15 +114,11 @@ async function buildSystemPrompt(
       '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
   }
 
-  // Project root + directory listing
+  // Project root + directory listing (cached per chat for 5 min)
   if (chatRecord?.projectRoot) {
     systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
     try {
-      const listing = await deps.executeTool(
-        'list_directory',
-        { path: '.', maxDepth: 2 },
-        chatRecord.projectRoot,
-      );
+      const listing = await getCachedDirListing(deps, chatRecord.id, chatRecord.projectRoot);
       systemPrompt += `\n\n[Project Structure]\n${listing}`;
     } catch (error) {
       console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
@@ -99,7 +148,7 @@ async function buildSystemPrompt(
   // Vector memory — embed last user message, search + auto-save.
   // Skipped when caller sets skipMemory (e.g. internal title-generation calls)
   // so synthetic prompts don't pollute the vector store.
-  const lastUserMsg = !body.skipMemory
+  const lastUserMsg = !body.skipMemory && isEmbedLikelyAvailable()
     ? incomingMessages.slice().reverse().find((m) => m.role === 'user')
     : undefined;
   if (lastUserMsg) {
@@ -130,7 +179,9 @@ async function buildSystemPrompt(
           });
         }
       } catch {
-        // Embedding model unavailable — skip memory operations
+        // Embedding model unavailable — flag so subsequent turns skip the call
+        // entirely until the TTL expires.
+        markEmbedUnavailable();
       }
     }
   }
