@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { DatabaseService } from '../services/database.js';
+import type { AppDependencies } from '../types.js';
 
 /**
  * Known skills from the official anthropics/skills GitHub repo.
@@ -43,12 +43,12 @@ function parseFrontmatter(raw: string): { name: string; description: string; bod
   return { name, description, body: body.trim() };
 }
 
-export function skillsRouter(): Hono {
+export function skillsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   /** GET /api/skills/catalog — return list of available skills (merged with local install state) */
   app.get('/catalog', (context) => {
-    const installed = DatabaseService.listSkills();
+    const installed = dependencies.listSkills();
     const installedByName = new Map(installed.map((s) => [s.name, s]));
 
     const catalog = SKILLS_CATALOG.map((entry) => {
@@ -68,7 +68,7 @@ export function skillsRouter(): Hono {
 
   /** GET /api/skills — list installed skills */
   app.get('/', (context) => {
-    const skills = DatabaseService.listSkills();
+    const skills = dependencies.listSkills();
     return context.json({ skills });
   });
 
@@ -84,7 +84,7 @@ export function skillsRouter(): Hono {
         return context.json({ error: `Unknown skill: ${body.name}` }, 404);
       }
 
-      const response = await fetch(entry.rawUrl);
+      const response = await dependencies.fetchFn(entry.rawUrl);
       if (!response.ok) {
         return context.json({ error: `Failed to fetch skill: HTTP ${response.status}` }, 502);
       }
@@ -93,7 +93,7 @@ export function skillsRouter(): Hono {
       const { name: parsedName, description, body: content } = parseFrontmatter(raw);
       const skillName = parsedName || entry.name;
 
-      const skill = DatabaseService.upsertSkill({
+      const skill = dependencies.upsertSkill({
         name: skillName,
         description: description || `Skill: ${skillName}`,
         content,
@@ -115,7 +115,7 @@ export function skillsRouter(): Hono {
       if (typeof body.enabled !== 'boolean') {
         return context.json({ error: 'enabled (boolean) required' }, 400);
       }
-      const ok = DatabaseService.setSkillEnabled(id, body.enabled);
+      const ok = dependencies.setSkillEnabled(id, body.enabled);
       if (!ok) return context.json({ error: 'Skill not found' }, 404);
       return context.json({ id, enabled: body.enabled });
     } catch (error) {
@@ -126,7 +126,7 @@ export function skillsRouter(): Hono {
   /** DELETE /api/skills/:id — uninstall */
   app.delete('/:id', (context) => {
     const id = context.req.param('id');
-    const ok = DatabaseService.deleteSkill(id);
+    const ok = dependencies.deleteSkill(id);
     if (!ok) return context.json({ error: 'Skill not found' }, 404);
     return context.json({ deleted: true });
   });
@@ -147,7 +147,7 @@ export function skillsRouter(): Hono {
         return context.json({ error: 'SKILL.md must have a `name` in YAML frontmatter' }, 400);
       }
 
-      const skill = DatabaseService.upsertSkill({
+      const skill = dependencies.upsertSkill({
         name: parsedName,
         description: description || `Custom skill: ${parsedName}`,
         content: skillBody,

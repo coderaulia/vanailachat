@@ -1,18 +1,18 @@
 import { Hono } from 'hono';
-import { DatabaseService } from '../services/database.js';
+import type { AppDependencies } from '../types.js';
 
 /**
  * Settings store using a simple key-value table.
  * Built on top of the existing SQLite database.
  */
 
-export function settingsRouter(): Hono {
+export function settingsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   /** Get all settings */
   app.get('/', (context) => {
     try {
-      const settings = DatabaseService.getAllSettings();
+      const settings = dependencies.getAllSettings();
       return context.json({ settings });
     } catch {
       return context.json({ settings: {} });
@@ -23,7 +23,7 @@ export function settingsRouter(): Hono {
   app.get('/:key', (context) => {
     const key = context.req.param('key');
     try {
-      const value = DatabaseService.getSetting(key);
+      const value = dependencies.getSetting(key);
       return context.json({ key, value });
     } catch {
       return context.json({ key, value: null });
@@ -38,7 +38,7 @@ export function settingsRouter(): Hono {
       if (!body.value && body.value !== '') {
         return context.json({ error: 'value required' }, 400);
       }
-      DatabaseService.upsertSetting(key, body.value);
+      dependencies.upsertSetting(key, body.value);
       return context.json({ key, value: body.value });
     } catch (error) {
       return context.json({ error: error instanceof Error ? error.message : 'Save failed' }, 500);

@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
-import { ToolService } from '../services/tools.js';
 import { ProviderRegistry } from '../services/providerRegistry.js';
 
 interface ResearchRequest {
@@ -29,7 +28,12 @@ export function researchRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   app.post('/', async (context) => {
-    const body = await context.req.json<ResearchRequest>();
+    let body: ResearchRequest;
+    try {
+      body = await context.req.json<ResearchRequest>();
+    } catch {
+      return context.json({ error: 'Invalid JSON in request body' }, 400);
+    }
     const { query, model, maxSources = 5, depth = 'standard' } = body;
 
     if (!query?.trim()) {
@@ -51,7 +55,7 @@ export function researchRouter(dependencies: AppDependencies): Hono {
         try {
           // Step 1: Search
           emit({ stage: 'searching', message: `Searching for: "${query}"` });
-          const searchResult = await ToolService.executeTool('search_web', { query }, null);
+          const searchResult = await dependencies.executeTool('search_web', { query }, null);
           let searchResults: Array<{ title: string; url: string; description: string }> = [];
 
           try {
@@ -71,7 +75,7 @@ export function researchRouter(dependencies: AppDependencies): Hono {
             emit({ stage: 'reading', message: `Reading source ${i + 1}/${sourcesToRead.length}: ${result.title}`, url: result.url });
 
             const charsPerSource = depth === 'deep' ? 10000 : depth === 'quick' ? 3000 : 6000;
-            const pageText = await ToolService.executeTool('read_url', { url: result.url, max_chars: charsPerSource }, null);
+            const pageText = await dependencies.executeTool('read_url', { url: result.url, max_chars: charsPerSource }, null);
             const fetched = !pageText.startsWith('read_url failed') && !pageText.startsWith('HTTP ');
 
             sources.push({

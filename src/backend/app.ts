@@ -50,6 +50,13 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   embed: EmbeddingService.embed.bind(EmbeddingService),
   searchMemories: EmbeddingService.searchWithVector.bind(EmbeddingService),
   searchMemoriesByText: EmbeddingService.search.bind(EmbeddingService),
+  listSkills: DatabaseService.listSkills.bind(DatabaseService),
+  upsertSkill: DatabaseService.upsertSkill.bind(DatabaseService),
+  setSkillEnabled: DatabaseService.setSkillEnabled.bind(DatabaseService),
+  deleteSkill: DatabaseService.deleteSkill.bind(DatabaseService),
+  getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
+  getSetting: DatabaseService.getSetting.bind(DatabaseService),
+  upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
   pickDirectory: async () => {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
@@ -137,8 +144,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/chat/*', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
   app.use('/api/models/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
 
-  app.route('/api/settings', settingsRouter());
-  app.route('/api/skills', skillsRouter());
+  app.route('/api/settings', settingsRouter(dependencies));
+  app.route('/api/skills', skillsRouter(dependencies));
   app.route('/api/personas', personasRouter());
   app.route('/api/research', researchRouter(dependencies));
   app.route('/api/memory', memoryRouter(dependencies));

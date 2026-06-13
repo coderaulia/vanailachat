@@ -8,6 +8,7 @@ import type {
   SkillRecord,
   UpdateProjectInput,
   UpsertChatInput,
+  UpsertSkillInput,
 } from './services/database.js';
 import type { InstalledModelMetadata } from './services/ollama.js';
 import type { ProviderRegistry } from './services/providerRegistry.js';
@@ -68,4 +69,13 @@ export interface AppDependencies {
     topK?: number,
     threshold?: number,
   ) => Promise<Array<{ id: string; content: string; score: number; metadata: string | null }>>;
+  // ── Skills ───────────────────────────────────────────────────────────────
+  listSkills: () => SkillRecord[];
+  upsertSkill: (input: UpsertSkillInput) => SkillRecord;
+  setSkillEnabled: (id: string, enabled: boolean) => boolean;
+  deleteSkill: (id: string) => boolean;
+  // ── Settings (key-value store) ───────────────────────────────────────────
+  getAllSettings: () => Record<string, string>;
+  getSetting: (key: string) => string | null;
+  upsertSetting: (key: string, value: string) => void;
 }
