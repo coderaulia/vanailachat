@@ -54,6 +54,36 @@ function resolveWithinRoot(root: string, requestedPath: string): string {
   return resolvedPath;
 }
 
+/**
+ * Resolve path within root AND realpath-check the result so symlinks pointing
+ * outside the project cannot be followed. Falls back to the lexical path when
+ * realpath fails (target does not exist yet) — for read_file the read will
+ * then fail naturally with ENOENT.
+ */
+async function resolveWithinRootRealpath(root: string, requestedPath: string): Promise<string> {
+  const lexical = resolveWithinRoot(root, requestedPath);
+
+  let real: string;
+  try {
+    real = await fs.realpath(lexical);
+  } catch {
+    return lexical;
+  }
+
+  let realRoot: string;
+  try {
+    realRoot = await fs.realpath(root);
+  } catch {
+    realRoot = root;
+  }
+
+  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+    throw new Error('Access denied: symlink target outside project directory');
+  }
+
+  return real;
+}
+
 function isIgnoredPath(relativePath: string, patterns: string[]): boolean {
   if (!relativePath) {
     return false;
@@ -319,7 +349,7 @@ export class ToolService {
 
         try {
           const baseRoot = this.getExecutionRoot(projectRoot);
-          const safePath = resolveWithinRoot(baseRoot, requestedPath);
+          const safePath = await resolveWithinRootRealpath(baseRoot, requestedPath);
           return await fs.readFile(safePath, 'utf-8');
         } catch (error) {
           return `Failed to read file: ${getErrorMessage(error)}`;
@@ -418,10 +448,12 @@ export class ToolService {
           
           let safeArgs = commandArgs;
           if (command === 'cat' || command === 'ls') {
-            safeArgs = commandArgs.map((arg) => {
-              if (arg.startsWith('-')) return arg;
-              return resolveWithinRoot(baseRoot, arg);
-            });
+            safeArgs = await Promise.all(
+              commandArgs.map(async (arg) => {
+                if (arg.startsWith('-')) return arg;
+                return resolveWithinRootRealpath(baseRoot, arg);
+              }),
+            );
           }
 
           const { stdout, stderr } = await execFilePromise(command, safeArgs, {

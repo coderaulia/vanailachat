@@ -60,4 +60,25 @@ describe('tool execution', () => {
     const result = await ToolService.executeTool('read_url', { url: 'http://10.0.0.1/' }, null);
     expect(result).toMatch(/read_url failed.*not allowed/i);
   });
+
+  it('blocks read_file symlink pointing outside project root', async () => {
+    // Create target file outside project
+    const outsideFile = path.join(process.cwd(), '..', '.tmp-symlink-target.txt');
+    await fs.writeFile(outsideFile, 'secret-content', 'utf8');
+    temporaryFiles.push(outsideFile);
+
+    // Create symlink inside project pointing to outside file
+    const linkPath = path.join(process.cwd(), '.tmp-evil-symlink.txt');
+    try {
+      await fs.symlink(outsideFile, linkPath);
+    } catch {
+      // Symlink creation may fail on Windows without admin/dev mode — skip test then
+      return;
+    }
+    temporaryFiles.push(linkPath);
+
+    const result = await ToolService.executeTool('read_file', { path: '.tmp-evil-symlink.txt' }, null);
+    expect(result).toContain('Access denied');
+    expect(result).not.toContain('secret-content');
+  });
 });
