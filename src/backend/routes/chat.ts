@@ -231,10 +231,16 @@ async function runAgentLoop(
 
       for (const line of lines) {
         if (!line.trim()) continue;
-        const data = JSON.parse(line);
+        let data: { message?: { content?: string; tool_calls?: unknown[] } };
+        try {
+          data = JSON.parse(line);
+        } catch (parseError) {
+          console.warn('[CHAT] Skipping malformed stream line:', parseError instanceof Error ? parseError.message : 'unknown');
+          continue;
+        }
         if (data.message?.tool_calls) {
           isToolCall = true;
-          assistantMessage.tool_calls = data.message.tool_calls;
+          assistantMessage.tool_calls = data.message.tool_calls as typeof assistantMessage.tool_calls;
         }
         if (data.message?.content) assistantMessage.content += data.message.content;
         if (!isToolCall) controller.enqueue(encoder.encode(line + '\n'));
@@ -242,12 +248,16 @@ async function runAgentLoop(
     }
 
     if (streamBuffer.trim()) {
-      const data = JSON.parse(streamBuffer);
-      if (data.message?.tool_calls) {
-        isToolCall = true;
-        assistantMessage.tool_calls = data.message.tool_calls;
+      try {
+        const data = JSON.parse(streamBuffer);
+        if (data.message?.tool_calls) {
+          isToolCall = true;
+          assistantMessage.tool_calls = data.message.tool_calls;
+        }
+        if (!isToolCall) controller.enqueue(encoder.encode(streamBuffer + '\n'));
+      } catch (parseError) {
+        console.warn('[CHAT] Skipping malformed trailing stream buffer:', parseError instanceof Error ? parseError.message : 'unknown');
       }
-      if (!isToolCall) controller.enqueue(encoder.encode(streamBuffer + '\n'));
     }
 
     if (!isToolCall) { controller.close(); return; }
