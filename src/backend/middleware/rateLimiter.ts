@@ -15,6 +15,14 @@ export interface RateLimitConfig {
   maxRequests: number;
   /** Window duration in milliseconds */
   windowMs: number;
+  /**
+   * Trust the X-Forwarded-For / X-Real-IP request headers for client identity.
+   * Default false (uses a single anonymous bucket if no socket-level IP is
+   * exposed by the framework). Only enable when behind a trusted reverse
+   * proxy that strips inbound forwarding headers — otherwise the client can
+   * spoof the header to evade the limit.
+   */
+  trustProxy?: boolean;
 }
 
 /**
@@ -25,7 +33,7 @@ export interface RateLimitConfig {
  *   app.use('/api/chat', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
  */
 export function rateLimiter(config: RateLimitConfig) {
-  const { maxRequests, windowMs } = config;
+  const { maxRequests, windowMs, trustProxy = false } = config;
 
   const stores = new Map<string, RateLimitStore>();
   setInterval(() => {
@@ -38,10 +46,11 @@ export function rateLimiter(config: RateLimitConfig) {
   }, 300_000).unref();
 
   return async (c: Context, next: Next) => {
-    const ip =
-      c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
-      c.req.header('x-real-ip') ??
-      'anonymous';
+    const ip = trustProxy
+      ? (c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+         c.req.header('x-real-ip') ??
+         'anonymous')
+      : 'anonymous';
 
     const now = Date.now();
     let store = stores.get(ip);

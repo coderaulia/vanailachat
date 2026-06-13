@@ -140,9 +140,18 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
     }
   });
 
-  // Rate limiting — must be before routes
+  // Rate limiting — must be before routes.
+  // trustProxy is OFF by default (single anonymous bucket) since the app is
+  // expected to run locally; enable in production behind a trusted proxy.
   app.use('/api/chat/*', rateLimiter({ maxRequests: 20, windowMs: 60_000 }));
   app.use('/api/models/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
+  // Research runs N searches + N URL fetches + LLM synthesis — expensive
+  app.use('/api/research/*', rateLimiter({ maxRequests: 10, windowMs: 60_000 }));
+  // Memory writes embed + DB-write per call
+  app.use('/api/memory/*', rateLimiter({ maxRequests: 60, windowMs: 60_000 }));
+  // Skill install fans out to GitHub — modest cap
+  app.use('/api/skills/install', rateLimiter({ maxRequests: 10, windowMs: 60_000 }));
+  app.use('/api/skills/custom', rateLimiter({ maxRequests: 10, windowMs: 60_000 }));
 
   app.route('/api/settings', settingsRouter(dependencies));
   app.route('/api/skills', skillsRouter(dependencies));
