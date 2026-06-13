@@ -18,6 +18,8 @@ export interface ChatRequestBody {
   messages?: Array<{ role: string; content: unknown }>;
   stream?: boolean;
   search?: boolean;
+  /** Skip memory search + auto-save. Used for internal calls (title generation, etc.) so that the synthetic prompt is not embedded into the vector store. */
+  skipMemory?: boolean;
   [key: string]: unknown;
 }
 

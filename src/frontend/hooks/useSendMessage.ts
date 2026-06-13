@@ -60,6 +60,7 @@ async function generateChatTitle(
           content: `Generate a concise 3-6 word title for this conversation. Reply with ONLY the title — no quotes, no punctuation, no explanation:\n\n${userContent.slice(0, 300)}`,
         }],
         stream: false,
+        skipMemory: true,
       }),
     });
     if (!response.ok) return;

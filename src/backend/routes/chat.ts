@@ -14,6 +14,7 @@ function validateChatRequest(body: unknown): string | null {
   if (b.messages !== undefined && !Array.isArray(b.messages)) return 'messages: must be an array';
   if (b.stream !== undefined && typeof b.stream !== 'boolean') return 'stream: must be boolean';
   if (b.search !== undefined && typeof b.search !== 'boolean') return 'search: must be boolean';
+  if (b.skipMemory !== undefined && typeof b.skipMemory !== 'boolean') return 'skipMemory: must be boolean';
   if (b.chatId !== undefined && b.chatId !== null && typeof b.chatId !== 'string')
     return 'chatId: must be string';
   if (Array.isArray(b.messages)) {
@@ -95,8 +96,12 @@ async function buildSystemPrompt(
   }
   const personaToolAllowlist = getPersonaToolAllowlist(personaId);
 
-  // Vector memory — embed last user message, search + auto-save
-  const lastUserMsg = incomingMessages.slice().reverse().find((m) => m.role === 'user');
+  // Vector memory — embed last user message, search + auto-save.
+  // Skipped when caller sets skipMemory (e.g. internal title-generation calls)
+  // so synthetic prompts don't pollute the vector store.
+  const lastUserMsg = !body.skipMemory
+    ? incomingMessages.slice().reverse().find((m) => m.role === 'user')
+    : undefined;
   if (lastUserMsg) {
     const userText = normalizeMessageContent(lastUserMsg.content).content;
     if (userText.trim()) {
