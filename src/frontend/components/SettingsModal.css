@@ -489,6 +489,90 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ── Training tab ────────────────────────── */
+.settings-training-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.settings-button-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-primary-btn {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--bg-accent);
+  color: var(--text-on-accent, #fff);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, opacity 0.18s ease;
+}
+
+.settings-primary-btn:hover:not(:disabled) {
+  background: var(--bg-accent-strong, var(--bg-accent));
+}
+
+.settings-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-secondary-btn {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.settings-secondary-btn:hover:not(:disabled) {
+  background: var(--bg-surface-strong);
+  border-color: var(--text-secondary);
+}
+
+.settings-secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-error {
+  margin-top: 10px;
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.settings-code-block {
+  display: block;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-strong);
+  border: 1px solid var(--border-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.settings-training-result {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #22c55e 7%, transparent);
+  border: 1px solid color-mix(in srgb, #22c55e 28%, transparent);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .settings-card {

@@ -23,7 +23,14 @@ interface MemoryEntry {
   createdAt: number;
 }
 
-type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'about';
+type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'training' | 'about';
+
+interface TrainingStats {
+  pairs: number;
+  edited: number;
+  oldest: number | null;
+  newest: number | null;
+}
 type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
@@ -62,6 +69,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [memoriesLoading, setMemoriesLoading] = useState(false);
   const [memoriesDeleting, setMemoriesDeleting] = useState<string | null>(null);
   const memoriesFetched = useRef(false);
+
+  // Training
+  const [trainingStats, setTrainingStats] = useState<TrainingStats | null>(null);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingExporting, setTrainingExporting] = useState(false);
+  const [trainingResult, setTrainingResult] = useState<{ path: string; pairs: number; format: string } | null>(null);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<'sharegpt' | 'alpaca'>('sharegpt');
+  const trainingFetched = useRef(false);
 
   const flash = (label: string) => {
     setSaved(label);
@@ -112,6 +128,59 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         memoriesFetched.current = true;
       });
   }, [activeTab]);
+
+  // Fetch training stats when tab opens
+  useEffect(() => {
+    if (activeTab !== 'training' || trainingFetched.current) return;
+    setTrainingLoading(true);
+    fetch('/api/training/stats')
+      .then((r) => r.json())
+      .then((data: TrainingStats) => setTrainingStats(data))
+      .catch(() => setTrainingError('Failed to load stats'))
+      .finally(() => {
+        setTrainingLoading(false);
+        trainingFetched.current = true;
+      });
+  }, [activeTab]);
+
+  const refreshTrainingStats = async () => {
+    setTrainingLoading(true);
+    setTrainingError(null);
+    try {
+      const r = await fetch('/api/training/stats');
+      const data = (await r.json()) as TrainingStats;
+      setTrainingStats(data);
+    } catch {
+      setTrainingError('Failed to load stats');
+    } finally {
+      setTrainingLoading(false);
+    }
+  };
+
+  const exportTrainingData = async () => {
+    setTrainingExporting(true);
+    setTrainingError(null);
+    setTrainingResult(null);
+    try {
+      const response = await fetch('/api/training/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: exportFormat }),
+      });
+      const data = (await response.json()) as { path?: string; pairs?: number; format?: string; error?: string };
+      if (!response.ok || data.error) {
+        setTrainingError(data.error ?? `Export failed (HTTP ${response.status})`);
+        return;
+      }
+      if (data.path && typeof data.pairs === 'number' && data.format) {
+        setTrainingResult({ path: data.path, pairs: data.pairs, format: data.format });
+      }
+    } catch (err) {
+      setTrainingError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setTrainingExporting(false);
+    }
+  };
 
   const refreshMemories = async () => {
     setMemoriesLoading(true);
@@ -201,6 +270,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'profile',      label: 'Profile',         icon: '🪪' },
     { id: 'instructions', label: 'Instructions',    icon: '📋' },
     { id: 'memories',     label: 'Memories',        icon: '🧩' },
+    { id: 'training',     label: 'Training',        icon: '🧪' },
     { id: 'about',        label: 'About',           icon: 'ℹ️' },
   ];
 
@@ -479,6 +549,112 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Training ── */}
+              {activeTab === 'training' && (
+                <div className="settings-section">
+                  <p className="settings-hint">
+                    Export your thumbs-up'd assistant messages as a dataset for LoRA fine-tuning.
+                    Run <code>scripts/finetune/train_lora.py</code> on the file to produce a personal
+                    model adapter that Ollama can load. See <code>scripts/finetune/README.md</code>
+                    for the full pipeline.
+                  </p>
+
+                  {trainingLoading ? (
+                    <p className="settings-hint">Loading…</p>
+                  ) : trainingStats ? (
+                    <div className="settings-training-stats">
+                      <div className="settings-about-row">
+                        <span className="settings-about-label">Positive-rated pairs</span>
+                        <span className="settings-about-value"><strong>{trainingStats.pairs}</strong></span>
+                      </div>
+                      <div className="settings-about-row">
+                        <span className="settings-about-label">User-edited answers</span>
+                        <span className="settings-about-value">{trainingStats.edited}</span>
+                      </div>
+                      {trainingStats.oldest && trainingStats.newest && (
+                        <>
+                          <div className="settings-about-row">
+                            <span className="settings-about-label">Oldest pair</span>
+                            <span className="settings-about-value">{new Date(trainingStats.oldest).toLocaleString()}</span>
+                          </div>
+                          <div className="settings-about-row">
+                            <span className="settings-about-label">Newest pair</span>
+                            <span className="settings-about-value">{new Date(trainingStats.newest).toLocaleString()}</span>
+                          </div>
+                        </>
+                      )}
+
+                      {trainingStats.pairs < 50 && trainingStats.pairs > 0 && (
+                        <p className="settings-hint">
+                          ⚠️ Only <strong>{trainingStats.pairs}</strong> pairs available.
+                          Fine-tuning is most useful past ~200 examples. Keep using the app
+                          and rating answers with 👍 to build the dataset.
+                        </p>
+                      )}
+                      {trainingStats.pairs === 0 && (
+                        <p className="settings-hint">
+                          No positive-rated messages yet. Click 👍 on assistant replies you like
+                          to populate the dataset.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="settings-hint">No stats available.</p>
+                  )}
+
+                  <div className="settings-divider" />
+
+                  <div className="settings-field">
+                    <label className="settings-field-label" htmlFor="train-format">Export format</label>
+                    <select
+                      id="train-format"
+                      className="settings-input"
+                      value={exportFormat}
+                      onChange={(e) => setExportFormat(e.target.value as 'sharegpt' | 'alpaca')}
+                    >
+                      <option value="sharegpt">ShareGPT — {`{messages: [...]}`} (recommended)</option>
+                      <option value="alpaca">Alpaca — {`{instruction, input, output}`}</option>
+                    </select>
+                  </div>
+
+                  <div className="settings-button-row">
+                    <button
+                      type="button"
+                      className="settings-primary-btn"
+                      onClick={exportTrainingData}
+                      disabled={trainingExporting || !trainingStats || trainingStats.pairs === 0}
+                    >
+                      {trainingExporting ? 'Exporting…' : 'Export dataset'}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-secondary-btn"
+                      onClick={refreshTrainingStats}
+                      disabled={trainingLoading}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {trainingError && (
+                    <p className="settings-error">{trainingError}</p>
+                  )}
+
+                  {trainingResult && (
+                    <div className="settings-training-result">
+                      <p className="settings-hint">
+                        ✓ Wrote <strong>{trainingResult.pairs}</strong> pair{trainingResult.pairs === 1 ? '' : 's'}
+                        {' '}({trainingResult.format}) to:
+                      </p>
+                      <code className="settings-code-block">{trainingResult.path}</code>
+                      <p className="settings-hint">
+                        Next: run <code>python scripts/finetune/train_lora.py --data &quot;{trainingResult.path}&quot; --base &lt;model&gt; --out data/adapters/v1</code>
+                      </p>
                     </div>
                   )}
                 </div>
