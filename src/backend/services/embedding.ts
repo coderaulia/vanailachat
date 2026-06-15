@@ -56,9 +56,39 @@ export class EmbeddingService {
     return dotProduct / denominator;
   }
 
+  /** Half-life in days for time-decay weighting of memory scores. */
+  private static DECAY_HALFLIFE_DAYS = 30;
+  /** Boost factor applied to entries whose metadata.rating == +1. */
+  private static POSITIVE_FEEDBACK_BOOST = 1.15;
+  /** Hard floor for entries whose metadata.rating == -1 (effectively removed). */
+  private static NEGATIVE_FEEDBACK_PENALTY = 0.5;
+
+  /**
+   * Apply time decay (exponential half-life) + feedback weighting to a raw
+   * cosine score. Pure function so tests can assert ranges.
+   */
+  static applyScoreWeights(
+    rawScore: number,
+    createdAt: number,
+    rating: number,
+    now: number = Date.now(),
+  ): number {
+    const ageDays = Math.max(0, (now - createdAt) / (1000 * 60 * 60 * 24));
+    const decay = Math.pow(0.5, ageDays / this.DECAY_HALFLIFE_DAYS);
+    let weighted = rawScore * decay;
+    if (rating > 0) weighted *= this.POSITIVE_FEEDBACK_BOOST;
+    else if (rating < 0) weighted *= this.NEGATIVE_FEEDBACK_PENALTY;
+    return weighted;
+  }
+
   /**
    * Find the most similar entries to a pre-computed query vector.
    * Synchronous — caller is responsible for generating the vector via embed().
+   *
+   * Score = cosine_similarity × decay(age) × feedback_weight
+   * Decay: exponential, 30-day half-life (configurable via DECAY_HALFLIFE_DAYS)
+   * Feedback: +15% boost for rating=+1, 50% penalty for rating=-1.
+   * Rating is read from entry.metadata.rating when present.
    */
   static searchWithVector(
     queryVec: Float32Array,
@@ -67,19 +97,34 @@ export class EmbeddingService {
   ): Array<{ id: string; content: string; score: number; metadata: string | null }> {
     // Cap at 1000 most recent entries to keep search O(1000) not O(∞)
     const entries = DatabaseService.getAllMemoryEntries(1000);
+    const now = Date.now();
 
     const scored = entries
       .map((entry) => {
-        let score = 0;
+        let rawScore = 0;
         try {
           // embedding is base64-encoded Float32Array bytes
           const buf = Buffer.from(entry.embedding, 'base64');
           const vec = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
-          score = this.cosineSimilarity(queryVec, vec);
+          rawScore = this.cosineSimilarity(queryVec, vec);
         } catch {
           // Invalid embedding stored
         }
-        return { entry, score };
+
+        let rating = 0;
+        if (entry.metadata) {
+          try {
+            const meta = JSON.parse(entry.metadata) as { rating?: unknown };
+            if (typeof meta.rating === 'number' && Number.isFinite(meta.rating)) {
+              rating = meta.rating;
+            }
+          } catch {
+            // bad metadata JSON — ignore
+          }
+        }
+
+        const score = this.applyScoreWeights(rawScore, entry.createdAt, rating, now);
+        return { entry, rawScore, score };
       })
       .filter((e) => e.score >= threshold)
       .sort((a, b) => b.score - a.score)

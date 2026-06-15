@@ -102,6 +102,40 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
         rating: b.rating,
         editedContent: (b.editedContent as string | null | undefined) ?? null,
       });
+
+      // RAG self-learning hook: when an assistant message is rated +1,
+      // embed it (or its corrected version) into vector memory so it
+      // resurfaces on similar future queries. Best-effort — failures
+      // (embedding model offline, etc.) don't break the feedback write.
+      if (b.rating === 1 && message.role === 'assistant') {
+        const contentToEmbed =
+          (typeof b.editedContent === 'string' && b.editedContent.trim()) ||
+          message.content;
+
+        if (contentToEmbed.trim().length >= 20) {
+          (async () => {
+            try {
+              const embedding = await dependencies.embed(contentToEmbed);
+              dependencies.upsertMemory({
+                type: 'assistant_positive',
+                content: contentToEmbed.slice(0, 4000),
+                embedding,
+                metadata: JSON.stringify({
+                  role: 'assistant',
+                  rating: 1,
+                  messageId: id,
+                  chatId: message.chatId,
+                  edited: typeof b.editedContent === 'string' && b.editedContent.trim().length > 0,
+                }),
+                sourceId: message.chatId,
+              });
+            } catch (err) {
+              console.warn('[FEEDBACK] failed to embed +1 assistant msg:', err instanceof Error ? err.message : err);
+            }
+          })();
+        }
+      }
+
       return context.json({ feedback });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
