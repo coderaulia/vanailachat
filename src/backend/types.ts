@@ -3,11 +3,13 @@ import type {
   CreateProjectInput,
   InsertMessageInput,
   MemoryEntryRecord,
+  MessageFeedbackRecord,
   MessageRecord,
   ProjectRecord,
   SkillRecord,
   UpdateProjectInput,
   UpsertChatInput,
+  UpsertFeedbackInput,
   UpsertSkillInput,
 } from './services/database.js';
 import type { InstalledModelMetadata } from './services/ollama.js';
@@ -43,6 +45,10 @@ export interface AppDependencies {
   deleteChat: (id: string) => boolean;
   listMessages: (chatId: string) => MessageRecord[];
   insertMessage: (input: InsertMessageInput) => MessageRecord;
+  getMessage: (id: string) => MessageRecord | null;
+  upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;
+  getFeedback: (messageId: string) => MessageFeedbackRecord | null;
+  listFeedbackForChat: (chatId: string) => MessageFeedbackRecord[];
   pickDirectory: () => Promise<string | null>;
   /** Provider registry for multi-provider support */
   providerRegistry: ProviderRegistry;

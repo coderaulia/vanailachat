@@ -61,5 +61,53 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
     }
   });
 
+  /**
+   * GET /api/messages/:id/feedback — fetch current rating + edited content
+   * for a message (if any).
+   */
+  app.get('/:id/feedback', (context) => {
+    const id = context.req.param('id');
+    const feedback = dependencies.getFeedback(id);
+    return context.json({ feedback });
+  });
+
+  /**
+   * POST /api/messages/:id/feedback — set rating (-1, 0, +1) and optional
+   * edited_content for a message. Upsert: re-rating overwrites.
+   */
+  app.post('/:id/feedback', async (context) => {
+    const id = context.req.param('id');
+
+    let body: unknown;
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
+    const b = (body ?? {}) as { rating?: unknown; editedContent?: unknown };
+    if (typeof b.rating !== 'number' || !Number.isFinite(b.rating)) {
+      return context.json({ error: 'rating (number -1, 0, or 1) required' }, 400);
+    }
+    if (b.editedContent !== undefined && b.editedContent !== null && typeof b.editedContent !== 'string') {
+      return context.json({ error: 'editedContent must be string or null' }, 400);
+    }
+
+    const message = dependencies.getMessage(id);
+    if (!message) return context.json({ error: 'Message not found' }, 404);
+
+    try {
+      const feedback = dependencies.upsertFeedback({
+        messageId: id,
+        rating: b.rating,
+        editedContent: (b.editedContent as string | null | undefined) ?? null,
+      });
+      return context.json({ feedback });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return context.json({ error: message }, 500);
+    }
+  });
+
   return app;
 }
