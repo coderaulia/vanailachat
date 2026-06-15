@@ -23,6 +23,7 @@ import { settingsRouter } from './routes/settings.js';
 import { personasRouter } from './routes/personas.js';
 import { skillsRouter } from './routes/skills.js';
 import { researchRouter } from './routes/research.js';
+import { trainingRouter } from './routes/training.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -47,6 +48,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   upsertFeedback: DatabaseService.upsertFeedback.bind(DatabaseService),
   getFeedback: DatabaseService.getFeedback.bind(DatabaseService),
   listFeedbackForChat: DatabaseService.listFeedbackForChat.bind(DatabaseService),
+  listTrainingPairs: DatabaseService.listTrainingPairs.bind(DatabaseService),
   listEnabledSkills: DatabaseService.listEnabledSkills.bind(DatabaseService),
   getAllMemoryEntries: DatabaseService.getAllMemoryEntries.bind(DatabaseService),
   upsertMemory: DatabaseService.upsertMemory.bind(DatabaseService),
@@ -162,6 +164,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.route('/api/personas', personasRouter());
   app.route('/api/research', researchRouter(dependencies));
   app.route('/api/memory', memoryRouter(dependencies));
+  app.route('/api/training', trainingRouter(dependencies));
   app.route('/api/chat', chatRouter(dependencies));
 
   return app;

@@ -49,6 +49,14 @@ export interface AppDependencies {
   upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;
   getFeedback: (messageId: string) => MessageFeedbackRecord | null;
   listFeedbackForChat: (chatId: string) => MessageFeedbackRecord[];
+  listTrainingPairs: () => Array<{
+    chatId: string;
+    userContent: string;
+    assistantContent: string;
+    rating: number;
+    edited: boolean;
+    createdAt: number;
+  }>;
   pickDirectory: () => Promise<string | null>;
   /** Provider registry for multi-provider support */
   providerRegistry: ProviderRegistry;

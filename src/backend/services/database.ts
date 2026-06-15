@@ -553,6 +553,67 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
+  /**
+   * Return positive (rating === 1) assistant messages with their preceding
+   * user turn, suitable for LoRA fine-tuning. Pulls the user message that
+   * immediately precedes each rated assistant message in the same chat,
+   * ordered by created_at ascending. Substitutes edited_content when the
+   * user provided a corrected version.
+   */
+  static listTrainingPairs(): Array<{
+    chatId: string;
+    userContent: string;
+    assistantContent: string;
+    rating: number;
+    edited: boolean;
+    createdAt: number;
+  }> {
+    const db = this.getDb();
+    const rows = db.prepare(
+      `SELECT
+         m.id          AS assistant_id,
+         m.chat_id     AS chat_id,
+         m.content     AS assistant_content,
+         m.created_at  AS created_at,
+         f.rating      AS rating,
+         f.edited_content AS edited_content,
+         (SELECT u.content
+            FROM messages u
+            WHERE u.chat_id = m.chat_id
+              AND u.role    = 'user'
+              AND u.created_at < m.created_at
+            ORDER BY u.created_at DESC
+            LIMIT 1) AS user_content
+       FROM messages m
+       JOIN message_feedback f ON f.message_id = m.id
+       WHERE m.role = 'assistant'
+         AND f.rating = 1
+       ORDER BY m.created_at ASC`,
+    ).all() as Array<{
+      assistant_id: string;
+      chat_id: string;
+      assistant_content: string;
+      created_at: number;
+      rating: number;
+      edited_content: string | null;
+      user_content: string | null;
+    }>;
+
+    return rows
+      .filter((row) => row.user_content && row.user_content.trim())
+      .map((row) => ({
+        chatId: row.chat_id,
+        userContent: row.user_content as string,
+        assistantContent:
+          row.edited_content && row.edited_content.trim()
+            ? row.edited_content
+            : row.assistant_content,
+        rating: row.rating,
+        edited: Boolean(row.edited_content && row.edited_content.trim()),
+        createdAt: row.created_at,
+      }));
+  }
+
   static getMessage(id: string): MessageRecord | null {
     const db = this.getDb();
     const row = db.prepare(
