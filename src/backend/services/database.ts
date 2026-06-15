@@ -116,6 +116,20 @@ export interface MessageRecord {
   createdAt: number;
 }
 
+export interface MessageFeedbackRecord {
+  messageId: string;
+  rating: number;
+  editedContent: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UpsertFeedbackInput {
+  messageId: string;
+  rating: number;
+  editedContent?: string | null;
+}
+
 export interface InsertMessageInput {
   id?: string;
   chatId: string;
@@ -537,6 +551,89 @@ export class DatabaseService {
     const db = this.getDb();
     const result = db.prepare('DELETE FROM chats WHERE id = ?').run(id);
     return result.changes > 0;
+  }
+
+  static getMessage(id: string): MessageRecord | null {
+    const db = this.getDb();
+    const row = db.prepare(
+      'SELECT id, chat_id, role, content, prompt_tokens, completion_tokens, created_at FROM messages WHERE id = ?',
+    ).get(id) as MessageRow | undefined;
+    return row ? this.mapMessage(row) : null;
+  }
+
+  // ─── Message feedback ───
+
+  static upsertFeedback(input: UpsertFeedbackInput): MessageFeedbackRecord {
+    const db = this.getDb();
+    const now = Date.now();
+    const rating = Math.max(-1, Math.min(1, Math.trunc(input.rating)));
+    const editedContent = input.editedContent ?? null;
+
+    db.prepare(
+      `INSERT INTO message_feedback (message_id, rating, edited_content, created_at, updated_at)
+       VALUES (@message_id, @rating, @edited_content, @created_at, @updated_at)
+       ON CONFLICT(message_id) DO UPDATE SET
+         rating = excluded.rating,
+         edited_content = excluded.edited_content,
+         updated_at = excluded.updated_at`,
+    ).run({
+      message_id: input.messageId,
+      rating,
+      edited_content: editedContent,
+      created_at: now,
+      updated_at: now,
+    });
+
+    const row = db.prepare(
+      'SELECT message_id, rating, edited_content, created_at, updated_at FROM message_feedback WHERE message_id = ?',
+    ).get(input.messageId) as
+      | { message_id: string; rating: number; edited_content: string | null; created_at: number; updated_at: number }
+      | undefined;
+
+    if (!row) throw new Error('Failed to save feedback');
+    return {
+      messageId: row.message_id,
+      rating: row.rating,
+      editedContent: row.edited_content,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  static getFeedback(messageId: string): MessageFeedbackRecord | null {
+    const db = this.getDb();
+    const row = db.prepare(
+      'SELECT message_id, rating, edited_content, created_at, updated_at FROM message_feedback WHERE message_id = ?',
+    ).get(messageId) as
+      | { message_id: string; rating: number; edited_content: string | null; created_at: number; updated_at: number }
+      | undefined;
+    return row
+      ? {
+          messageId: row.message_id,
+          rating: row.rating,
+          editedContent: row.edited_content,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      : null;
+  }
+
+  static listFeedbackForChat(chatId: string): MessageFeedbackRecord[] {
+    const db = this.getDb();
+    const rows = db.prepare(
+      `SELECT f.message_id, f.rating, f.edited_content, f.created_at, f.updated_at
+       FROM message_feedback f
+       JOIN messages m ON m.id = f.message_id
+       WHERE m.chat_id = ?
+       ORDER BY f.updated_at DESC`,
+    ).all(chatId) as Array<{ message_id: string; rating: number; edited_content: string | null; created_at: number; updated_at: number }>;
+    return rows.map((row) => ({
+      messageId: row.message_id,
+      rating: row.rating,
+      editedContent: row.edited_content,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   static listMessages(chatId: string): MessageRecord[] {

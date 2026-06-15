@@ -180,5 +180,25 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
       `);
     }
+  },
+  {
+    version: 9,
+    name: 'message_feedback',
+    up: (db) => {
+      // Per-message thumbs-up/down + optional user-corrected text.
+      // Drives the self-learning RAG layer: +1 messages get embedded into
+      // memory, and the future fine-tune pipeline samples from rating != 0.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS message_feedback (
+          message_id TEXT PRIMARY KEY,
+          rating INTEGER NOT NULL DEFAULT 0,
+          edited_content TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_message_feedback_rating ON message_feedback(rating, updated_at DESC);
+      `);
+    }
   }
 ];
