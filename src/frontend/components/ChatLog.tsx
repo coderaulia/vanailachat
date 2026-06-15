@@ -10,11 +10,14 @@ interface MessageItemProps {
   isTyping: boolean;
   showTokens: boolean;
   isCopied: boolean;
+  rating: number;
+  pendingFeedback: boolean;
   renderMarkdown: (content: string) => string;
   onCopy: (id: string, content: string) => void;
+  onRate: (id: string, rating: number) => void;
 }
 
-const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, renderMarkdown, onCopy }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate }: MessageItemProps) {
   const html = useMemo(() => renderMarkdown(message.content), [renderMarkdown, message.content]);
 
   return (
@@ -25,6 +28,36 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
         <span className="message__role">{message.role}</span>
         <div className="message__meta-right">
           <span className="message__time">{DATE_FORMATTER.format(message.timestamp)}</span>
+          {message.role === 'assistant' && !isTyping && message.content.length > 0 && (
+            <>
+              <button
+                type="button"
+                className={`message__rate-btn ${rating === 1 ? 'is-active is-positive' : ''}`}
+                title={rating === 1 ? 'Remove thumbs up' : 'Helpful — train the model on this answer'}
+                aria-pressed={rating === 1}
+                disabled={pendingFeedback}
+                onClick={() => onRate(message.id, rating === 1 ? 0 : 1)}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={rating === 1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                  <path d="M7 10v12" />
+                  <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L15 1l1 4-1 0.88Z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={`message__rate-btn ${rating === -1 ? 'is-active is-negative' : ''}`}
+                title={rating === -1 ? 'Remove thumbs down' : 'Not helpful — penalize this answer'}
+                aria-pressed={rating === -1}
+                disabled={pendingFeedback}
+                onClick={() => onRate(message.id, rating === -1 ? 0 : -1)}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={rating === -1 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" style={{ transform: 'scaleY(-1)' }}>
+                  <path d="M7 10v12" />
+                  <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L15 1l1 4-1 0.88Z" />
+                </svg>
+              </button>
+            </>
+          )}
           {message.role === 'assistant' && (
             <button
               type="button"
@@ -73,6 +106,69 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
   const { conversation, isCurrentChatSending } = useChat();
   const chatLogRef = useRef<HTMLDivElement>(null);
   const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
+  const [feedbackRatings, setFeedbackRatings] = useState<Record<string, number>>({});
+  const [pendingFeedback, setPendingFeedback] = useState<Set<string>>(new Set());
+
+  // Hydrate existing feedback for visible assistant messages on conversation change.
+  useEffect(() => {
+    let cancelled = false;
+    const assistantIds = conversation
+      .filter(m => m.role === 'assistant' && m.content.length > 0)
+      .map(m => m.id)
+      .filter(id => feedbackRatings[id] === undefined);
+
+    if (assistantIds.length === 0) return;
+
+    void (async () => {
+      const updates: Record<string, number> = {};
+      await Promise.all(assistantIds.map(async (id) => {
+        try {
+          const response = await fetch(`/api/messages/${id}/feedback`);
+          if (!response.ok) return;
+          const data = await response.json() as { feedback: { rating: number } | null };
+          if (data.feedback) updates[id] = data.feedback.rating;
+        } catch {
+          // ignore network errors
+        }
+      }));
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setFeedbackRatings(prev => ({ ...prev, ...updates }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // feedbackRatings deliberately excluded — only refetch when conversation changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation]);
+
+  const handleRate = useCallback(async (id: string, rating: number) => {
+    setPendingFeedback(prev => new Set(prev).add(id));
+    // Optimistic update
+    setFeedbackRatings(prev => ({ ...prev, [id]: rating }));
+
+    try {
+      const response = await fetch(`/api/messages/${id}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      console.error('Failed to save feedback', error);
+      // Roll back — refetch on next conversation change
+      setFeedbackRatings(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } finally {
+      setPendingFeedback(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (chatLogRef.current) {
@@ -147,8 +243,11 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
               }
               showTokens={showTokens}
               isCopied={copiedIds.has(message.id)}
+              rating={feedbackRatings[message.id] ?? 0}
+              pendingFeedback={pendingFeedback.has(message.id)}
               renderMarkdown={renderMarkdown}
               onCopy={handleCopyMessage}
+              onRate={handleRate}
             />
           ))
         )}

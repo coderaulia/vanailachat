@@ -189,6 +189,57 @@
   color: var(--bg-accent-strong);
 }
 
+.message__rate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.12s ease;
+}
+
+.message:hover .message__rate-btn {
+  opacity: 1;
+}
+
+.message__rate-btn:hover:not(:disabled) {
+  background: var(--bg-surface-strong);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.message__rate-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.message__rate-btn.is-active {
+  opacity: 1;
+}
+
+.message__rate-btn.is-active.is-positive {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  border-color: color-mix(in srgb, #22c55e 45%, transparent);
+  color: #16a34a;
+}
+
+.message__rate-btn.is-active.is-negative {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  color: #dc2626;
+}
+
 .message__body {
   min-width: 0;
 }
