@@ -393,6 +393,41 @@ export function chatRouter(dependencies: AppDependencies): Hono {
           : null;
       const incomingMessages = Array.isArray(typedBody.messages) ? typedBody.messages : [];
 
+      // Auto-positive heuristic: if the previous assistant reply in this chat
+      // is long and unrated, give it an implicit +1 now that the user is
+      // continuing the conversation (continuation is a signal of satisfaction).
+      // Fire-and-forget — never blocks the current request.
+      if (!typedBody.skipMemory && chatRecord) {
+        (async () => {
+          try {
+            const minTokens = (() => {
+              const raw = process.env.AUTO_POSITIVE_MIN_TOKENS;
+              const n = raw ? Number.parseInt(raw, 10) : NaN;
+              return Number.isFinite(n) && n > 0 ? n : 200;
+            })();
+            const autoRated = dependencies.autoPositiveForChat(chatRecord.id, minTokens);
+            if (autoRated && isEmbedLikelyAvailable()) {
+              const embedding = await dependencies.embed(autoRated.content.slice(0, 4000));
+              dependencies.upsertMemory({
+                type: 'assistant_positive',
+                content: autoRated.content.slice(0, 4000),
+                embedding,
+                metadata: JSON.stringify({
+                  role: 'assistant',
+                  rating: 1,
+                  implicit: true,
+                  messageId: autoRated.messageId,
+                  chatId: autoRated.chatId,
+                }),
+                sourceId: autoRated.chatId,
+              });
+            }
+          } catch (err) {
+            console.warn('[AUTO-POSITIVE] failed:', err instanceof Error ? err.message : err);
+          }
+        })();
+      }
+
       const { systemPrompt, personaToolAllowlist } = await buildSystemPrompt(
         dependencies,
         chatRecord,
