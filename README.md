@@ -53,8 +53,40 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 - **Vector memory** — embeddings via Ollama `nomic-embed-text`, stored as BLOB (binary Float32Array) in SQLite — ~4× smaller and faster than JSON text
 - **Search cap** — vector search scans latest 1,000 entries for consistent sub-ms latency
 - **Auto-injection** — relevant memories injected into every system prompt automatically
+- **LRU eviction** — memory table capped at 5,000 rows (configurable via `MEMORY_TABLE_CAP` env var); oldest entries pruned automatically on insert
 - **Memories tab** — manage stored memories from the Settings modal
 - **API** — `/api/memory` for search, store, delete, and index past chats
+
+### 🔁 Self-Learning Harness
+The app improves itself from your feedback in three phases:
+
+**Phase 1 — Feedback capture**
+- **Thumbs-up / thumbs-down** buttons on every assistant message
+- Click 👍 to approve; optionally edit the message text before rating to train the corrected version
+- Click again to clear; ratings stored in `message_feedback` table (SQLite migration v9)
+- API: `GET /api/messages/:id/feedback`, `POST /api/messages/:id/feedback`
+
+**Phase 2 — Decay-weighted RAG**
+- Approved (+1) answers are auto-embedded and stored as `assistant_positive` memories
+- RAG retrieval boosts +1 memories by **×1.15** and penalises −1 memories by **×0.5**
+- Score formula: `cosine_similarity × decay(age, 30-day half-life) × feedback_weight`
+- Effect is immediate — better answers surface after your first thumbs-up
+
+**Phase 3 — LoRA fine-tune pipeline** (`scripts/finetune/`)
+- **Settings → Training tab** — shows pair count, oldest/newest dates, format selector, export button
+- **Export endpoint** — `POST /api/training/export` → `data/training/train-sharegpt-<stamp>.jsonl`
+- **`train_lora.py`** — Unsloth-based LoRA trainer (4-bit, rank 16, auto-detects sharegpt/alpaca)
+- **`build-modelfile.js`** — generates an Ollama `Modelfile` wiring your GGUF adapter to a base model
+- **Full runbook** — see `scripts/finetune/README.md`
+
+**End-to-end loop:**
+```
+👍 in chat UI → message_feedback → RAG boost (instant)
+                                 → Export JSONL → train_lora.py → GGUF
+                                                               → build-modelfile.js
+                                                               → ollama create vanaila:v1
+                                                               → appears in model picker
+```
 
 ### 📁 Projects & Workspaces
 - **Multi-project** — organize chats into named projects with custom instructions and shared memory
@@ -83,11 +115,17 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
   | `Alt+S` | Toggle web search |
   | `Escape` | Abort generation |
 
+### 🔒 Security
+- **SSRF protection** — `read_url` tool resolves DNS and blocks all private/RFC1918/loopback/link-local/CGNAT/multicast IPs and GCP metadata endpoint; redirects blocked (`redirect: 'manual'`)
+- **Symlink traversal protection** — `read_file` and `run_command` resolve paths via `fs.realpath` before allowing access, preventing escape from project root
+- **Rate limiter hardening** — `trustProxy: false` default collapses all requests to a single anonymous bucket; no X-Forwarded-For spoofing possible in single-user mode
+
 ### 🗄 Backend & Data
-- **Rate limiting** — 20 req/min on `/api/chat`, 60 req/min on `/api/models`
-- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v8), safe upgrades from any state
+- **Rate limiting** — 20 req/min on `/api/chat`, 60 req/min on `/api/models`, 10 req/min on research/skills-install, 60 req/min on memory
+- **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v9), safe upgrades from any state
 - **Export/Import** — full workspace backup and restore as JSON
 - **Settings API** — `/api/settings` key-value store for user preferences, API keys, and onboarding state
+- **Training API** — `GET /api/training/stats`, `POST /api/training/export` (sharegpt or alpaca format)
 
 ---
 
@@ -97,7 +135,7 @@ Supports `depth`: `quick` / `standard` / `deep` and configurable source count.
 |-------|------------|
 | Frontend | React 19, Vite, TypeScript, Vanilla CSS |
 | Backend | Hono (Node.js), TypeScript |
-| Database | SQLite (`better-sqlite3`), 8 versioned migrations |
+| Database | SQLite (`better-sqlite3`), 9 versioned migrations |
 | Local AI | Ollama daemon (auto-started) |
 | Cloud AI | OpenAI-compatible API (OpenAI, OpenRouter, 9Router) |
 | Search | DuckDuckGo (`duck-duck-scrape`) |
@@ -123,7 +161,8 @@ src/
 │   │   ├── models.ts             # /api/models — multi-provider model list
 │   │   ├── projects.ts           # /api/projects CRUD
 │   │   ├── chats.ts              # /api/chats CRUD
-│   │   ├── messages.ts           # /api/messages
+│   │   ├── messages.ts           # /api/messages + /api/messages/:id/feedback
+│   │   ├── training.ts           # /api/training/stats, /api/training/export
 │   │   └── data.ts               # /api/export, /api/import, /api/pick-directory
 │   └── services/
 │       ├── provider.ts           # LLMProvider interface + types
@@ -136,8 +175,8 @@ src/
 │       ├── personas.ts           # Persona definitions + system prompts
 │       ├── tools.ts              # Tool registry + execution (5 built-in + search_web)
 │       ├── toolInterface.ts      # Tool / ToolSchema interfaces
-│       ├── database.ts           # SQLite + all table CRUD (incl. skills, memory BLOB)
-│       ├── migrations.ts         # Schema migrations v1–v8 (v8: embeddings as BLOB)
+│       ├── database.ts           # SQLite + all table CRUD (incl. skills, memory BLOB, feedback)
+│       ├── migrations.ts         # Schema migrations v1–v9 (v8: BLOB embeddings, v9: message_feedback)
 │       └── ollama.ts             # Ollama daemon management
 └── frontend/
     ├── App.tsx                   # Shell + onboarding wizard mount
@@ -146,12 +185,12 @@ src/
     │   ├── OnboardingWizard      # First-run setup wizard
     │   ├── Sidebar               # Chat history, projects, skills panel
     │   ├── ChatHeader            # Model info, thinking timer, tokens
-    │   ├── ChatLog               # Message renderer + tool events
+    │   ├── ChatLog               # Message renderer + tool events + thumbs feedback
     │   ├── Composer              # Input, persona selector, model selector
     │   ├── ModelSelector         # Provider-grouped model dropdown
     │   ├── ProjectDetail         # Project settings panel
     │   ├── Skills                # Agent skills catalog + management UI
-    │   └── SettingsModal         # Settings + Memories tab
+    │   └── SettingsModal         # Settings + Memories + Training tabs
     └── hooks/
         ├── useChatApp.ts         # Root hook — assembles all sub-hooks
         ├── useChatSession.ts     # Coordinator: shared state + refs, delegates to sub-hooks
@@ -323,6 +362,7 @@ npm run dev
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Override for OpenRouter or other OpenAI-compatible APIs |
 | `NINE_ROUTER_API_KEY` | — | API key for 9Router (also configurable via Settings UI) |
 | `NINE_ROUTER_BASE_URL` | `http://localhost:20128/v1` | 9Router host (also configurable via Settings UI) |
+| `MEMORY_TABLE_CAP` | `5000` | Max rows in the `memories` table; oldest entries evicted on insert beyond cap |
 
 > You can also configure API keys and hosts in the **first-run onboarding wizard** or **Settings modal** — no env vars needed for basic use.
 
@@ -455,6 +495,73 @@ Verify your API key and host are set in Settings → Provider Keys, or via `NINE
 
 **Windows: folder picker not working**
 Type the path manually in the "Project Root" field in Coder mode. The native picker requires `zenity`/`kdialog` (Linux/macOS only).
+
+**Training export returns 0 pairs**
+You need at least one thumbs-up (👍) on an assistant message. Ratings are stored in the `message_feedback` table; check with `Settings → Training` to see current count.
+
+**LoRA training fails (no module 'unsloth')**
+```bash
+pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+pip install --no-deps trl peft accelerate bitsandbytes
+```
+Unsloth requires Linux or WSL2 + NVIDIA GPU. macOS/CPU is unsupported for LoRA.
+
+---
+
+## Self-Learning Fine-Tune Guide
+
+Full runbook: `scripts/finetune/README.md`
+
+Quick path once you have ≥200 thumbs-up ratings:
+
+```bash
+# 1. Export dataset (or use Settings → Training tab)
+curl -X POST http://localhost:<PORT>/api/training/export \
+     -H 'content-type: application/json' \
+     -d '{"format":"sharegpt"}'
+
+# 2. Train (Linux/WSL2 + GPU required)
+cd scripts/finetune
+python train_lora.py \
+    --base unsloth/Llama-3.2-3B-Instruct \
+    --data ../../data/training/train-sharegpt-<stamp>.jsonl \
+    --out  ../../data/adapters/v1
+
+# 3. Convert adapter → GGUF (unsloth helper)
+python -c "
+from unsloth import FastLanguageModel
+m, tok = FastLanguageModel.from_pretrained('../../data/adapters/v1')
+m.save_pretrained_gguf('../../data/adapters/v1.gguf', tok, quantization_method='q4_k_m')
+"
+
+# 4. Generate Modelfile
+node scripts/finetune/build-modelfile.js \
+    --base llama3.2:3b \
+    --adapter ../../data/adapters/v1.gguf \
+    --out ../../data/adapters/v1.Modelfile \
+    --tag vanaila-llama:v1
+
+# 5. Register with Ollama
+ollama create vanaila-llama:v1 -f ../../data/adapters/v1.Modelfile
+# → now appears in VanailaChat model picker
+```
+
+---
+
+## Roadmap
+
+| Phase | Status | What |
+|-------|--------|------|
+| Phase 1 — Feedback capture | ✅ Done | Thumbs-up/down on messages, `message_feedback` table, `/api/messages/:id/feedback` |
+| Phase 2 — Decay-weighted RAG | ✅ Done | Feedback-boosted cosine search, 30-day half-life decay, auto-embed on +1 |
+| Phase 3 — LoRA pipeline | ✅ Done | Training export, `train_lora.py`, `build-modelfile.js`, Training tab UI |
+| Phase 4 — Auto-eval harness | 🔲 Planned | A/B comparison across adapter versions; auto-positive heuristic (long reply + no follow-up edit = implicit +1); prompt distillation from high-scoring chats |
+
+**Phase 4 details:**
+- **A/B harness** — run two model tags in parallel on the same prompt, display side-by-side, record which wins; use wins as training signal for v(N+1)
+- **Auto-positive heuristic** — if the user continues the conversation without editing the last assistant reply and the reply is >200 tokens, score it as implicit +1; configurable threshold
+- **Prompt distillation** — extract the highest-scoring chat threads and use them as seed data for each training round, mixing with explicit +1 pairs to reduce catastrophic forgetting
+- **Catastrophic-forgetting mitigation** — automatic 10% public instruction data blend (ShareGPT subset) added to every export to preserve general capability
 
 ---
 
