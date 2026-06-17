@@ -3,6 +3,7 @@ import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
 import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
+import { ABTestModal } from './ABTestModal';
 import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
@@ -14,6 +15,7 @@ interface ComposerProps {
 export function Composer({ thinkingSeconds }: ComposerProps) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [isResearchEnabled, setIsResearchEnabled] = useState(false);
+  const [showABTest, setShowABTest] = useState(false);
 
   const {
     attachedFiles,
@@ -76,6 +78,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
   };
 
   return (
+    <>
     <footer className="app-footer">
       <form className="chat-form" onSubmit={handleSubmit}>
         <div className="composer">
@@ -270,6 +273,21 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   </svg>
                 </button>
 
+                {/* A/B model comparison */}
+                <button
+                  type="button"
+                  className="btn btn-secondary icon-btn"
+                  onClick={() => setShowABTest(true)}
+                  title="A/B Model Comparison"
+                  disabled={isCurrentChatSending}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                    <path d="M16 3l3 3-3 3" /><path d="M8 21l-3-3 3-3" />
+                  </svg>
+                </button>
+
                 {/* System prompt toggle */}
                 <button
                   type="button"
@@ -342,5 +360,14 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
         </div>
       </form>
     </footer>
+
+    {showABTest && (
+      <ABTestModal
+        availableModels={availableModels}
+        defaultModel={selectedModel}
+        onClose={() => setShowABTest(false)}
+      />
+    )}
+    </>
   );
 }

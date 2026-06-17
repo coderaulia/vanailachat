@@ -27,7 +27,11 @@ type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'training' | 'about'
 
 interface TrainingStats {
   pairs: number;
+  explicit: number;
   edited: number;
+  implicit: number;
+  distillation: number;
+  topChats: number;
   oldest: number | null;
   newest: number | null;
 }
@@ -74,9 +78,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [trainingStats, setTrainingStats] = useState<TrainingStats | null>(null);
   const [trainingLoading, setTrainingLoading] = useState(false);
   const [trainingExporting, setTrainingExporting] = useState(false);
-  const [trainingResult, setTrainingResult] = useState<{ path: string; pairs: number; format: string } | null>(null);
+  const [trainingResult, setTrainingResult] = useState<{ path: string; pairs: number; explicit: number; distilled: number; format: string } | null>(null);
   const [trainingError, setTrainingError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'sharegpt' | 'alpaca'>('sharegpt');
+  const [includeDistillation, setIncludeDistillation] = useState(false);
   const trainingFetched = useRef(false);
 
   const flash = (label: string) => {
@@ -165,15 +170,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       const response = await fetch('/api/training/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: exportFormat }),
+        body: JSON.stringify({ format: exportFormat, includeDistillation }),
       });
-      const data = (await response.json()) as { path?: string; pairs?: number; format?: string; error?: string };
+      const data = (await response.json()) as { path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string };
       if (!response.ok || data.error) {
         setTrainingError(data.error ?? `Export failed (HTTP ${response.status})`);
         return;
       }
       if (data.path && typeof data.pairs === 'number' && data.format) {
-        setTrainingResult({ path: data.path, pairs: data.pairs, format: data.format });
+        setTrainingResult({ path: data.path, pairs: data.pairs, explicit: data.explicit ?? data.pairs, distilled: data.distilled ?? 0, format: data.format });
       }
     } catch (err) {
       setTrainingError(err instanceof Error ? err.message : 'Export failed');
@@ -569,12 +574,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   ) : trainingStats ? (
                     <div className="settings-training-stats">
                       <div className="settings-about-row">
-                        <span className="settings-about-label">Positive-rated pairs</span>
+                        <span className="settings-about-label">Explicit 👍 pairs</span>
                         <span className="settings-about-value"><strong>{trainingStats.pairs}</strong></span>
+                      </div>
+                      <div className="settings-about-row">
+                        <span className="settings-about-label">Auto-positive (implicit)</span>
+                        <span className="settings-about-value">{trainingStats.implicit ?? 0}</span>
                       </div>
                       <div className="settings-about-row">
                         <span className="settings-about-label">User-edited answers</span>
                         <span className="settings-about-value">{trainingStats.edited}</span>
+                      </div>
+                      <div className="settings-about-row">
+                        <span className="settings-about-label">Distillation pairs available</span>
+                        <span className="settings-about-value">{trainingStats.distillation ?? 0} from {trainingStats.topChats ?? 0} top chats</span>
                       </div>
                       {trainingStats.oldest && trainingStats.newest && (
                         <>
@@ -622,6 +635,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </select>
                   </div>
 
+                  <div className="settings-field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={includeDistillation}
+                        onChange={(e) => setIncludeDistillation(e.target.checked)}
+                      />
+                      <span className="settings-label">Include distillation pairs</span>
+                    </label>
+                    <p className="settings-hint">
+                      Blends pairs from your highest-rated conversations (~30%) to reduce catastrophic forgetting.
+                      {trainingStats && trainingStats.distillation > 0
+                        ? ` ${trainingStats.distillation} pairs available from ${trainingStats.topChats} top chats.`
+                        : ' Needs ≥2 rated messages per chat.'}
+                    </p>
+                  </div>
+
                   <div className="settings-button-row">
                     <button
                       type="button"
@@ -649,7 +679,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     <div className="settings-training-result">
                       <p className="settings-hint">
                         ✓ Wrote <strong>{trainingResult.pairs}</strong> pair{trainingResult.pairs === 1 ? '' : 's'}
-                        {' '}({trainingResult.format}) to:
+                        {' '}({trainingResult.explicit} explicit{trainingResult.distilled > 0 ? ` + ${trainingResult.distilled} distilled` : ''}, {trainingResult.format}) to:
                       </p>
                       <code className="settings-code-block">{trainingResult.path}</code>
                       <p className="settings-hint">
