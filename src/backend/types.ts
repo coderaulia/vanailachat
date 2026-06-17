@@ -57,6 +57,22 @@ export interface AppDependencies {
     edited: boolean;
     createdAt: number;
   }>;
+  autoPositiveForChat: (chatId: string, minTokens?: number) => { messageId: string; content: string; chatId: string } | null;
+  listHighScoringChats: (limit?: number, minRate?: number, minRated?: number) => string[];
+  listDistillationPairs: (chatIds: string[]) => Array<{
+    chatId: string;
+    userContent: string;
+    assistantContent: string;
+    rating: number;
+    edited: boolean;
+    createdAt: number;
+  }>;
+  recordAbPick: (input: {
+    userContent: string;
+    assistantContent: string;
+    winnerModel: string;
+    loserModel?: string;
+  }) => { chatId: string; messageId: string };
   pickDirectory: () => Promise<string | null>;
   /** Provider registry for multi-provider support */
   providerRegistry: ProviderRegistry;

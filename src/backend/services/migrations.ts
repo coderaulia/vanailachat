@@ -200,5 +200,21 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_message_feedback_rating ON message_feedback(rating, updated_at DESC);
       `);
     }
+  },
+  {
+    version: 10,
+    name: 'message_feedback_implicit',
+    up: (db) => {
+      // Track auto-positive ratings (heuristic) separately from explicit user thumbs.
+      // implicit=1: rated by the auto-positive heuristic (long reply, no edit, next turn).
+      // implicit=0: explicit thumbs-up/down from the user (default, existing rows).
+      db.exec(`
+        ALTER TABLE message_feedback ADD COLUMN implicit INTEGER NOT NULL DEFAULT 0;
+      `);
+      // Index for training export: implicit pairs can be excluded or weighted differently.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_message_feedback_implicit ON message_feedback(implicit, rating);
+      `);
+    }
   }
 ];
