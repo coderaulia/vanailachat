@@ -79,10 +79,41 @@ def main() -> None:
     parser.add_argument("--max-seq", type=int, default=4096)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--batch", type=int, default=2)
+    parser.add_argument(
+        "--mix-file",
+        type=Path,
+        default=None,
+        help="Secondary JSONL (e.g. public instruction data) blended in as a "
+             "catastrophic-forgetting guard. Sampled at --mix-ratio of the combined output.",
+    )
+    parser.add_argument(
+        "--mix-ratio",
+        type=float,
+        default=0.1,
+        help="Fraction of the final dataset to fill from --mix-file (0–1, default 0.1 = 10%%). "
+             "A 10%% blend of public data prevents the model from forgetting general skills.",
+    )
     args = parser.parse_args()
 
     rows = load_dataset(args.data)
     print(f"loaded {len(rows)} training pairs from {args.data}")
+
+    if args.mix_file is not None:
+        import random
+        if not args.mix_file.exists():
+            raise SystemExit(f"--mix-file not found: {args.mix_file}")
+        mix_ratio = max(0.0, min(0.9, args.mix_ratio))
+        mix_all = load_dataset(args.mix_file)
+        # Sample enough mix rows to make up mix_ratio of the combined dataset
+        n_mix_target = int(round(len(rows) * mix_ratio / max(1.0 - mix_ratio, 1e-9)))
+        mix_rows = random.sample(mix_all, min(n_mix_target, len(mix_all)))
+        combined = rows + mix_rows
+        random.shuffle(combined)
+        rows = combined
+        print(
+            f"blended {len(mix_rows)} mix rows ({mix_ratio:.0%} target) from {args.mix_file}"
+            f" → {len(rows)} total pairs"
+        )
 
     # Imports here so --help works without unsloth installed.
     from unsloth import FastLanguageModel  # type: ignore
