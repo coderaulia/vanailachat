@@ -7,6 +7,8 @@ interface AllSettings {
   openai_base_url?: string;
   nine_router_host?: string;
   nine_router_api_key?: string;
+  custom_openai_base_url?: string;
+  custom_openai_api_key?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
@@ -35,7 +37,7 @@ interface TrainingStats {
   oldest: number | null;
   newest: number | null;
 }
-type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router';
+type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router' | 'custom';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
 
@@ -59,6 +61,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [nineRouterHost, setNineRouterHost] = useState('http://localhost:20128/v1');
   const [nineRouterKey, setNineRouterKey] = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [customKey, setCustomKey] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
   // Profile
@@ -99,6 +103,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.nine_router_api_key) {
           setLlmMode('9router');
           setNineRouterKey(s.nine_router_api_key);
+        } else if (s.custom_openai_api_key) {
+          setLlmMode('custom');
+          setCustomKey(s.custom_openai_api_key);
         } else if (s.openai_api_key) {
           // Detect mode from base_url
           if (s.openai_base_url?.includes('openrouter')) {
@@ -112,6 +119,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           setLlmMode('ollama');
         }
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
+        if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
@@ -240,6 +248,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     flash('Saved');
   }, [nineRouterHost, nineRouterKey]);
 
+  const saveCustomConfig = useCallback(async () => {
+    await saveSetting('custom_openai_base_url', customBaseUrl);
+    await saveSetting('custom_openai_api_key', customKey);
+    flash('Saved');
+  }, [customBaseUrl, customKey]);
+
   const saveUserName = useCallback(async () => {
     if (userName.trim()) { await saveSetting('user_name', userName.trim()); flash('Saved'); }
   }, [userName]);
@@ -352,6 +366,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       className={`settings-llm-tab ${llmMode === '9router' ? 'is-active' : ''}`}
                       onClick={() => setLlmMode('9router')}
                     >🔄 9Router</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'custom' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('custom')}
+                    >🧩 Custom</button>
                   </div>
 
                   {llmMode === 'ollama' && (
@@ -424,6 +443,34 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         placeholder="Copy from 9Router dashboard →"
                       />
                       <p className="settings-hint">Get your API key at <a href="http://localhost:20128/dashboard" target="_blank" rel="noreferrer">9Router Dashboard</a></p>
+                    </div>
+                  )}
+
+                  {llmMode === 'custom' && (
+                    <div className="settings-field">
+                      <label className="settings-label">Base URL</label>
+                      <input
+                        className="settings-input"
+                        value={customBaseUrl}
+                        onChange={(e) => setCustomBaseUrl(e.target.value)}
+                        onBlur={saveCustomConfig}
+                        placeholder="https://api.example.com/v1"
+                      />
+                      <p className="settings-hint">Any OpenAI-compatible endpoint — Groq, Together, Fireworks, DeepSeek, Mistral, LM Studio, vLLM, etc.</p>
+                    </div>
+                  )}
+
+                  {llmMode === 'custom' && (
+                    <div className="settings-field">
+                      <label className="settings-label">API Key</label>
+                      <input
+                        className="settings-input"
+                        type="password"
+                        value={customKey}
+                        onChange={(e) => setCustomKey(e.target.value)}
+                        onBlur={saveCustomConfig}
+                        placeholder="sk-..."
+                      />
                     </div>
                   )}
 

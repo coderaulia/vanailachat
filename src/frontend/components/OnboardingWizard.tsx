@@ -34,12 +34,14 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
 
   // LLM step state
-  const [llmMode, setLlmMode] = useState<'ollama' | 'openai' | 'openrouter' | '9router'>('ollama');
+  const [llmMode, setLlmMode] = useState<'ollama' | 'openai' | 'openrouter' | '9router' | 'custom'>('ollama');
   const [ollamaHost, setOllamaHost] = useState('http://localhost:11434');
   const [openaiKey, setOpenaiKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [nineRouterHost, setNineRouterHost] = useState('http://localhost:20128/v1');
   const [nineRouterKey, setNineRouterKey] = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [customKey, setCustomKey] = useState('');
 
   // Profile step state
   const [userName, setUserName] = useState('');
@@ -65,6 +67,9 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
       } else if (llmMode === '9router') {
         await saveSetting('nine_router_host', nineRouterHost);
         await saveSetting('nine_router_api_key', nineRouterKey);
+      } else if (llmMode === 'custom') {
+        await saveSetting('custom_openai_base_url', customBaseUrl);
+        await saveSetting('custom_openai_api_key', customKey);
       }
     }
 
@@ -156,6 +161,13 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                 >
                   🔄 9Router
                 </button>
+                <button
+                  className={`onboarding-tab ${llmMode === 'custom' ? 'is-active' : ''}`}
+                  onClick={() => setLlmMode('custom')}
+                  type="button"
+                >
+                  🧩 Custom
+                </button>
               </div>
 
               {llmMode === 'ollama' && (
@@ -233,6 +245,34 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
                   <p className="onboarding-hint">
                     Get your key at <a href="http://localhost:20128/dashboard" target="_blank" rel="noreferrer">9Router Dashboard</a>
                   </p>
+                </div>
+              )}
+
+              {llmMode === 'custom' && (
+                <div className="onboarding-field">
+                  <label>Base URL</label>
+                  <input
+                    className="onboarding-input"
+                    value={customBaseUrl}
+                    onChange={(e) => setCustomBaseUrl(e.target.value)}
+                    placeholder="https://api.example.com/v1"
+                  />
+                  <p className="onboarding-hint">
+                    Any OpenAI-compatible endpoint — Groq, Together, Fireworks, DeepSeek, Mistral, LM Studio, vLLM, etc.
+                  </p>
+                </div>
+              )}
+
+              {llmMode === 'custom' && (
+                <div className="onboarding-field">
+                  <label>API Key</label>
+                  <input
+                    className="onboarding-input"
+                    type="password"
+                    value={customKey}
+                    onChange={(e) => setCustomKey(e.target.value)}
+                    placeholder="sk-..."
+                  />
                 </div>
               )}
             </div>

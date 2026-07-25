@@ -7,6 +7,7 @@ import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
 import { OpenAIProvider } from './services/openaiProvider.js';
 import { NineRouterProvider } from './services/nineRouterProvider.js';
+import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
@@ -101,6 +102,11 @@ function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string):
   }
   try {
     registry.register(new NineRouterProvider());
+  } catch {
+    // Ignore
+  }
+  try {
+    registry.register(new CustomOpenAIProvider());
   } catch {
     // Ignore
   }
