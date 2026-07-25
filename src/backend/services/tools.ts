@@ -215,6 +215,36 @@ function isAllowedCommand(command: string, args: string[]): boolean {
   return false;
 }
 
+/**
+ * Native stand-in for `cat` and `ls`. Both are coreutils, so shelling out to
+ * them only works on Unix; reading through fs keeps run_command identical
+ * across platforms and avoids depending on whatever is on PATH.
+ */
+async function readWithFs(
+  command: 'cat' | 'ls',
+  args: string[],
+  baseRoot: string,
+): Promise<string> {
+  const paths = args.filter((arg) => !arg.startsWith('-'));
+  const targets = paths.length > 0 ? paths : ['.'];
+
+  const sections = await Promise.all(
+    targets.map(async (target) => {
+      const safePath = await resolveWithinRootRealpath(baseRoot, target);
+      if (command === 'cat') {
+        return await fs.readFile(safePath, 'utf-8');
+      }
+      const entries = await fs.readdir(safePath, { withFileTypes: true });
+      return entries
+        .map((entry) => `${entry.name}${entry.isDirectory() ? '/' : ''}`)
+        .sort((a, b) => a.localeCompare(b))
+        .join('\n');
+    }),
+  );
+
+  return sections.join('\n').trim() || 'Command completed with no output';
+}
+
 export class ToolService {
   private static getExecutionRoot(projectRoot: string | null): string {
     const cwd = process.cwd();
@@ -445,21 +475,28 @@ export class ToolService {
 
         try {
           const baseRoot = this.getExecutionRoot(projectRoot);
-          
-          let safeArgs = commandArgs;
+
+          // cat/ls are coreutils and do not exist on Windows. Serve them from
+          // fs so the allowlist behaves identically on every platform.
           if (command === 'cat' || command === 'ls') {
-            safeArgs = await Promise.all(
-              commandArgs.map(async (arg) => {
-                if (arg.startsWith('-')) return arg;
-                return resolveWithinRootRealpath(baseRoot, arg);
-              }),
-            );
+            return await readWithFs(command, commandArgs, baseRoot);
           }
 
-          const { stdout, stderr } = await execFilePromise(command, safeArgs, {
-            cwd: baseRoot,
-            maxBuffer: 1024 * 1024,
-          });
+          // npm ships as npm.cmd on Windows and Node refuses to execFile a
+          // .cmd without a shell. Passed as a single command line because
+          // isAllowedCommand restricts npm's arguments to the fixed literals
+          // "test" and "run lint" — nothing here is caller-controlled.
+          const { stdout, stderr } =
+            process.platform === 'win32' && command === 'npm'
+              ? await execFilePromise(`npm.cmd ${commandArgs.join(' ')}`, {
+                  cwd: baseRoot,
+                  maxBuffer: 1024 * 1024,
+                  shell: true,
+                })
+              : await execFilePromise(command, commandArgs, {
+                  cwd: baseRoot,
+                  maxBuffer: 1024 * 1024,
+                });
 
           return [stdout, stderr].filter(Boolean).join('\n').trim() || 'Command completed with no output';
         } catch (error) {

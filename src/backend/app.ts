@@ -72,25 +72,45 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
+  // Native folder picker. Every platform ships a different one, so each is
+  // tried in turn and a missing dialog just yields null (the UI still accepts
+  // a typed path).
   pickDirectory: async () => {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execFilePromise = promisify(execFile);
-    try {
-      const { stdout } = await execFilePromise('zenity', [
-        '--file-selection',
-        '--directory',
-        '--title=Select Project Root',
-      ]);
-      return stdout.trim();
-    } catch {
+
+    const candidates: Array<[string, string[]]> =
+      process.platform === 'win32'
+        ? [[
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-STA',
+              '-Command',
+              "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select Project Root'; if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
+            ],
+          ]]
+        : process.platform === 'darwin'
+          ? [[
+              'osascript',
+              ['-e', 'POSIX path of (choose folder with prompt "Select Project Root")'],
+            ]]
+          : [
+              ['zenity', ['--file-selection', '--directory', '--title=Select Project Root']],
+              ['kdialog', ['--getexistingdirectory', '.']],
+            ];
+
+    for (const [binary, args] of candidates) {
       try {
-        const { stdout } = await execFilePromise('kdialog', ['--getexistingdirectory', '.']);
-        return stdout.trim();
+        const { stdout } = await execFilePromise(binary, args);
+        const picked = stdout.trim();
+        if (picked) return picked;
       } catch {
-        return null;
+        // Dialog unavailable or cancelled — try the next candidate.
       }
     }
+    return null;
   },
 };
 

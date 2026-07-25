@@ -34,15 +34,24 @@ const CAPABILITY_LABELS: Record<string, string> = {
   vision: 'Vision',
 };
 
-// Provider IDs that use prefix:modelname format (not Ollama tag format)
-const EXTERNAL_PROVIDER_PREFIXES = new Set(['openai', '9router', 'openrouter']);
-
 export const PROVIDER_DISPLAY: Record<string, { label: string; icon: string; description: string }> = {
   ollama:     { label: 'Ollama',     icon: '🦙', description: 'Local Ollama model' },
   openai:     { label: 'OpenAI',     icon: '✨', description: 'OpenAI model' },
   '9router':  { label: '9Router',    icon: '⚡', description: '9Router cloud model' },
   openrouter: { label: 'OpenRouter', icon: '🌐', description: 'OpenRouter model' },
+  custom:     { label: 'Custom',     icon: '🧩', description: 'OpenAI-compatible model' },
 };
+
+/**
+ * Provider IDs that address models as "prefix:model". Derived from
+ * PROVIDER_DISPLAY so registering a provider in one place is enough — a missing
+ * entry here silently renders every one of that provider's models as the
+ * prefix itself (e.g. "custom:gpt-5.4" → "Custom").
+ * Ollama is excluded: its colon is a tag separator ("llama3.2:latest").
+ */
+const EXTERNAL_PROVIDER_PREFIXES = new Set(
+  Object.keys(PROVIDER_DISPLAY).filter((id) => id !== 'ollama'),
+);
 
 const toTitleCase = (value: string): string =>
   value
@@ -53,18 +62,19 @@ const toTitleCase = (value: string): string =>
     .join(' ');
 
 const getModelBaseName = (name: string): string => {
-  const withoutNamespace = name.split('/').pop() || name;
-  const colonIdx = withoutNamespace.indexOf(':');
-  if (colonIdx > 0) {
-    const prefix = withoutNamespace.slice(0, colonIdx);
-    if (EXTERNAL_PROVIDER_PREFIXES.has(prefix)) {
-      // External provider prefix — take the actual model name after the colon
-      return withoutNamespace.slice(colonIdx + 1);
-    }
-    // Ollama tag format (e.g., "llama3.2:latest") — strip tag
-    return withoutNamespace.slice(0, colonIdx);
+  // Strip the provider prefix before the namespace so models that carry both
+  // (e.g. "custom:gemini/gemini-3.5-flash") resolve to the model, not the prefix.
+  let remainder = name;
+  const prefixIdx = remainder.indexOf(':');
+  if (prefixIdx > 0 && EXTERNAL_PROVIDER_PREFIXES.has(remainder.slice(0, prefixIdx))) {
+    remainder = remainder.slice(prefixIdx + 1);
   }
-  return withoutNamespace;
+
+  const withoutNamespace = remainder.split('/').pop() || remainder;
+
+  // Ollama tag format (e.g. "llama3.2:latest") — strip the tag
+  const tagIdx = withoutNamespace.indexOf(':');
+  return tagIdx > 0 ? withoutNamespace.slice(0, tagIdx) : withoutNamespace;
 };
 
 const formatDisplayName = (name: string): string => toTitleCase(getModelBaseName(name));
