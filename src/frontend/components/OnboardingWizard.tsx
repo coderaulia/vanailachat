@@ -20,13 +20,16 @@ const STORAGE_KEY = 'vanaila_onboarding_done';
 
 async function saveSetting(key: string, value: string) {
   try {
-    await fetch(`/api/settings/${key}`, {
+    const response = await fetch(`/api/settings/${key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
     });
-  } catch {
-    // Best-effort
+    // Best-effort, but a silent failure here looks like setup simply not
+    // sticking — so at least leave a trace when the backend rejects the write.
+    if (!response.ok) console.error(`[SETUP] Failed to save ${key} (HTTP ${response.status})`);
+  } catch (error) {
+    console.error(`[SETUP] Failed to save ${key}`, error);
   }
 }
 

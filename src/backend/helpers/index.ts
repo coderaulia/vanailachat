@@ -1,3 +1,20 @@
+/**
+ * Turn a caught error into a message safe to return over HTTP.
+ *
+ * In development the real message is kept — it is the only debugging surface
+ * for a local-first app. Under NODE_ENV=production only the caller-supplied
+ * fallback is returned, so stack-adjacent detail (absolute paths, SQL, upstream
+ * URLs) never reaches the client. The full error is always logged server-side.
+ */
+export function sanitizeError(error: unknown, fallback = 'Unknown error'): string {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[ERROR]', error);
+    return fallback;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function toOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }

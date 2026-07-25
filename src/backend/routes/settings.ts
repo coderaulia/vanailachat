@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
 /**
@@ -41,7 +42,7 @@ export function settingsRouter(dependencies: AppDependencies): Hono {
       dependencies.upsertSetting(key, body.value);
       return context.json({ key, value: body.value });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Save failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Save failed') }, 500);
     }
   });
 

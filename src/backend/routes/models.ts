@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
 export function modelsRouter(dependencies: AppDependencies): Hono {
@@ -38,7 +39,7 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
         providers: models.map(m => ({ name: m.name, provider: m.provider })),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -53,7 +54,7 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
       const details = await dependencies.getModelDetails(model);
       return context.json({ model, ...(details as object) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });

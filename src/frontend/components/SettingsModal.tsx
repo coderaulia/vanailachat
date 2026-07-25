@@ -42,11 +42,41 @@ type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router' | 'custom';
 const STORAGE_KEY = 'vanaila_onboarding_done';
 
 async function saveSetting(key: string, value: string) {
-  await fetch(`/api/settings/${key}`, {
+  const response = await fetch(`/api/settings/${key}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value }),
   });
+  // Swallowing this hid every write made while the backend was down, which
+  // looked like settings silently resetting themselves.
+  if (!response.ok) throw new Error(`Failed to save ${key} (HTTP ${response.status})`);
+}
+
+/**
+ * Persists shortly after the user stops typing, skipping the initial render.
+ * Saving on blur alone lost edits whenever the modal was dismissed with Escape
+ * or a backdrop click, neither of which fires a blur first.
+ */
+function useAutosave(value: string, action: () => void | Promise<void>, ready: boolean) {
+  const actionRef = useRef(action);
+  actionRef.current = action;
+  const baseline = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!ready) return;
+    // First pass after load records the stored value rather than re-saving it.
+    if (baseline.current === null) {
+      baseline.current = value;
+      return;
+    }
+    if (baseline.current === value) return;
+
+    const timer = setTimeout(() => {
+      baseline.current = value;
+      void actionRef.current();
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [value, ready]);
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -225,47 +255,81 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const saveOllamaHost = useCallback(async () => {
-    await saveSetting('ollama_host', ollamaHost);
-    flash('Saved');
-  }, [ollamaHost]);
+  /** Runs a group of writes, reporting failure instead of dropping it. */
+  const persist = useCallback(async (writes: Array<[string, string]>) => {
+    try {
+      for (const [key, value] of writes) await saveSetting(key, value);
+      flash('Saved');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Save failed');
+    }
+  }, []);
 
-  const saveOpenaiKey = useCallback(async () => {
-    await saveSetting('openai_api_key', openaiKey);
-    await saveSetting('openai_base_url', 'https://api.openai.com/v1');
-    flash('Saved');
-  }, [openaiKey]);
+  const saveOllamaHost = useCallback(
+    () => persist([['ollama_host', ollamaHost]]),
+    [persist, ollamaHost],
+  );
 
-  const saveOpenrouterKey = useCallback(async () => {
-    await saveSetting('openai_api_key', openrouterKey);
-    await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
-    flash('Saved');
-  }, [openrouterKey]);
+  const saveOpenaiKey = useCallback(
+    () => persist([
+      ['openai_api_key', openaiKey],
+      ['openai_base_url', 'https://api.openai.com/v1'],
+    ]),
+    [persist, openaiKey],
+  );
 
-  const saveNineRouterConfig = useCallback(async () => {
-    await saveSetting('nine_router_host', nineRouterHost);
-    await saveSetting('nine_router_api_key', nineRouterKey);
-    flash('Saved');
-  }, [nineRouterHost, nineRouterKey]);
+  const saveOpenrouterKey = useCallback(
+    () => persist([
+      ['openai_api_key', openrouterKey],
+      ['openai_base_url', 'https://openrouter.ai/api/v1'],
+    ]),
+    [persist, openrouterKey],
+  );
 
-  const saveCustomConfig = useCallback(async () => {
-    await saveSetting('custom_openai_base_url', customBaseUrl);
-    await saveSetting('custom_openai_api_key', customKey);
-    flash('Saved');
-  }, [customBaseUrl, customKey]);
+  const saveNineRouterConfig = useCallback(
+    () => persist([
+      ['nine_router_host', nineRouterHost],
+      ['nine_router_api_key', nineRouterKey],
+    ]),
+    [persist, nineRouterHost, nineRouterKey],
+  );
 
-  const saveUserName = useCallback(async () => {
-    if (userName.trim()) { await saveSetting('user_name', userName.trim()); flash('Saved'); }
-  }, [userName]);
+  const saveCustomConfig = useCallback(
+    () => persist([
+      ['custom_openai_base_url', customBaseUrl],
+      ['custom_openai_api_key', customKey],
+    ]),
+    [persist, customBaseUrl, customKey],
+  );
 
-  const saveUserRole = useCallback(async () => {
-    if (userRole.trim()) { await saveSetting('user_role', userRole.trim()); flash('Saved'); }
-  }, [userRole]);
+  // Profile fields save even when emptied, so clearing one actually sticks.
+  const saveUserName = useCallback(
+    () => persist([['user_name', userName.trim()]]),
+    [persist, userName],
+  );
 
-  const saveBaseInstructions = useCallback(async () => {
-    await saveSetting('base_instructions', baseInstructions.trim());
-    flash('Saved');
-  }, [baseInstructions]);
+  const saveUserRole = useCallback(
+    () => persist([['user_role', userRole.trim()]]),
+    [persist, userRole],
+  );
+
+  const saveBaseInstructions = useCallback(
+    () => persist([['base_instructions', baseInstructions.trim()]]),
+    [persist, baseInstructions],
+  );
+
+  // Autosave every field so an Escape or backdrop dismissal cannot lose edits.
+  const ready = !loading;
+  useAutosave(ollamaHost, saveOllamaHost, ready);
+  useAutosave(openaiKey, saveOpenaiKey, ready);
+  useAutosave(openrouterKey, saveOpenrouterKey, ready);
+  useAutosave(nineRouterHost, saveNineRouterConfig, ready);
+  useAutosave(nineRouterKey, saveNineRouterConfig, ready);
+  useAutosave(customBaseUrl, saveCustomConfig, ready);
+  useAutosave(customKey, saveCustomConfig, ready);
+  useAutosave(userName, saveUserName, ready);
+  useAutosave(userRole, saveUserRole, ready);
+  useAutosave(baseInstructions, saveBaseInstructions, ready);
 
   const testConnection = async () => {
     setTestStatus('testing');

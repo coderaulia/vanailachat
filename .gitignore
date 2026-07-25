@@ -7,3 +7,11 @@ dist/
 *.tsbuildinfo
 data/
 .port
+
+# Secrets — never commit. .env.example is the tracked template.
+.env
+.env.*
+!.env.example
+
+# Backups may contain full chat history
+backups/

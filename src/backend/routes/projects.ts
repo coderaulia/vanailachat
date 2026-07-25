@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
-import { toOptionalNumber } from '../helpers/index.js';
+import { sanitizeError, toOptionalNumber } from '../helpers/index.js';
 
 export function projectsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
@@ -10,7 +10,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
       const projects = dependencies.listProjects();
       return context.json({ projects });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -40,7 +40,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ project }, 201);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -54,7 +54,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
       }
       return context.json({ project });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -80,7 +80,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ project });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -94,7 +94,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
       }
       return context.json({ ok: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });

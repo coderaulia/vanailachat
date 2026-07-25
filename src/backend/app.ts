@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
 import { DatabaseService } from './services/database.js';
 import { EmbeddingService } from './services/embedding.js';
 import { OllamaService } from './services/ollama.js';
@@ -11,6 +12,8 @@ import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
+import { sanitizeError } from './helpers/index.js';
 import type { AppDependencies } from './types.js';
 
 import { projectsRouter } from './routes/projects.js';
@@ -69,25 +72,45 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
+  // Native folder picker. Every platform ships a different one, so each is
+  // tried in turn and a missing dialog just yields null (the UI still accepts
+  // a typed path).
   pickDirectory: async () => {
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execFilePromise = promisify(execFile);
-    try {
-      const { stdout } = await execFilePromise('zenity', [
-        '--file-selection',
-        '--directory',
-        '--title=Select Project Root',
-      ]);
-      return stdout.trim();
-    } catch {
+
+    const candidates: Array<[string, string[]]> =
+      process.platform === 'win32'
+        ? [[
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-STA',
+              '-Command',
+              "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select Project Root'; if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
+            ],
+          ]]
+        : process.platform === 'darwin'
+          ? [[
+              'osascript',
+              ['-e', 'POSIX path of (choose folder with prompt "Select Project Root")'],
+            ]]
+          : [
+              ['zenity', ['--file-selection', '--directory', '--title=Select Project Root']],
+              ['kdialog', ['--getexistingdirectory', '.']],
+            ];
+
+    for (const [binary, args] of candidates) {
       try {
-        const { stdout } = await execFilePromise('kdialog', ['--getexistingdirectory', '.']);
-        return stdout.trim();
+        const { stdout } = await execFilePromise(binary, args);
+        const picked = stdout.trim();
+        if (picked) return picked;
       } catch {
-        return null;
+        // Dialog unavailable or cancelled — try the next candidate.
       }
     }
+    return null;
   },
 };
 
@@ -122,7 +145,44 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   const app = new Hono();
 
   app.use('*', logger());
-  app.use('*', cors());
+
+  // Security headers. The API returns JSON only, so the CSP is maximally
+  // restrictive — nothing here is ever rendered as a document.
+  // HSTS is opt-in via ENABLE_HSTS=1: the server speaks plaintext HTTP on
+  // 127.0.0.1 by default, and pinning localhost to HTTPS would break it.
+  app.use(
+    '*',
+    secureHeaders({
+      contentSecurityPolicy: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+      },
+      xFrameOptions: 'DENY',
+      xContentTypeOptions: 'nosniff',
+      referrerPolicy: 'no-referrer',
+      crossOriginResourcePolicy: 'same-origin',
+      strictTransportSecurity:
+        process.env.ENABLE_HSTS === '1' ? 'max-age=31536000; includeSubDomains' : false,
+    }),
+  );
+
+  // CORS is restricted to loopback origins on any port. The frontend reaches
+  // the API same-origin through the Vite proxy, so no cross-site access is
+  // needed — and a wildcard would let any page the user visits drive this API,
+  // which exposes filesystem and shell tools.
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => (origin && LOOPBACK_ORIGIN.test(origin) ? origin : null),
+      credentials: false,
+    }),
+  );
+
+  // Blocks cross-site writes that CORS alone does not stop — CORS gates reading
+  // the response, not sending the request.
+  app.use('*', originGuard());
 
   app.get('/api/health', (context) => context.json({ status: 'ok' }));
 
@@ -152,7 +212,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
       const details = await dependencies.getModelDetails(model);
       return context.json({ model, ...(details as object) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
