@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
-import { toOptionalNumber } from '../helpers/index.js';
+import { sanitizeError, toOptionalNumber } from '../helpers/index.js';
 
 export function chatsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
@@ -11,7 +11,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
       const chats = dependencies.listChats(projectId);
       return context.json({ chats });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -61,7 +61,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ chat }, 201);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -80,7 +80,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ ok: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });
@@ -138,7 +138,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ chat });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
   });

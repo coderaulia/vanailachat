@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import type { AppDependencies } from '../types.js';
@@ -49,7 +50,7 @@ export function trainingRouter(dependencies: AppDependencies): Hono {
       });
     } catch (error) {
       return context.json(
-        { error: error instanceof Error ? error.message : 'stats failed' },
+        { error: sanitizeError(error, 'stats failed') },
         500,
       );
     }
@@ -141,7 +142,7 @@ export function trainingRouter(dependencies: AppDependencies): Hono {
       });
     } catch (error) {
       return context.json(
-        { error: error instanceof Error ? error.message : 'export failed' },
+        { error: sanitizeError(error, 'export failed') },
         500,
       );
     }

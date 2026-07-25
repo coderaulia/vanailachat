@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
 export function memoryRouter(dependencies: AppDependencies): Hono {
@@ -22,7 +23,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
       const results = await dependencies.searchMemoriesByText(query, topK);
       return context.json({ results });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Search failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Search failed') }, 500);
     }
   });
 
@@ -44,7 +45,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ memory: record }, 201);
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Storage failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Storage failed') }, 500);
     }
   });
 
@@ -82,7 +83,7 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ indexed, chatId });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Indexing failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Indexing failed') }, 500);
     }
   });
 

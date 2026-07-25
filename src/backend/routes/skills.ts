@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
 /**
@@ -103,7 +104,7 @@ export function skillsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ skill });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Install failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Install failed') }, 500);
     }
   });
 
@@ -119,7 +120,7 @@ export function skillsRouter(dependencies: AppDependencies): Hono {
       if (!ok) return context.json({ error: 'Skill not found' }, 404);
       return context.json({ id, enabled: body.enabled });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Update failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Update failed') }, 500);
     }
   });
 
@@ -157,7 +158,7 @@ export function skillsRouter(dependencies: AppDependencies): Hono {
 
       return context.json({ skill });
     } catch (error) {
-      return context.json({ error: error instanceof Error ? error.message : 'Upload failed' }, 500);
+      return context.json({ error: sanitizeError(error, 'Upload failed') }, 500);
     }
   });
 

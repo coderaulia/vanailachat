@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 import { ProviderRegistry } from '../services/providerRegistry.js';
 
@@ -160,7 +161,7 @@ Always cite sources using [N] notation. Be factual and objective.`;
 
           controller.close();
         } catch (error) {
-          emit({ stage: 'error', message: error instanceof Error ? error.message : 'Research failed' });
+          emit({ stage: 'error', message: sanitizeError(error, 'Research failed') });
           controller.close();
         }
       },

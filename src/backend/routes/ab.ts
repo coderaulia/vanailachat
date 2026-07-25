@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
 /**
@@ -69,7 +70,7 @@ export function abRouter(dependencies: AppDependencies): Hono {
       return context.json({ a: resultA, b: resultB });
     } catch (error) {
       return context.json(
-        { error: error instanceof Error ? error.message : 'A/B run failed' },
+        { error: sanitizeError(error, 'A/B run failed') },
         500,
       );
     }
@@ -132,7 +133,7 @@ export function abRouter(dependencies: AppDependencies): Hono {
       return context.json(result, 201);
     } catch (error) {
       return context.json(
-        { error: error instanceof Error ? error.message : 'pick record failed' },
+        { error: sanitizeError(error, 'pick record failed') },
         500,
       );
     }

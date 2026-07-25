@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AppDependencies, ChatRequestBody } from '../types.js';
-import { normalizeMessageContent } from '../helpers/index.js';
+import { normalizeMessageContent, sanitizeError } from '../helpers/index.js';
 import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
@@ -511,7 +511,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
       });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return new Response(null);
-      const message = error instanceof Error ? error.message : 'Unknown error';
+      const message = sanitizeError(error, 'Unknown error');
       console.error(`[CHAT ERROR] ${message}`);
       return context.json({ error: message }, 500);
     }

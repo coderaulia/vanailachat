@@ -13,6 +13,7 @@
     "build:frontend": "vite build",
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview",
+    "backup": "node scripts/backup-db.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"

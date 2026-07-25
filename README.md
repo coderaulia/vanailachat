@@ -119,11 +119,17 @@ The app improves itself from your feedback in three phases:
 - **SSRF protection** — `read_url` tool resolves DNS and blocks all private/RFC1918/loopback/link-local/CGNAT/multicast IPs and GCP metadata endpoint; redirects blocked (`redirect: 'manual'`)
 - **Symlink traversal protection** — `read_file` and `run_command` resolve paths via `fs.realpath` before allowing access, preventing escape from project root
 - **Rate limiter hardening** — `trustProxy: false` default collapses all requests to a single anonymous bucket; no X-Forwarded-For spoofing possible in single-user mode
+- **Security headers** — CSP (`default-src 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-origin`; HSTS opt-in via `ENABLE_HSTS=1` (only meaningful behind TLS)
+- **CORS lockdown** — origin allowlist limited to loopback (`localhost` / `127.0.0.1` / `[::1]`, any port), no credentials; the frontend reaches the API same-origin through the Vite proxy
+- **Cross-site write guard** — state-changing requests are rejected when `Origin` or `Sec-Fetch-Site` indicates a foreign site, so no web page the user visits can drive the filesystem/shell tools
+- **Error sanitizing** — `NODE_ENV=production` returns generic messages to clients while logging the full error server-side
+- **Secrets** — `.env` is gitignored; copy `.env.example` and fill it in
 
 ### 🗄 Backend & Data
 - **Rate limiting** — 20 req/min on `/api/chat`, 60 req/min on `/api/models`, 10 req/min on research/skills-install, 60 req/min on memory
 - **Versioned migrations** — SQLite schema via `schema_migrations` (v1–v9), safe upgrades from any state
 - **Export/Import** — full workspace backup and restore as JSON
+- **DB backup** — `npm run backup` takes a WAL-consistent snapshot via SQLite's online backup API into `backups/` (`--out <dir>`, `--keep <n>`, default 7); schedule with cron / systemd timer / Task Scheduler
 - **Settings API** — `/api/settings` key-value store for user preferences, API keys, and onboarding state
 - **Training API** — `GET /api/training/stats`, `POST /api/training/export` (sharegpt or alpaca format)
 
