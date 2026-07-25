@@ -53,6 +53,10 @@ function startServer(port: number, retries: number): Promise<number> {
 }
 
 OllamaService.startServer()
+  .catch((error) => {
+    // Ollama is optional — cloud providers (OpenAI, 9Router, custom) work without it
+    console.warn('[OLLAMA] Unavailable, continuing without local models:', error instanceof Error ? error.message : error);
+  })
   .then(() => startServer(BASE_PORT, 5))
   .then((port) => {
     console.log(`[SERVER] Ready on port ${port}`);

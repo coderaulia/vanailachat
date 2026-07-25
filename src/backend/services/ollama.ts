@@ -181,7 +181,9 @@ export class OllamaService {
       env: { ...process.env, OLLAMA_HOST: `${this.OLLAMA_HOST}:${this.OLLAMA_PORT}` },
     });
 
+    let launchError: string | null = null;
     ollamaChild.on('error', (err) => {
+      launchError = err.message;
       console.error('[OLLAMA] Failed to launch:', err.message);
     });
 
@@ -192,6 +194,7 @@ export class OllamaService {
         console.log(`[OLLAMA] Server available at ${this.LOCAL_OLLAMA_URL}`);
         return;
       }
+      if (launchError) throw new Error(`Ollama could not be launched: ${launchError}`);
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 

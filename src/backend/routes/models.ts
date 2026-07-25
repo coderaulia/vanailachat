@@ -6,8 +6,9 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
 
   app.get('/', async (context) => {
     try {
-      const modelsWithMetadata = await dependencies.getInstalledModelMetadata();
-      
+      // Ollama is optional — a missing local install must not hide cloud models
+      const modelsWithMetadata = await dependencies.getInstalledModelMetadata().catch(() => []);
+
       // Get models from provider registry (includes multi-provider)
       const providerModels = await dependencies.providerRegistry.listAllModels();
       
