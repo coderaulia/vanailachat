@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
-import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat } from '../types/chat';
+import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, PendingApproval } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { DEFAULT_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW } from '../config/constants';
 import { toModelRole } from '../utils/chatUtils';
@@ -38,6 +38,7 @@ export function useChatSession(deps: {
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
 
   const currentChatIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -72,11 +73,32 @@ export function useChatSession(deps: {
     setSendingChatIds,
     setContextWindow,
     setStatusText: deps.setStatusText,
+    setPendingApproval,
     updateHistories: deps.updateHistories,
     saveMessage: deps.saveMessage,
     upsertChat: deps.upsertChat,
     patchChat: deps.patchChat,
   });
+
+  /**
+   * Answer a parked tool call. Cleared optimistically so the prompt cannot be
+   * double-submitted while the request is in flight.
+   */
+  const respondToApproval = async (approved: boolean) => {
+    const approval = pendingApproval;
+    if (!approval) return;
+
+    setPendingApproval(null);
+    try {
+      await fetch('/api/chat/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: approval.id, approved }),
+      });
+    } catch {
+      deps.setStatusText('Could not send the decision — the request will time out and be denied.');
+    }
+  };
 
   const { handleResearch } = useResearch({
     selectedModel: deps.selectedModel,
@@ -318,6 +340,8 @@ export function useChatSession(deps: {
     handleSaveProjectRoot,
     handlePickProjectRoot,
     handleSend,
+    pendingApproval,
+    respondToApproval,
     handleRegenerate,
     handleEditAndResend,
     handleAbort,

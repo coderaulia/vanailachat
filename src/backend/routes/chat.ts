@@ -4,6 +4,7 @@ import { normalizeMessageContent, sanitizeError } from '../helpers/index.js';
 import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
+import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
 
 // ── caches ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,18 @@ function validateChatRequest(body: unknown): string | null {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Approval is on unless explicitly disabled, so an upgrade never silently
+ * grants write access that did not exist before.
+ */
+function approvalsRequired(deps: AppDependencies): boolean {
+  try {
+    return deps.getSetting('require_tool_approval') !== 'false';
+  } catch {
+    return true;
+  }
+}
 
 /** One-line summary for the skill index: stored description, else the first real line. */
 function summarizeSkill(description: string | null, content: string): string {
@@ -376,6 +389,14 @@ async function runAgentLoop(
   body: ChatRequestBody,
 ): Promise<void> {
   const currentMessages = [...initialMessages];
+  // Tracked so an aborted stream denies anything still waiting instead of
+  // leaving the promise (and the user's prompt) dangling.
+  const pendingApprovalIds = new Set<string>();
+  signal.addEventListener('abort', () => {
+    ApprovalService.denyAll([...pendingApprovalIds]);
+    pendingApprovalIds.clear();
+  });
+
   let iteration = 0;
   const maxIterations = 7;
   const toolCallHistory = new Set<string>();
@@ -479,6 +500,37 @@ async function runAgentLoop(
       if (toolCallHistory.has(callKey)) { skippedCount++; continue; }
       toolCallHistory.add(callKey);
 
+      // Gate anything that changes state behind an explicit decision. The
+      // stream is one-way, so the request goes out as an event and the loop
+      // parks on a promise the approval endpoint resolves.
+      if (isMutatingTool(toolName) && approvalsRequired(deps)) {
+        const approvalId = `apr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        pendingApprovalIds.add(approvalId);
+
+        enqueue({
+          approval_request: {
+            id: approvalId,
+            tool: toolName,
+            summary: describeToolCall(toolName, toolArgs),
+            details: (toolArgs ?? {}) as Record<string, unknown>,
+          },
+        });
+
+        const approved = await ApprovalService.request(approvalId);
+        pendingApprovalIds.delete(approvalId);
+        enqueue({ approval_resolved: { id: approvalId, approved } });
+
+        if (!approved) {
+          // Reported back to the model so it can adjust rather than retry blindly.
+          currentMessages.push({
+            role: 'tool',
+            content: `The user declined this ${toolName} call. Do not retry it; ask what to do differently.`,
+          });
+          enqueueToolEvent(toolName, 'error', 'Declined by user');
+          continue;
+        }
+      }
+
       enqueueToolEvent(toolName, 'start');
       try {
         const result = await deps.executeTool(toolName, toolArgs, chatRecord?.projectRoot ?? null);
@@ -510,6 +562,29 @@ async function runAgentLoop(
 
 export function chatRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
+
+  /**
+   * Answer a pending tool-approval request.
+   *
+   * Separate from the streaming response because that connection is one-way:
+   * the loop is parked on a promise this resolves.
+   */
+  app.post('/approve', async (context) => {
+    let body: { id?: unknown; approved?: unknown };
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
+    if (typeof body.id !== 'string' || typeof body.approved !== 'boolean') {
+      return context.json({ error: 'id: required string, approved: required boolean' }, 400);
+    }
+
+    // Unknown ids are already-settled or timed-out requests, not errors.
+    const settled = ApprovalService.resolve(body.id, body.approved);
+    return context.json({ settled });
+  });
 
   app.post('/', async (context) => {
     let body: unknown;

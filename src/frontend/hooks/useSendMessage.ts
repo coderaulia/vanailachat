@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { FormEvent, MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat } from '../types/chat';
+import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, PendingApproval } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
@@ -33,6 +33,7 @@ export interface SendMessageDeps {
   setSendingChatIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   setContextWindow: Dispatch<SetStateAction<ContextWindow>>;
   setStatusText: (text: string) => void;
+  setPendingApproval: Dispatch<SetStateAction<PendingApproval | null>>;
   updateHistories: (updater: (prev: Record<string, Chat>) => Record<string, Chat>) => void;
   // Persistence
   saveMessage: (chatId: string, message: Message, options?: { promptTokens?: number; completionTokens?: number }) => Promise<void>;
@@ -110,7 +111,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       currentChatId, setCurrentChatId, currentChatIdRef,
       abortRef, activeRequestIdRef, setSendingChatIds, setContextWindow,
       setStatusText, updateHistories, saveMessage, upsertChat, patchChat,
-      personaId,
+      setPendingApproval, personaId,
     } = deps;
 
     const effectivePrompt = options?.promptOverride ?? prompt;
@@ -250,6 +251,21 @@ export function useSendMessage(deps: SendMessageDeps) {
 
       const applyEvent = (data: ReturnType<typeof parseStreamLine>) => {
         if (!data) return;
+
+        // A tool call is parked server-side until the user decides.
+        const approval = (data as unknown as { approval_request?: PendingApproval }).approval_request;
+        if (approval) {
+          setPendingApproval(approval);
+          setStatusText(`Waiting for approval: ${approval.summary}`);
+          return;
+        }
+
+        const resolved = (data as unknown as { approval_resolved?: { id: string } }).approval_resolved;
+        if (resolved) {
+          setPendingApproval(prev => (prev?.id === resolved.id ? null : prev));
+          setStatusText('Thinking…');
+          return;
+        }
         // Tool event — update status only
         if ((data as unknown as { tool_event?: boolean }).tool_event) {
           const td = data as unknown as { tool?: string };

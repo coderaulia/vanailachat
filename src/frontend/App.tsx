@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
+import { ApprovalPrompt } from './components/ApprovalPrompt';
 import './App.css';
 import { Sidebar } from './components/Sidebar';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
@@ -113,6 +114,7 @@ const AppShell = () => {
               renderMarkdown={renderMarkdown}
             />
 
+            <ApprovalPrompt />
             <Composer thinkingSeconds={thinkingSeconds} />
           </>
         ) : (

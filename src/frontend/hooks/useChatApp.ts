@@ -334,6 +334,8 @@ export function useChatApp() {
 
     // Handlers
     handleSend: chatSession.handleSend,
+    pendingApproval: chatSession.pendingApproval,
+    respondToApproval: chatSession.respondToApproval,
     handleRegenerate: chatSession.handleRegenerate,
     handleEditAndResend: chatSession.handleEditAndResend,
     handleAbort: chatSession.handleAbort,

@@ -1,0 +1,94 @@
+/* Sits directly above the composer, where the user's attention already is. */
+.approval-prompt {
+  display: grid;
+  gap: 10px;
+  margin: 0 auto 10px;
+  width: min(840px, 100% - 32px);
+  padding: 14px 16px;
+  border: 1px solid rgba(201, 111, 59, 0.45);
+  border-radius: 16px;
+  background: var(--bg-glass, rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(10px);
+}
+
+.approval-prompt__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.approval-prompt__badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 999px);
+  background: rgba(201, 111, 59, 0.18);
+  border: 1px solid rgba(201, 111, 59, 0.35);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.approval-prompt__summary {
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.approval-prompt__body {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  background: rgba(0, 0, 0, 0.18);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-prompt__diff {
+  display: grid;
+  gap: 6px;
+}
+
+.approval-prompt__body.is-removed {
+  border-color: rgba(220, 60, 60, 0.35);
+  background: rgba(220, 60, 60, 0.1);
+}
+
+.approval-prompt__body.is-added {
+  border-color: rgba(60, 170, 100, 0.35);
+  background: rgba(60, 170, 100, 0.1);
+}
+
+.approval-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.approval-prompt__btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-prompt__btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.approval-prompt__btn.is-primary {
+  border-color: transparent;
+  background: var(--bg-accent, #c96442);
+  color: #fff;
+}
