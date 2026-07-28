@@ -110,7 +110,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div className="sidebar-content">
           <div className="sidebar-panel">
             <div className="sidebar-brand">
-              <p className="sidebar-eyebrow">Local Ollama Workspace</p>
+              <p className="sidebar-eyebrow">Local &amp; Cloud AI Workspace</p>
               <h1 className="sidebar-product">VanailaChat</h1>
               <p className="sidebar-copy">
                 Browse recent chats, jump back into context, and start a fresh thread fast.
