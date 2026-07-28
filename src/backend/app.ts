@@ -49,6 +49,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   upsertChat: DatabaseService.upsertChat.bind(DatabaseService),
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
+  searchMessages: DatabaseService.searchMessages.bind(DatabaseService),
   insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
   getMessage: DatabaseService.getMessage.bind(DatabaseService),
   upsertFeedback: DatabaseService.upsertFeedback.bind(DatabaseService),

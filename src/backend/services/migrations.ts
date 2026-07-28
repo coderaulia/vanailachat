@@ -233,5 +233,43 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at ASC);
       `);
     }
+  },
+  {
+    version: 12,
+    name: 'messages_fts',
+    up: (db) => {
+      // Full-text index over message bodies. Sidebar search matched chat
+      // titles only, so anything discussed inside a conversation was
+      // unfindable once the title stopped describing it.
+      //
+      // contentless-delete FTS5 external-content table stays in sync with
+      // `messages` through the triggers below rather than duplicating text.
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+          content,
+          content='messages',
+          content_rowid='rowid',
+          tokenize='unicode61'
+        );
+      `);
+
+      db.exec(`
+        INSERT INTO messages_fts(rowid, content)
+        SELECT rowid, content FROM messages;
+      `);
+
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END;
+      `);
+    }
   }
 ];

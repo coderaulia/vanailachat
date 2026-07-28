@@ -44,6 +44,20 @@ export interface AppDependencies {
   upsertChat: (input: UpsertChatInput) => ChatRecord;
   deleteChat: (id: string) => boolean;
   listMessages: (chatId: string, limit?: number) => MessageRecord[];
+  /** Full-text search over message bodies (FTS5). */
+  searchMessages: (
+    query: string,
+    limit?: number,
+    projectId?: string,
+  ) => Array<{
+    chatId: string;
+    chatTitle: string;
+    projectId: string;
+    messageId: string;
+    role: string;
+    snippet: string;
+    createdAt: number;
+  }>;
   insertMessage: (input: InsertMessageInput) => MessageRecord;
   getMessage: (id: string) => MessageRecord | null;
   upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;

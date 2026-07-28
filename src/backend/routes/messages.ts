@@ -8,6 +8,25 @@ const MAX_MESSAGES_PAGE = 500;
 export function messagesRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
+  /**
+   * Search message bodies across chats. Registered before '/' so the literal
+   * path is not shadowed by the chat-listing handler.
+   */
+  app.get('/search', (context) => {
+    const query = context.req.query('q')?.trim();
+    if (!query) {
+      return context.json({ results: [] });
+    }
+
+    try {
+      const limit = Math.min(Math.max(Number(context.req.query('limit')) || 30, 1), 100);
+      const projectId = context.req.query('projectId') || undefined;
+      return context.json({ results: dependencies.searchMessages(query, limit, projectId) });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'Search failed') }, 500);
+    }
+  });
+
   app.get('/', (context) => {
     try {
       const chatId = context.req.query('chatId');

@@ -1,10 +1,20 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { DATE_FORMATTER } from '../lib/date';
 import './Sidebar.css';
 
 import { useChat } from '../context/ChatContext';
 import { Skills } from './Skills';
+
+/** One message-body hit from the FTS search endpoint. */
+interface ContentMatch {
+  chatId: string;
+  chatTitle: string;
+  messageId: string;
+  role: string;
+  snippet: string;
+  createdAt: number;
+}
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
@@ -91,10 +101,51 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     }
   };
 
-  const filteredHistories = histories.filter(([, chat]) => {
+  // Title matches resolve instantly from local state; message-body matches
+  // need the FTS index, so they arrive asynchronously and are merged in.
+  const [contentMatches, setContentMatches] = useState<ContentMatch[]>([]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setContentMatches([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const scope = selectedProjectId ? `&projectId=${encodeURIComponent(selectedProjectId)}` : '';
+        const response = await fetch(
+          `/api/messages/search?q=${encodeURIComponent(query)}${scope}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) return;
+        const body = await response.json() as { results?: ContentMatch[] };
+        setContentMatches(body.results ?? []);
+      } catch {
+        // Aborted or offline — leave the title-only results in place.
+      }
+    }, 200);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery, selectedProjectId]);
+
+  const snippetByChatId = new Map<string, string>();
+  for (const match of contentMatches) {
+    if (!snippetByChatId.has(match.chatId)) {
+      snippetByChatId.set(match.chatId, match.snippet);
+    }
+  }
+
+  const filteredHistories = histories.filter(([id, chat]) => {
     if (chat.projectId !== selectedProjectId) return false;
     if (!searchQuery.trim()) return true;
-    return chat.title?.toLowerCase().includes(searchQuery.toLowerCase());
+    if (chat.title?.toLowerCase().includes(searchQuery.toLowerCase())) return true;
+    return snippetByChatId.has(id);
   });
 
   return (
@@ -249,7 +300,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
               <input
                 type="search"
                 className="sidebar-search__input"
-                placeholder="Search chats…"
+                placeholder="Search chats and messages…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -308,6 +359,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       >
                         {chat.title || 'Untitled chat'}
                       </span>
+                    )}
+                    {snippetByChatId.has(id) && !chat.title?.toLowerCase().includes(searchQuery.toLowerCase()) && (
+                      <span className="history-item__snippet">{snippetByChatId.get(id)}</span>
                     )}
                     <span className="history-item__meta">{DATE_FORMATTER.format(chat.updatedAt)}</span>
                   </div>

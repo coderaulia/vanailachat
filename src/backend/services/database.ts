@@ -463,6 +463,87 @@ export class DatabaseService {
    * message join, so the token SUM only touches the rows being returned
    * rather than every message in the database.
    */
+  /**
+   * Full-text search over message bodies, grouped into one hit per chat.
+   *
+   * FTS5 MATCH syntax would otherwise leak to the user — a stray quote or a
+   * bare `AND` raises "fts5: syntax error". The query is tokenised and each
+   * term quoted so arbitrary typing behaves like a plain keyword search.
+   */
+  static searchMessages(
+    query: string,
+    limit = 30,
+    projectId?: string,
+  ): Array<{
+    chatId: string;
+    chatTitle: string;
+    projectId: string;
+    messageId: string;
+    role: string;
+    snippet: string;
+    createdAt: number;
+  }> {
+    const db = this.getDb();
+
+    const terms = query
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((term) => term.length > 1)
+      .map((term) => `"${term}"`);
+
+    if (terms.length === 0) return [];
+
+    const matchExpression = terms.join(' AND ');
+
+    const sql = `
+      SELECT
+        m.id      AS message_id,
+        m.chat_id AS chat_id,
+        m.role    AS role,
+        m.created_at AS created_at,
+        c.title   AS chat_title,
+        c.project_id AS project_id,
+        snippet(messages_fts, 0, '', '', '…', 12) AS snippet,
+        bm25(messages_fts) AS rank
+      FROM messages_fts
+      JOIN messages m ON m.rowid = messages_fts.rowid
+      JOIN chats c ON c.id = m.chat_id
+      WHERE messages_fts MATCH ?
+        ${projectId ? 'AND c.project_id = ?' : ''}
+      ORDER BY rank
+      LIMIT ?
+    `;
+
+    const params: unknown[] = projectId
+      ? [matchExpression, projectId, limit]
+      : [matchExpression, limit];
+
+    try {
+      const rows = db.prepare(sql).all(...params) as Array<{
+        message_id: string;
+        chat_id: string;
+        role: string;
+        created_at: number;
+        chat_title: string;
+        project_id: string;
+        snippet: string;
+      }>;
+
+      return rows.map((row) => ({
+        chatId: row.chat_id,
+        chatTitle: row.chat_title,
+        projectId: row.project_id,
+        messageId: row.message_id,
+        role: row.role,
+        snippet: row.snippet,
+        createdAt: row.created_at,
+      }));
+    } catch (error) {
+      console.error('[DB] Message search failed:', error);
+      return [];
+    }
+  }
+
   static listChats(projectId?: string, limit?: number): ChatRecord[] {
     const db = this.getDb();
 
