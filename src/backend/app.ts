@@ -29,6 +29,7 @@ import { skillsRouter } from './routes/skills.js';
 import { researchRouter } from './routes/research.js';
 import { trainingRouter } from './routes/training.js';
 import { abRouter } from './routes/ab.js';
+import { attachmentsRouter } from './routes/attachments.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -241,6 +242,11 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.route('/api/training', trainingRouter(dependencies));
   app.use('/api/ab/*', rateLimiter({ maxRequests: 10, windowMs: 60_000 }));
   app.route('/api/ab', abRouter(dependencies));
+  // Document extraction is CPU-bound unzip/parse work — cap it like the
+  // other expensive endpoints.
+  app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
+  app.route('/api/attachments', attachmentsRouter());
+
   app.route('/api/chat', chatRouter(dependencies));
 
   return app;

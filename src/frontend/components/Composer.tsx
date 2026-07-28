@@ -308,7 +308,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 onChange={onAttach}
                 multiple
                 hidden
-                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php"
+                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php,.docx,.xlsx,.xlsm,.pdf"
               />
 
               {/* Clear + Send */}

@@ -149,23 +149,53 @@ export function useChatSession(deps: {
     })();
   };
 
+  /** Formats the browser cannot read as text — the backend unpacks these. */
+  const NEEDS_EXTRACTION = /\.(docx|xlsx|xlsm|pdf)$/i;
+
   const handleAttach = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
-    await Promise.all(Array.from(files).map(file =>
-      new Promise<void>(resolve => {
+    await Promise.all(Array.from(files).map(async file => {
+      if (file.type.startsWith('image/')) {
+        const content = await new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'image' } as Attachment]);
+        return;
+      }
+
+      // Office and PDF files are ZIP/binary containers. Reading them as text
+      // yields mojibake, so they go to the backend extractor instead.
+      if (NEEDS_EXTRACTION.test(file.name)) {
+        try {
+          const form = new FormData();
+          form.append('file', file);
+          const response = await fetch('/api/attachments/extract', { method: 'POST', body: form });
+          const payload = await response.json() as { text?: string; error?: string };
+
+          if (!response.ok || typeof payload.text !== 'string') {
+            throw new Error(payload.error || 'Extraction failed');
+          }
+
+          deps.setAttachedFiles(prev => [...prev, { name: file.name, content: payload.text!, type: 'text' } as Attachment]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Extraction failed';
+          deps.setStatusText(`Could not read ${file.name}: ${message}`);
+        }
+        return;
+      }
+
+      const content = await new Promise<string>(resolve => {
         const reader = new FileReader();
-        reader.onload = e => {
-          const content = e.target?.result as string;
-          const type = file.type.startsWith('image/') ? 'image' : 'text';
-          deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type } as Attachment]);
-          resolve();
-        };
-        if (file.type.startsWith('image/')) reader.readAsDataURL(file);
-        else reader.readAsText(file);
-      })
-    ));
+        reader.onload = e => resolve(e.target?.result as string);
+        reader.readAsText(file);
+      });
+      deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'text' } as Attachment]);
+    }));
+
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
