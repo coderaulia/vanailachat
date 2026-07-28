@@ -227,6 +227,10 @@ export function useSendMessage(deps: SendMessageDeps) {
         body: JSON.stringify({
           model: resolvedModel,
           chatId,
+          // Lets the server persist the reply itself if this tab dies mid-stream.
+          // Same id as the client's own save, which upserts onto the same row.
+          assistantMessageId: assistantMessage.id,
+          projectId: activeProjectId,
           messages: [
             ...recentConversation.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: messageContent },

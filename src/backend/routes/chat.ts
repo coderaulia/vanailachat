@@ -318,6 +318,50 @@ export function resolveTools(
 
 type AnyMessage = { role: string; content: unknown; tool_calls?: unknown[] };
 
+/**
+ * Write the finished assistant reply straight from the server.
+ *
+ * Persistence used to be entirely client-driven: the browser POSTed the reply
+ * after the stream ended, so closing the tab (or a crash) mid-answer lost text
+ * the server had already produced in full. The client keeps saving — it owns
+ * token counts and ordering — but both writes carry the same client-supplied
+ * id and insertMessage upserts on it, so the two converge on one row instead
+ * of duplicating.
+ */
+function persistAssistantReply(
+  deps: AppDependencies,
+  chatRecord: ChatRecord | null,
+  body: ChatRequestBody,
+  content: string,
+): void {
+  const chatId = typeof body.chatId === 'string' ? body.chatId : null;
+  const messageId = typeof body.assistantMessageId === 'string' ? body.assistantMessageId : null;
+
+  if (!chatId || !messageId || !content.trim()) return;
+
+  try {
+    // A brand-new chat has no row yet — the client upserts it only after the
+    // stream finishes — and messages.chat_id is a foreign key.
+    if (!chatRecord) {
+      deps.upsertChat({
+        id: chatId,
+        projectId: (typeof body.projectId === 'string' && body.projectId) || 'default',
+        title: content.slice(0, 50) || 'Untitled chat',
+      });
+    }
+
+    deps.insertMessage({
+      id: messageId,
+      chatId,
+      role: 'assistant',
+      content,
+    });
+  } catch (error) {
+    // Never fail the response over the safety net.
+    console.error('[CHAT] Server-side reply persist failed:', error);
+  }
+}
+
 async function runAgentLoop(
   controller: ReadableStreamDefaultController<Uint8Array>,
   encoder: TextEncoder,
@@ -329,6 +373,7 @@ async function runAgentLoop(
   deps: AppDependencies,
   chatRecord: ChatRecord | null,
   signal: AbortSignal,
+  body: ChatRequestBody,
 ): Promise<void> {
   const currentMessages = [...initialMessages];
   let iteration = 0;
@@ -416,7 +461,11 @@ async function runAgentLoop(
       }
     }
 
-    if (!isToolCall) { controller.close(); return; }
+    if (!isToolCall) {
+      persistAssistantReply(deps, chatRecord, body, assistantMessage.content);
+      controller.close();
+      return;
+    }
 
     currentMessages.push(assistantMessage as AnyMessage);
 
@@ -597,6 +646,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
               dependencies,
               chatRecord,
               context.req.raw.signal,
+              typedBody,
             );
           } catch (err) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

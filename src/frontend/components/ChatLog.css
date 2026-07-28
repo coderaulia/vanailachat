@@ -538,3 +538,36 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ── context boundary ─────────────────────────────────────────────────────── */
+
+/* Marks where the model's visible window starts. Everything above is still
+   readable but is no longer sent with the request. */
+.context-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  color: var(--text-muted, rgba(120, 113, 108, 0.9));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.context-divider::before,
+.context-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+
+.context-divider span {
+  flex-shrink: 0;
+  max-width: 60%;
+  text-align: center;
+}
+
+.message__cost {
+  margin-left: 4px;
+  opacity: 0.85;
+}

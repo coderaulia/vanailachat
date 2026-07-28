@@ -4,6 +4,8 @@ import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Message } from '../types/chat';
 import { useChat } from '../context/ChatContext';
+import { estimateCost, formatCost } from '../config/modelPricing';
+import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 
 interface MessageItemProps {
   message: Message;
@@ -18,9 +20,10 @@ interface MessageItemProps {
   onRegenerate: (id: string) => void;
   onEdit: (id: string, content: string) => void;
   isBusy: boolean;
+  model: string | null;
 }
 
-const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate, onRegenerate, onEdit, isBusy }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate, onRegenerate, onEdit, isBusy, model }: MessageItemProps) {
   const html = useMemo(() => renderMarkdown(message.content), [renderMarkdown, message.content]);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -34,6 +37,13 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
     setIsEditing(false);
     if (draft.trim() && draft !== message.content) onEdit(message.id, draft);
   };
+
+  // null for local models and for any id without a known rate — better to show
+  // tokens alone than to invent a price.
+  const cost = useMemo(
+    () => estimateCost(model, message.promptTokens, message.completionTokens),
+    [model, message.promptTokens, message.completionTokens],
+  );
 
   return (
     <div
@@ -163,6 +173,7 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
         {showTokens && message.role === 'assistant' ? (
           <div className="message__tokens">
             ↑ {message.promptTokens ?? 0} ↓ {message.completionTokens ?? 0} tokens
+            {cost !== null && <span className="message__cost">· {formatCost(cost)}</span>}
           </div>
         ) : null}
       </div>
@@ -176,7 +187,12 @@ interface ChatLogProps {
 }
 
 export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
-  const { conversation, isCurrentChatSending, handleRegenerate, handleEditAndResend } = useChat();
+  const { conversation, isCurrentChatSending, handleRegenerate, handleEditAndResend, selectedModel } = useChat();
+
+  // The request only carries the newest MAX_CONVERSATION_HISTORY messages, so
+  // anything above this index is visible to the reader but invisible to the
+  // model. That used to happen silently and read as the model "forgetting".
+  const contextStartIndex = Math.max(0, conversation.length - MAX_CONVERSATION_HISTORY);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
   const [feedbackRatings, setFeedbackRatings] = useState<Record<string, number>>({});
@@ -306,8 +322,16 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
           </div>
         ) : (
           conversation.map((message, index) => (
-            <MessageItem
-              key={message.id}
+            <div key={message.id}>
+              {index === contextStartIndex && contextStartIndex > 0 && (
+                <div className="context-divider" role="separator">
+                  <span>
+                    Older messages are no longer sent to the model — only the
+                    last {MAX_CONVERSATION_HISTORY} are included
+                  </span>
+                </div>
+              )}
+              <MessageItem
               message={message}
               isTyping={
                 isCurrentChatSending &&
@@ -324,7 +348,9 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
               onRegenerate={handleRegenerate}
               onEdit={handleEditAndResend}
               isBusy={isCurrentChatSending}
-            />
+              model={selectedModel}
+              />
+            </div>
           ))
         )}
 

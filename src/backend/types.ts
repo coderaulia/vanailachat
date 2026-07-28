@@ -23,6 +23,10 @@ export interface ChatRequestBody {
   search?: boolean;
   /** Skip memory search + auto-save. Used for internal calls (title generation, etc.) so that the synthetic prompt is not embedded into the vector store. */
   skipMemory?: boolean;
+  /** Client-generated id for the reply, so the server-side safety-net write and the client's own write land on the same row. */
+  assistantMessageId?: string;
+  /** Project the chat belongs to, needed when the server has to create the chat row before the client does. */
+  projectId?: string;
   [key: string]: unknown;
 }
 
