@@ -1,5 +1,6 @@
 import type { LLMProvider, ChatRequest } from './provider.js';
 import { openAIStreamToNDJSON } from './streamAdapter.js';
+import { postChatCompletions, usageToOllamaFields, type OpenAIUsage } from './openAICompat.js';
 
 /**
  * OpenAI-compatible provider (covers OpenAI, OpenRouter, Azure, etc.)
@@ -68,20 +69,13 @@ export class OpenAIProvider implements LLMProvider {
       body.tool_choice = 'auto';
     }
 
-    const sseResponse = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
+    const sseResponse = await postChatCompletions({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      body,
+      providerLabel: 'OpenAI',
       signal,
-      body: JSON.stringify(body),
     });
-
-    if (!sseResponse.ok) {
-      const errorText = await sseResponse.text();
-      throw new Error(`OpenAI API error: ${sseResponse.status} ${errorText}`);
-    }
 
     return openAIStreamToNDJSON(sseResponse, request.model);
   }
@@ -104,22 +98,18 @@ export class OpenAIProvider implements LLMProvider {
       body.tool_choice = 'auto';
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
+    const response = await postChatCompletions({
+      baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
+      body,
+      providerLabel: 'OpenAI',
       signal,
-      body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
-    }
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string; tool_calls?: unknown } }> };
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: unknown } }>;
+      usage?: OpenAIUsage;
+    };
     const firstChoice = data.choices?.[0];
 
     return {
@@ -130,6 +120,7 @@ export class OpenAIProvider implements LLMProvider {
         ...(firstChoice?.message?.tool_calls ? { tool_calls: firstChoice.message.tool_calls } : {}),
       },
       done: true,
+      ...usageToOllamaFields(data.usage),
     };
   }
 }

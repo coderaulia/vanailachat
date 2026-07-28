@@ -21,10 +21,16 @@ interface SSEChoice {
   finish_reason?: string;
 }
 
+interface SSEUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 interface SSEChunk {
   choices?: SSEChoice[];
   model?: string;
-  usage?: unknown;
+  usage?: SSEUsage | null;
 }
 
 export function openAIStreamToNDJSON(
@@ -46,12 +52,29 @@ export function openAIStreamToNDJSON(
     function: { name?: string; arguments: string };
   }> = {};
 
+  // OpenAI reports token usage in a trailing chunk that carries no choices,
+  // and only when stream_options.include_usage was requested. Ollama instead
+  // ends with {done:true, prompt_eval_count, eval_count}, which is the shape
+  // the frontend reads — so hold the usage and translate it on close.
+  let usage: SSEUsage | null = null;
+
   const stream = new ReadableStream({
     async pull(controller) {
+      const closeWithUsage = () => {
+        const final: Record<string, unknown> = { model, done: true };
+        if (usage) {
+          if (typeof usage.prompt_tokens === 'number') final.prompt_eval_count = usage.prompt_tokens;
+          if (typeof usage.completion_tokens === 'number') final.eval_count = usage.completion_tokens;
+          final.usage = usage;
+        }
+        controller.enqueue(encoder.encode(JSON.stringify(final) + '\n'));
+        controller.close();
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          controller.close();
+          closeWithUsage();
           return;
         }
 
@@ -65,18 +88,25 @@ export function openAIStreamToNDJSON(
 
           const dataStr = trimmed.slice(5).trim();
           if (dataStr === '[DONE]') {
-            controller.close();
+            closeWithUsage();
             return;
           }
 
           try {
             const chunk: SSEChunk = JSON.parse(dataStr);
+
+            // The usage chunk arrives with an empty choices array, so capture
+            // it before the choice guard below discards the chunk.
+            if (chunk.usage) {
+              usage = chunk.usage;
+            }
+
             const choice = chunk.choices?.[0];
             if (!choice) continue;
 
             const ollamaChunk: Record<string, unknown> = {
               model: chunk.model || model,
-              done: choice.finish_reason === 'stop',
+              done: false,
             };
 
             const delta = choice.delta;
@@ -108,8 +138,11 @@ export function openAIStreamToNDJSON(
               }
             }
 
-            // Emit tool_calls when we get finish_reason
-            if (choice.finish_reason === 'stop' && Object.keys(mergedToolCalls).length > 0) {
+            // Emit tool_calls once the turn ends. Any finish_reason counts:
+            // OpenAI-compatible providers signal 'tool_calls' (or 'length'),
+            // not 'stop', when the model asks for a tool — keying on 'stop'
+            // alone dropped the accumulated calls entirely.
+            if (choice.finish_reason && Object.keys(mergedToolCalls).length > 0) {
               message.tool_calls = Object.values(mergedToolCalls).map((tc) => ({
                 id: tc.id,
                 type: tc.type,

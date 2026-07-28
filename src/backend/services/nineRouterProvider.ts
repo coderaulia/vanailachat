@@ -1,5 +1,6 @@
 import type { LLMProvider } from './provider.js';
 import { openAIStreamToNDJSON } from './streamAdapter.js';
+import { postChatCompletions, usageToOllamaFields, type OpenAIUsage } from './openAICompat.js';
 import { DatabaseService } from './database.js';
 
 /**
@@ -84,20 +85,13 @@ export class NineRouterProvider implements LLMProvider {
       body.tool_choice = 'auto';
     }
 
-    const sseResponse = await fetch(`${this.getBaseUrl()}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.getApiKey()}`,
-      },
+    const sseResponse = await postChatCompletions({
+      baseUrl: this.getBaseUrl(),
+      apiKey: this.getApiKey(),
+      body,
+      providerLabel: '9Router',
       signal,
-      body: JSON.stringify(body),
     });
-
-    if (!sseResponse.ok) {
-      const errorText = await sseResponse.text();
-      throw new Error(`9Router API error: ${sseResponse.status} ${errorText}`);
-    }
 
     return openAIStreamToNDJSON(sseResponse, request.model);
   }
@@ -123,22 +117,18 @@ export class NineRouterProvider implements LLMProvider {
       body.tool_choice = 'auto';
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.getApiKey()}`,
-      },
+    const response = await postChatCompletions({
+      baseUrl: this.getBaseUrl(),
+      apiKey: this.getApiKey(),
+      body,
+      providerLabel: '9Router',
       signal,
-      body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`9Router API error: ${response.status} ${errorText}`);
-    }
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string; tool_calls?: unknown } }> };
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: unknown } }>;
+      usage?: OpenAIUsage;
+    };
     const firstChoice = data.choices?.[0];
 
     return {
@@ -149,6 +139,7 @@ export class NineRouterProvider implements LLMProvider {
         ...(firstChoice?.message?.tool_calls ? { tool_calls: firstChoice.message.tool_calls } : {}),
       },
       done: true,
+      ...usageToOllamaFields(data.usage),
     };
   }
 }
