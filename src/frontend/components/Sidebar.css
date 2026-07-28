@@ -20,7 +20,7 @@
   width: var(--sidebar-width);
   flex-shrink: 0;
   height: 100%;
-  padding: 20px 16px;
+  padding: 10px 10px;
   background:
     radial-gradient(circle at top left, rgba(201, 111, 59, 0.2), transparent 22%),
     linear-gradient(180deg, #1a1a1a 0%, #111111 100%);
@@ -41,27 +41,31 @@
 
 .sidebar-content {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 18px;
+  /* Header is content-sized; the library takes every remaining pixel so the
+     chat list dominates the sidebar the way it does in Claude/ChatGPT. */
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
   height: 100%;
+  min-height: 0;
 }
 
-.sidebar-panel,
 .sidebar-section {
   min-width: 0;
   border: 1px solid var(--border-inverse);
   background: rgba(255, 255, 255, 0.035);
   backdrop-filter: blur(20px);
-  border-radius: 26px;
+  border-radius: 22px;
 }
 
+/* Flat header block — no card of its own, so the list gets the pixels. */
 .sidebar-panel {
-  padding: 22px 18px 18px;
+  min-width: 0;
+  padding: 2px 4px 0;
 }
 
 .sidebar-brand {
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .sidebar-eyebrow,
@@ -84,9 +88,9 @@
 
 .sidebar-product {
   margin: 0;
-  font-size: 31px;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
+  font-size: 16px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 .sidebar-copy {
@@ -97,13 +101,13 @@
 }
 
 .sidebar-actions {
-  margin-top: 20px;
+  margin-top: 8px;
 }
 
 .project-switcher {
-  margin-top: 24px;
+  margin-top: 8px;
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .project-switcher__header {
@@ -128,9 +132,10 @@
 
 .sidebar-section {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* heading · search · list (elastic) · skills · footer */
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-height: 0;
-  padding: 18px 12px 12px;
+  padding: 8px 8px 6px;
 }
 
 .sidebar-search {
@@ -138,7 +143,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 10px 4px 8px;
+  margin: 6px 2px 4px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-full);
@@ -195,17 +200,17 @@
 .sidebar-footer {
   display: grid;
   grid-template-columns: auto 1fr 1fr;
-  gap: 8px;
-  padding: 10px 4px 0;
+  gap: 6px;
+  padding: 6px 2px 0;
 }
 
 .sidebar-settings-btn {
   color: rgba(247, 241, 232, 0.65);
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
   border-radius: var(--radius-full);
   padding: 0;
   display: flex;
@@ -491,9 +496,11 @@
 .sidebar-section--skills {
   display: flex;
   flex-direction: column;
-  grid-template-rows: unset;
-  padding: 4px 2px;
+  min-height: 0;
+  margin-top: 6px;
+  padding: 0;
   gap: 0;
+  border-top: 1px solid var(--border-inverse);
 }
 
 .skills-accordion-toggle {
@@ -546,4 +553,41 @@
 @keyframes skills-fade-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+/* Compact footer: utility actions should not compete with the chat list. */
+.sidebar-footer .btn {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* Skills collapses to a single list-row-height toggle. */
+.skills-accordion-toggle {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+/* Primary action sized like a list row rather than a hero button. */
+.sidebar-actions .btn-primary {
+  height: 36px;
+  min-height: 36px;
+  font-size: 13px;
+}
+
+/* On short screens the fixed chrome (project row, search, skills, footer)
+   eats a much larger share of the sidebar, so drop the decorative brand row
+   and tighten spacing to keep the chat list dominant. */
+@media (max-height: 800px) {
+  .sidebar-brand {
+    display: none;
+  }
+
+  .sidebar-panel {
+    padding: 0 4px;
+  }
+
+  .project-switcher {
+    margin-top: 0;
+  }
 }

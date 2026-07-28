@@ -161,32 +161,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
         <div className="sidebar-content">
           <div className="sidebar-panel">
             <div className="sidebar-brand">
-              <p className="sidebar-eyebrow">Local &amp; Cloud AI Workspace</p>
               <h1 className="sidebar-product">VanailaChat</h1>
-              <p className="sidebar-copy">
-                Browse recent chats, jump back into context, and start a fresh thread fast.
-              </p>
             </div>
 
             <div className="project-switcher">
-              <div className="project-switcher__header">
-                <label htmlFor="project-select">Project</label>
-                <button
-                  className="btn-add-project"
-                  type="button"
-                  aria-label="Create project"
-                  onClick={() => {
-                    setIsCreatingProject(true);
-                    setNewProjectName('');
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                </button>
-              </div>
-
               <div className="project-switcher__controls">
                 <div className="project-select-container">
                   <select
@@ -202,6 +180,21 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     ))}
                   </select>
                 </div>
+                <button
+                  className="btn-add-project"
+                  type="button"
+                  aria-label="Create project"
+                  title="New project"
+                  onClick={() => {
+                    setIsCreatingProject(true);
+                    setNewProjectName('');
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
                 <button
                   className="btn-open-project"
                   type="button"
@@ -255,41 +248,10 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
             </div>
           </div>
 
-          <div className="sidebar-section sidebar-section--skills">
-            <button
-              type="button"
-              className={`skills-accordion-toggle ${isSkillsOpen ? 'is-open' : ''}`}
-              aria-expanded={isSkillsOpen}
-              onClick={() => setIsSkillsOpen((v) => !v)}
-            >
-              <span className="skills-accordion-toggle__label">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                </svg>
-                Agent Skills
-              </span>
-              <svg
-                className="skills-accordion-toggle__chevron"
-                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                aria-hidden="true"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            {isSkillsOpen && (
-              <div className="skills-accordion-body">
-                <Skills />
-              </div>
-            )}
-          </div>
-
           <div className="sidebar-section">
             <div className="section-heading">
-              <div>
-                <p className="section-eyebrow">Library</p>
-                <h2 className="section-title">Recent Conversations</h2>
-              </div>
-              <span className="section-meta">{filteredHistories.length} chats</span>
+              <h2 className="section-title">Chats</h2>
+              <span className="section-meta">{filteredHistories.length}</span>
             </div>
 
             <div className="sidebar-search">
@@ -410,6 +372,34 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="sidebar-section--skills">
+            <button
+              type="button"
+              className={`skills-accordion-toggle ${isSkillsOpen ? 'is-open' : ''}`}
+              aria-expanded={isSkillsOpen}
+              onClick={() => setIsSkillsOpen((v) => !v)}
+            >
+              <span className="skills-accordion-toggle__label">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                Agent Skills
+              </span>
+              <svg
+                className="skills-accordion-toggle__chevron"
+                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {isSkillsOpen && (
+              <div className="skills-accordion-body">
+                <Skills />
+              </div>
+            )}
             </div>
 
             <div className="sidebar-footer">

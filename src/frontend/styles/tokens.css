@@ -242,17 +242,20 @@ textarea {
 
 .section-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 8px 14px;
+  padding: 0 6px 2px;
 }
 
 .section-title {
-  margin: 4px 0 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 12px;
   line-height: 1.1;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted-inverse);
 }
 
 .section-meta {
