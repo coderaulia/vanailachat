@@ -511,6 +511,42 @@ export class ToolService {
         }
       },
     },
+    load_skill: {
+      name: 'load_skill',
+      description:
+        'Load the full instructions for one of the skills listed under [Available Skills] in the system prompt. Call this before acting on a skill — the system prompt only lists names and summaries.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Skill name exactly as listed under [Available Skills]' },
+        },
+        required: ['name'],
+      },
+      execute: async (args: unknown) => {
+        const name = parseStringField(args, 'name');
+        if (!name) {
+          return 'Failed to load skill: missing name';
+        }
+
+        try {
+          const { DatabaseService } = await import('./database.js');
+          const enabled = DatabaseService.listEnabledSkills();
+          const match =
+            enabled.find((skill) => skill.name === name) ??
+            enabled.find((skill) => skill.name.toLowerCase() === name.toLowerCase());
+
+          if (!match) {
+            const available = enabled.map((skill) => skill.name).join(', ') || 'none';
+            return `Skill '${name}' is not enabled. Available skills: ${available}`;
+          }
+
+          console.log(`[TOOL] Loading skill: ${match.name} (${match.content.length} chars)`);
+          return `[Skill: ${match.name}]\n${match.content}`;
+        } catch (error) {
+          return `Failed to load skill: ${getErrorMessage(error)}`;
+        }
+      },
+    },
   };
 
   static getToolDefinitions() {
