@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { migrations } from './migrations.js';
+import { memoryContentId } from './memoryId.js';
 
 const DEFAULT_PROJECT_NAME = 'Default';
 
@@ -1116,8 +1117,10 @@ export class DatabaseService {
     sourceId?: string | null;
   }): MemoryEntryRecord {
     const db = this.getDb();
-    const id = input.id ?? generateId('mem');
     const type = input.type ?? 'conversation';
+    // Content-derived id, so storing the same memory twice updates one row
+    // instead of appending a duplicate.
+    const id = input.id ?? memoryContentId(type, input.content);
     const createdAt = Date.now();
     const embeddingBlob = input.embedding
       ? Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength)

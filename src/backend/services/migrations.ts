@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { memoryContentId } from './memoryId.js';
 
 export interface Migration {
   version: number;
@@ -270,6 +271,53 @@ export const migrations: Migration[] = [
           INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
         END;
       `);
+    }
+  },
+  {
+    version: 13,
+    name: 'dedupe_memories',
+    up: (db) => {
+      // Memories were keyed by a random id, so the chat route storing the last
+      // user message on every turn piled up copies of the same text — one real
+      // database held 19 rows of a single question. Rows are re-keyed to a
+      // content hash here so old rows collide with future writes instead of
+      // producing one more duplicate, keeping the earliest copy of each.
+      const rows = db
+        .prepare('SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at ASC')
+        .all() as Array<{
+          id: string;
+          type: string;
+          content: string;
+          embedding: Buffer;
+          metadata: string | null;
+          source_id: string | null;
+          created_at: number;
+        }>;
+
+      if (rows.length === 0) return;
+
+      const insert = db.prepare(
+        `INSERT OR IGNORE INTO memories (id, type, content, embedding, metadata, source_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+
+      db.exec('DELETE FROM memories');
+
+      let kept = 0;
+      for (const row of rows) {
+        const result = insert.run(
+          memoryContentId(row.type, row.content),
+          row.type,
+          row.content,
+          row.embedding,
+          row.metadata,
+          row.source_id,
+          row.created_at,
+        );
+        if (result.changes > 0) kept += 1;
+      }
+
+      console.log(`[DB] Deduplicated memories: ${rows.length} -> ${kept}`);
     }
   }
 ];
