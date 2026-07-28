@@ -1,12 +1,78 @@
 import type { LLMProvider } from './provider.js';
 
 /**
+ * How long provider model listings and metadata stay fresh. These are remote
+ * HTTP calls for every provider except Ollama, and they sat on the chat hot
+ * path — each turn paid a full model-list fetch plus a details fetch before
+ * the completion could even start.
+ */
+const MODEL_CACHE_TTL_MS = 60_000;
+
+interface CacheEntry<T> { value: T; expiresAt: number }
+
+/**
  * Manages multiple LLM providers.
  * Routes chat requests to the correct provider based on prefix or config.
+ *
+ * Caches are per-instance: the registry is rebuilt by each createApp() call,
+ * so tests never share cached state.
  */
 export class ProviderRegistry {
   private providers = new Map<string, LLMProvider>();
   private defaultProviderId: string | null = null;
+
+  private modelListCache = new Map<string, CacheEntry<string[]>>();
+  private modelDetailsCache = new Map<string, CacheEntry<Record<string, unknown> | null>>();
+
+  private static fresh<T>(entry: CacheEntry<T> | undefined): entry is CacheEntry<T> {
+    return entry !== undefined && entry.expiresAt > Date.now();
+  }
+
+  /** Model list for one provider, cached so repeated turns don't refetch it. */
+  async listModelsCached(provider: LLMProvider): Promise<string[]> {
+    const hit = this.modelListCache.get(provider.id);
+    if (ProviderRegistry.fresh(hit)) return hit.value;
+
+    const models = await provider.listModels();
+    this.modelListCache.set(provider.id, {
+      value: models,
+      expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
+    });
+    return models;
+  }
+
+  /**
+   * Availability check served from the cached listing. Ollama is asked
+   * directly — it is a local call, and its provider tracks pulled models.
+   */
+  async isModelAvailableCached(provider: LLMProvider, modelName: string): Promise<boolean> {
+    if (provider.id === 'ollama') return provider.isModelAvailable(modelName);
+    const models = await this.listModelsCached(provider);
+    return models.includes(modelName);
+  }
+
+  /** Model metadata (capabilities drive tool gating), cached per model. */
+  async getModelDetailsCached(
+    provider: LLMProvider,
+    modelName: string,
+  ): Promise<Record<string, unknown> | null> {
+    const key = `${provider.id}:${modelName}`;
+    const hit = this.modelDetailsCache.get(key);
+    if (ProviderRegistry.fresh(hit)) return hit.value;
+
+    const details = await provider.getModelDetails(modelName);
+    this.modelDetailsCache.set(key, {
+      value: details,
+      expiresAt: Date.now() + MODEL_CACHE_TTL_MS,
+    });
+    return details;
+  }
+
+  /** Drops cached listings/metadata so a newly configured provider is seen. */
+  invalidateModelCaches(): void {
+    this.modelListCache.clear();
+    this.modelDetailsCache.clear();
+  }
 
   register(provider: LLMProvider): void {
     this.providers.set(provider.id, provider);
@@ -76,21 +142,29 @@ export class ProviderRegistry {
     return [...this.providers.values()];
   }
 
-  /** Gather models from all providers with provider name prefix */
+  /**
+   * Gather models from all providers with provider name prefix.
+   * Providers are queried concurrently — serially awaiting each one made this
+   * endpoint cost the sum of every provider's latency.
+   */
   async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: unknown }>> {
-    const results: Array<{ name: string; provider: string; metadata?: unknown }> = [];
-    for (const [id, provider] of this.providers) {
-      if (id === 'ollama') continue; // Ollama handled separately via getInstalledModelMetadata
-      try {
-        const models = await provider.listModels();
-        for (const model of models) {
-          results.push({ name: `${id}:${model}`, provider: id, metadata: {} });
-        }
-      } catch {
-        // Provider unavailable — skip
-      }
-    }
-    return results;
+    // Ollama handled separately via getInstalledModelMetadata
+    const entries = [...this.providers].filter(([id]) => id !== 'ollama');
+
+    const settled = await Promise.allSettled(
+      entries.map(([, provider]) => this.listModelsCached(provider)),
+    );
+
+    return settled.flatMap((outcome, index) => {
+      // Provider unavailable — skip
+      if (outcome.status !== 'fulfilled') return [];
+      const id = entries[index][0];
+      return outcome.value.map((model) => ({
+        name: `${id}:${model}`,
+        provider: id,
+        metadata: {},
+      }));
+    });
   }
 
   getDefaultId(): string | null {

@@ -14,6 +14,7 @@ import type { ChatRecord } from '../services/database.js';
 interface DirCacheEntry { listing: string; expiresAt: number }
 const dirListingCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL_MS = 5 * 60_000;
+const DIR_CACHE_MAX_ENTRIES = 200;
 
 async function getCachedDirListing(
   deps: AppDependencies,
@@ -28,10 +29,16 @@ async function getCachedDirListing(
   const listing = await deps.executeTool('list_directory', { path: '.', maxDepth: 2 }, projectRoot);
   dirListingCache.set(key, { listing, expiresAt: now + DIR_CACHE_TTL_MS });
 
-  // Bound cache size
-  if (dirListingCache.size > 200) {
+  // Bound cache size. Sweeping only expired entries left the map unbounded
+  // whenever every entry was still live, so fall back to evicting the oldest.
+  if (dirListingCache.size > DIR_CACHE_MAX_ENTRIES) {
     for (const [k, v] of dirListingCache) {
       if (v.expiresAt <= now) dirListingCache.delete(k);
+    }
+    // Map preserves insertion order — drop the stalest keys first.
+    for (const k of dirListingCache.keys()) {
+      if (dirListingCache.size <= DIR_CACHE_MAX_ENTRIES) break;
+      dirListingCache.delete(k);
     }
   }
   return listing;
@@ -82,13 +89,56 @@ function validateChatRequest(body: unknown): string | null {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+/** One-line summary for the skill index: stored description, else the first real line. */
+function summarizeSkill(description: string | null, content: string): string {
+  const fromDescription = description?.trim();
+  if (fromDescription) {
+    return fromDescription.slice(0, 200);
+  }
+
+  // Prefer the first prose line: a SKILL.md almost always opens with a heading
+  // that just repeats the skill name, which tells the model nothing new.
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const prose = lines.find((line) => !line.startsWith('#'));
+  const heading = lines[0]?.replace(/^#+\s*/, '');
+
+  return (prose ?? heading ?? 'No description').slice(0, 200);
+}
+
 async function buildSystemPrompt(
   deps: AppDependencies,
   chatRecord: ChatRecord | null,
   body: ChatRequestBody,
   incomingMessages: Array<{ role: string; content: unknown }>,
-): Promise<{ systemPrompt: string; personaToolAllowlist: string[] | null }> {
+): Promise<{ systemPrompt: string; personaToolAllowlist: string[] | null; skillsAvailable: boolean }> {
   let systemPrompt = 'You are a helpful assistant.';
+
+  // User profile from onboarding/settings. Without this the model has no idea
+  // who it is talking to — the profile is stored in settings but was never
+  // reaching the prompt. Skipped for synthetic calls (title generation).
+  if (!body.skipMemory) {
+    try {
+      const userName = deps.getSetting('user_name')?.trim();
+      const userRole = deps.getSetting('user_role')?.trim();
+      const baseInstructions = deps.getSetting('base_instructions')?.trim();
+
+      const profile: string[] = [];
+      if (userName) profile.push(`Name: ${userName}`);
+      if (userRole) profile.push(`Role: ${userRole}`);
+      if (profile.length > 0) {
+        systemPrompt += `\n\n[User Profile]\nYou are talking to:\n${profile.join('\n')}`;
+      }
+      if (baseInstructions) {
+        systemPrompt += `\n\n[User Preferences]\n${baseInstructions}`;
+      }
+    } catch (error) {
+      console.error(`[SYSTEM PROMPT] Failed to load user profile: ${error}`);
+    }
+  }
 
   // Project-level instructions + memory
   if (chatRecord?.projectId) {
@@ -127,11 +177,39 @@ async function buildSystemPrompt(
 
   systemPrompt += '\n\nYou can also read local project files using read_file.';
 
-  // Enabled skills (via injected dep — no direct DB import)
+  // Enabled skills (via injected dep — no direct DB import).
+  //
+  // Progressive disclosure: only a name + one-line summary per skill goes into
+  // the prompt, and the model pulls the full text with load_skill when it is
+  // actually relevant. Inlining every SKILL.md cost ~8k tokens per request for
+  // a single 32KB skill, on every message, whether or not it was needed — and
+  // the unrelated instructions degraded answers as well as billing.
+  //
+  // Setting skills_inline='true' restores the old inline behaviour, which is
+  // reasonable on local models where tokens are free and tool-calling is weak.
+  let skillsAvailable = false;
   try {
     const enabledSkills = deps.listEnabledSkills();
-    for (const skill of enabledSkills) {
-      systemPrompt += `\n\n[Skill: ${skill.name}]\n${skill.content}`;
+    skillsAvailable = enabledSkills.length > 0;
+
+    if (skillsAvailable) {
+      const inlineSkills = deps.getSetting('skills_inline') === 'true';
+
+      if (inlineSkills) {
+        for (const skill of enabledSkills) {
+          systemPrompt += `\n\n[Skill: ${skill.name}]\n${skill.content}`;
+        }
+      } else {
+        const index = enabledSkills
+          .map((skill) => `- ${skill.name}: ${summarizeSkill(skill.description, skill.content)}`)
+          .join('\n');
+        systemPrompt +=
+          `\n\n[Available Skills]\n${index}\n\n` +
+          'These are titles only — you have not been shown their contents. When one is ' +
+          'relevant to the request, call load_skill with the exact name to read its ' +
+          'instructions before answering. Never guess what a skill contains, and ignore ' +
+          'skills unrelated to the current question.';
+      }
     }
   } catch {
     // DB unavailable — skip
@@ -186,23 +264,34 @@ async function buildSystemPrompt(
     }
   }
 
-  return { systemPrompt, personaToolAllowlist };
+  return { systemPrompt, personaToolAllowlist, skillsAvailable };
 }
 
-function resolveTools(
+export function resolveTools(
   allTools: Record<string, unknown>[],
   supportsTools: boolean,
   personaToolAllowlist: string[] | null,
   searchEnabled: boolean,
+  skillsAvailable: boolean,
 ): Record<string, unknown>[] {
   if (!supportsTools) return [];
 
+  const toolName = (t: Record<string, unknown>) =>
+    (t as { function?: { name?: string } }).function?.name ?? '';
+
   let tools = [...allTools];
+
+  // Offering load_skill with nothing to load only invites hallucinated calls.
+  if (!skillsAvailable) {
+    tools = tools.filter((t) => toolName(t) !== 'load_skill');
+  }
 
   if (personaToolAllowlist && personaToolAllowlist.length > 0) {
     tools = tools.filter((t) => {
-      const fn = (t as { function?: { name?: string } }).function;
-      return personaToolAllowlist.includes(fn?.name ?? '');
+      // load_skill is how skills are reached at all, so a persona allowlist
+      // must not strip it — the prompt advertises skills either way.
+      const name = toolName(t);
+      return personaToolAllowlist.includes(name) || (skillsAvailable && name === 'load_skill');
     });
   }
 
@@ -378,7 +467,10 @@ export function chatRouter(dependencies: AppDependencies): Hono {
     try {
       const { provider, modelName } = dependencies.providerRegistry.resolveModel(typedBody.model!);
 
-      const isAvailable = await provider.isModelAvailable(modelName);
+      const isAvailable = await dependencies.providerRegistry.isModelAvailableCached(
+        provider,
+        modelName,
+      );
       if (!isAvailable) {
         return context.json(
           { error: `Model '${modelName}' is not available on provider '${provider.id}'.` },
@@ -428,7 +520,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         })();
       }
 
-      const { systemPrompt, personaToolAllowlist } = await buildSystemPrompt(
+      const { systemPrompt, personaToolAllowlist, skillsAvailable } = await buildSystemPrompt(
         dependencies,
         chatRecord,
         typedBody,
@@ -447,7 +539,10 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         }),
       ];
 
-      const modelDetails = (await provider.getModelDetails(modelName)) as {
+      const modelDetails = (await dependencies.providerRegistry.getModelDetailsCached(
+        provider,
+        modelName,
+      )) as {
         capabilities?: string[];
       } | null;
       const capabilities = modelDetails?.capabilities ?? [];
@@ -456,6 +551,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         capabilities.includes('tools'),
         personaToolAllowlist,
         typedBody.search ?? false,
+        skillsAvailable,
       );
 
       // Non-streaming path

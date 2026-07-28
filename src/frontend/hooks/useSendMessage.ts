@@ -240,6 +240,7 @@ export function useSendMessage(deps: SendMessageDeps) {
             search_web: 'Searching the web…',
             list_directory: 'Analyzing directory…',
             run_command: 'Executing command…',
+            load_skill: 'Loading skill…',
           };
           setStatusText(td.tool ? (msgs[td.tool] ?? 'Thinking…') : 'Thinking…');
           return;

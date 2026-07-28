@@ -54,6 +54,9 @@ export function dataRouter(dependencies: AppDependencies): Hono {
       const incomingChats = Array.isArray(body.chats) ? body.chats : [];
       const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
 
+      // One transaction for the whole import — per-row inserts each paid their
+      // own fsync, which dominated the cost of restoring a large backup.
+      const { importedChats, skippedChats, importedMessages } = dependencies.runInTransaction(() => {
       const existingProjects = new Set(dependencies.listProjects().map((project) => project.id));
       for (const project of incomingProjects) {
         const id = typeof project.id === 'string' ? project.id : undefined;
@@ -137,6 +140,9 @@ export function dataRouter(dependencies: AppDependencies): Hono {
         });
         importedMessages += 1;
       }
+
+        return { importedChats, skippedChats, importedMessages };
+      });
 
       return context.json({
         importedChats,

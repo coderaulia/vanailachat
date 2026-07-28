@@ -18,16 +18,30 @@ describe('chats route', () => {
     const listChats = vi.fn().mockReturnValue([mockChat]);
     const app = createApp({ listChats });
 
-    // Without filter
+    // Without filter — a default page size is always applied
     const response1 = await app.request('/api/chats');
     expect(response1.status).toBe(200);
     expect(await response1.json()).toEqual({ chats: [mockChat] });
-    expect(listChats).toHaveBeenCalledWith(undefined);
+    expect(listChats).toHaveBeenCalledWith(undefined, 200);
 
     // With filter
     const response2 = await app.request('/api/chats?projectId=proj_1');
     expect(response2.status).toBe(200);
-    expect(listChats).toHaveBeenCalledWith('proj_1');
+    expect(listChats).toHaveBeenCalledWith('proj_1', 200);
+  });
+
+  it('GET /api/chats clamps a caller-supplied limit to the maximum', async () => {
+    const listChats = vi.fn().mockReturnValue([mockChat]);
+    const app = createApp({ listChats });
+
+    await app.request('/api/chats?limit=5');
+    expect(listChats).toHaveBeenCalledWith(undefined, 5);
+
+    await app.request('/api/chats?limit=9999');
+    expect(listChats).toHaveBeenCalledWith(undefined, 200);
+
+    await app.request('/api/chats?limit=abc');
+    expect(listChats).toHaveBeenCalledWith(undefined, 200);
   });
 
   it('POST /api/chats upserts a chat', async () => {
@@ -68,7 +82,7 @@ describe('messages route', () => {
     const response = await app.request('/api/messages?chatId=chat_1');
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ messages: mockMessages });
-    expect(listMessages).toHaveBeenCalledWith('chat_1');
+    expect(listMessages).toHaveBeenCalledWith('chat_1', 500);
   });
 
   it('POST /api/messages inserts a message', async () => {

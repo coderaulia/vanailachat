@@ -1,15 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
 import './App.css';
 import { Sidebar } from './components/Sidebar';
-import { ProjectDetail } from './components/ProjectDetail';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { OnboardingWizard, useOnboarding } from './components/OnboardingWizard';
-import { SettingsModal } from './components/SettingsModal';
+
+// Rendered only on demand, so they are kept out of the initial bundle.
+// OnboardingWizard stays eager: useOnboarding runs on every load.
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })),
+);
+const ProjectDetail = lazy(() =>
+  import('./components/ProjectDetail').then((m) => ({ default: m.ProjectDetail })),
+);
 
 const AppShell = () => {
   const renderMarkdown = useMarkdownRenderer();
@@ -70,7 +77,11 @@ const AppShell = () => {
   return (
     <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
       {showOnboarding && <OnboardingWizard onDone={markDone} />}
-      {isSettingsOpen && <SettingsModal onClose={() => setIsSettingsOpen(false)} />}
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal onClose={() => setIsSettingsOpen(false)} />
+        </Suspense>
+      )}
       <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="main-content">
@@ -93,7 +104,11 @@ const AppShell = () => {
           (() => {
             const currentProject = projects.find(p => p.id === selectedProjectId);
             if (currentProject) {
-              return <ProjectDetail />;
+              return (
+                <Suspense fallback={null}>
+                  <ProjectDetail />
+                </Suspense>
+              );
             }
             return (
               <div className="welcome-screen">

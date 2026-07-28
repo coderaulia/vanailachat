@@ -76,4 +76,83 @@ describe('chat route', () => {
       images: ['abc123'],
     });
   });
+
+  it('injects the onboarding user profile into the system prompt', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ done: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      })
+    );
+
+    const settings: Record<string, string> = {
+      user_name: 'Aulia Satrio',
+      user_role: 'HR Business Partner & Programmer',
+      base_instructions: 'keep it concise',
+    };
+
+    const app = createApp({
+      fetchFn: fetchMock,
+      getBaseUrl: () => 'http://ollama.local',
+      getInstalledModels: async () => ['llama3'],
+      getModelDetails: async () => ({ capabilities: ['chat'] }),
+      getSetting: (key: string) => settings[key] ?? null,
+    });
+
+    const response = await app.request('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3',
+        messages: [{ role: 'user', content: 'who am i?' }],
+        stream: true,
+      }),
+    });
+    // The upstream call happens while the stream is piped — drain it first.
+    await response.text();
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit)?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+
+    expect(body.messages[0].role).toBe('system');
+    expect(body.messages[0].content).toContain('Aulia Satrio');
+    expect(body.messages[0].content).toContain('HR Business Partner & Programmer');
+    expect(body.messages[0].content).toContain('keep it concise');
+  });
+
+  it('omits the profile from synthetic title-generation calls', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ done: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/x-ndjson' },
+      })
+    );
+
+    const app = createApp({
+      fetchFn: fetchMock,
+      getBaseUrl: () => 'http://ollama.local',
+      getInstalledModels: async () => ['llama3'],
+      getModelDetails: async () => ({ capabilities: ['chat'] }),
+      getSetting: (key: string) => (key === 'user_name' ? 'Aulia Satrio' : null),
+    });
+
+    const response = await app.request('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3',
+        messages: [{ role: 'user', content: 'title this' }],
+        stream: true,
+        skipMemory: true,
+      }),
+    });
+    await response.text();
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit)?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+
+    expect(body.messages[0].content).not.toContain('Aulia Satrio');
+  });
 });

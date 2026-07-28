@@ -72,6 +72,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
+  runInTransaction: DatabaseService.runInTransaction.bind(DatabaseService),
   // Native folder picker. Every platform ships a different one, so each is
   // tried in turn and a missing dialog just yields null (the UI still accepts
   // a typed path).

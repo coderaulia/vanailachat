@@ -39,11 +39,11 @@ export interface AppDependencies {
   createProject: (input: CreateProjectInput) => ProjectRecord;
   updateProject: (id: string, input: UpdateProjectInput) => ProjectRecord;
   deleteProject: (id: string) => boolean;
-  listChats: (projectId?: string) => ChatRecord[];
+  listChats: (projectId?: string, limit?: number) => ChatRecord[];
   getChat: (id: string) => ChatRecord | null;
   upsertChat: (input: UpsertChatInput) => ChatRecord;
   deleteChat: (id: string) => boolean;
-  listMessages: (chatId: string) => MessageRecord[];
+  listMessages: (chatId: string, limit?: number) => MessageRecord[];
   insertMessage: (input: InsertMessageInput) => MessageRecord;
   getMessage: (id: string) => MessageRecord | null;
   upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;
@@ -74,6 +74,8 @@ export interface AppDependencies {
     loserModel?: string;
   }) => { chatId: string; messageId: string };
   pickDirectory: () => Promise<string | null>;
+  /** Runs a batch of synchronous writes as one transaction. */
+  runInTransaction: <T>(fn: () => T) => T;
   /** Provider registry for multi-provider support */
   providerRegistry: ProviderRegistry;
   // ── Memory / Embedding (injected so routes stay testable) ────────────────

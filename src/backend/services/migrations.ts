@@ -216,5 +216,22 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_message_feedback_implicit ON message_feedback(implicit, rating);
       `);
     }
+  },
+  {
+    version: 11,
+    name: 'recency_sort_indexes',
+    up: (db) => {
+      // Vector search reads the most recent memories on every chat turn, but
+      // idx_memories_type_created leads with `type` and cannot serve an
+      // unfiltered sort — the plan was "SCAN memories | USE TEMP B-TREE FOR
+      // ORDER BY" over a table that grows without bound.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
+      `);
+      // Same temp-B-tree sort on the project list, on a much smaller table.
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at ASC);
+      `);
+    }
   }
 ];
