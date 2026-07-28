@@ -14,6 +14,7 @@ import type { ChatRecord } from '../services/database.js';
 interface DirCacheEntry { listing: string; expiresAt: number }
 const dirListingCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL_MS = 5 * 60_000;
+const DIR_CACHE_MAX_ENTRIES = 200;
 
 async function getCachedDirListing(
   deps: AppDependencies,
@@ -28,10 +29,16 @@ async function getCachedDirListing(
   const listing = await deps.executeTool('list_directory', { path: '.', maxDepth: 2 }, projectRoot);
   dirListingCache.set(key, { listing, expiresAt: now + DIR_CACHE_TTL_MS });
 
-  // Bound cache size
-  if (dirListingCache.size > 200) {
+  // Bound cache size. Sweeping only expired entries left the map unbounded
+  // whenever every entry was still live, so fall back to evicting the oldest.
+  if (dirListingCache.size > DIR_CACHE_MAX_ENTRIES) {
     for (const [k, v] of dirListingCache) {
       if (v.expiresAt <= now) dirListingCache.delete(k);
+    }
+    // Map preserves insertion order — drop the stalest keys first.
+    for (const k of dirListingCache.keys()) {
+      if (dirListingCache.size <= DIR_CACHE_MAX_ENTRIES) break;
+      dirListingCache.delete(k);
     }
   }
   return listing;
@@ -89,6 +96,29 @@ async function buildSystemPrompt(
   incomingMessages: Array<{ role: string; content: unknown }>,
 ): Promise<{ systemPrompt: string; personaToolAllowlist: string[] | null }> {
   let systemPrompt = 'You are a helpful assistant.';
+
+  // User profile from onboarding/settings. Without this the model has no idea
+  // who it is talking to — the profile is stored in settings but was never
+  // reaching the prompt. Skipped for synthetic calls (title generation).
+  if (!body.skipMemory) {
+    try {
+      const userName = deps.getSetting('user_name')?.trim();
+      const userRole = deps.getSetting('user_role')?.trim();
+      const baseInstructions = deps.getSetting('base_instructions')?.trim();
+
+      const profile: string[] = [];
+      if (userName) profile.push(`Name: ${userName}`);
+      if (userRole) profile.push(`Role: ${userRole}`);
+      if (profile.length > 0) {
+        systemPrompt += `\n\n[User Profile]\nYou are talking to:\n${profile.join('\n')}`;
+      }
+      if (baseInstructions) {
+        systemPrompt += `\n\n[User Preferences]\n${baseInstructions}`;
+      }
+    } catch (error) {
+      console.error(`[SYSTEM PROMPT] Failed to load user profile: ${error}`);
+    }
+  }
 
   // Project-level instructions + memory
   if (chatRecord?.projectId) {
@@ -378,7 +408,10 @@ export function chatRouter(dependencies: AppDependencies): Hono {
     try {
       const { provider, modelName } = dependencies.providerRegistry.resolveModel(typedBody.model!);
 
-      const isAvailable = await provider.isModelAvailable(modelName);
+      const isAvailable = await dependencies.providerRegistry.isModelAvailableCached(
+        provider,
+        modelName,
+      );
       if (!isAvailable) {
         return context.json(
           { error: `Model '${modelName}' is not available on provider '${provider.id}'.` },
@@ -447,7 +480,10 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         }),
       ];
 
-      const modelDetails = (await provider.getModelDetails(modelName)) as {
+      const modelDetails = (await dependencies.providerRegistry.getModelDetailsCached(
+        provider,
+        modelName,
+      )) as {
         capabilities?: string[];
       } | null;
       const capabilities = modelDetails?.capabilities ?? [];

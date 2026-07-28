@@ -70,22 +70,28 @@ export function researchRouter(dependencies: AppDependencies): Hono {
           const sourcesToRead = searchResults.slice(0, maxSources);
           emit({ stage: 'found', message: `Found ${sourcesToRead.length} sources`, sources: sourcesToRead.map(s => ({ title: s.title, url: s.url })) });
 
-          // Step 2: Read pages
-          const sources: ResearchSource[] = [];
-          for (const [i, result] of sourcesToRead.entries()) {
+          // Step 2: Read pages. Fetched concurrently — awaiting each page in
+          // turn made this step cost the sum of every source's latency.
+          const charsPerSource = depth === 'deep' ? 10000 : depth === 'quick' ? 3000 : 6000;
+
+          sourcesToRead.forEach((result, i) => {
             emit({ stage: 'reading', message: `Reading source ${i + 1}/${sourcesToRead.length}: ${result.title}`, url: result.url });
+          });
 
-            const charsPerSource = depth === 'deep' ? 10000 : depth === 'quick' ? 3000 : 6000;
-            const pageText = await dependencies.executeTool('read_url', { url: result.url, max_chars: charsPerSource }, null);
-            const fetched = !pageText.startsWith('read_url failed') && !pageText.startsWith('HTTP ');
+          // Results are mapped back by index, so sources stay in search order.
+          const sources: ResearchSource[] = await Promise.all(
+            sourcesToRead.map(async (result) => {
+              const pageText = await dependencies.executeTool('read_url', { url: result.url, max_chars: charsPerSource }, null);
+              const fetched = !pageText.startsWith('read_url failed') && !pageText.startsWith('HTTP ');
 
-            sources.push({
-              title: result.title,
-              url: result.url,
-              summary: fetched ? pageText.slice(0, 2000) : result.description,
-              fetched,
-            });
-          }
+              return {
+                title: result.title,
+                url: result.url,
+                summary: fetched ? pageText.slice(0, 2000) : result.description,
+                fetched,
+              };
+            }),
+          );
 
           // Step 3: LLM synthesis
           emit({ stage: 'synthesizing', message: 'Synthesizing research report…' });

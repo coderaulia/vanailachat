@@ -2,13 +2,24 @@ import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
 import { sanitizeError, toOptionalNumber } from '../helpers/index.js';
 
+/** Default page size for the chat list, and the ceiling a caller can request. */
+const MAX_CHATS_PAGE = 200;
+
+/** Clamps a caller-supplied ?limit= to 1..max, falling back to max. */
+function parsePositiveInt(raw: string | undefined, max: number): number {
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) return max;
+  return Math.min(parsed, max);
+}
+
 export function chatsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
   app.get('/', (context) => {
     try {
       const projectId = context.req.query('projectId') || undefined;
-      const chats = dependencies.listChats(projectId);
+      const limit = parsePositiveInt(context.req.query('limit'), MAX_CHATS_PAGE);
+      const chats = dependencies.listChats(projectId, limit);
       return context.json({ chats });
     } catch (error) {
       const message = sanitizeError(error, 'Unknown error');

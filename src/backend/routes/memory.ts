@@ -63,25 +63,31 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
     if (!chat) return context.json({ error: 'Chat not found' }, 404);
 
     try {
-      const messages = dependencies.listMessages(chatId);
-      let indexed = 0;
+      const messages = dependencies
+        .listMessages(chatId)
+        .filter((msg) => (msg.role === 'user' || msg.role === 'assistant') && msg.content?.trim());
 
-      for (const msg of messages) {
-        if (msg.role !== 'user' && msg.role !== 'assistant') continue;
-        if (!msg.content?.trim()) continue;
+      // Embedding each message in sequence made this cost one round-trip per
+      // message. Run a bounded number concurrently instead — unbounded would
+      // flood the embedding model on a long chat.
+      const CONCURRENCY = 4;
+      const embeddings: Array<Awaited<ReturnType<typeof dependencies.embed>>> = [];
+      for (let start = 0; start < messages.length; start += CONCURRENCY) {
+        const batch = messages.slice(start, start + CONCURRENCY);
+        embeddings.push(...(await Promise.all(batch.map((msg) => dependencies.embed(msg.content)))));
+      }
 
-        const embedding = await dependencies.embed(msg.content);
+      messages.forEach((msg, index) => {
         dependencies.upsertMemory({
           type: 'conversation',
           content: msg.content.slice(0, 4000),
-          embedding,
+          embedding: embeddings[index],
           metadata: JSON.stringify({ role: msg.role, chatId, chatTitle: chat.title }),
           sourceId: chatId,
         });
-        indexed++;
-      }
+      });
 
-      return context.json({ indexed, chatId });
+      return context.json({ indexed: messages.length, chatId });
     } catch (error) {
       return context.json({ error: sanitizeError(error, 'Indexing failed') }, 500);
     }

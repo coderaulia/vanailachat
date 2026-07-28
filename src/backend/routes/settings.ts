@@ -40,6 +40,9 @@ export function settingsRouter(dependencies: AppDependencies): Hono {
         return context.json({ error: 'value required' }, 400);
       }
       dependencies.upsertSetting(key, body.value);
+      // Provider credentials and hosts live here, so a saved key must drop the
+      // cached model listings rather than wait out their TTL.
+      dependencies.providerRegistry.invalidateModelCaches();
       return context.json({ key, value: body.value });
     } catch (error) {
       return context.json({ error: sanitizeError(error, 'Save failed') }, 500);

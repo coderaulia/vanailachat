@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
 import { sanitizeError, toOptionalNumber } from '../helpers/index.js';
 
+/** Newest-N messages returned per chat load, and the ceiling for ?limit=. */
+const MAX_MESSAGES_PAGE = 500;
+
 export function messagesRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
@@ -12,7 +15,14 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
         return context.json({ error: 'chatId is required' }, 400);
       }
 
-      const messages = dependencies.listMessages(chatId);
+      // Bounded by default — opening a long chat used to read its entire
+      // history, and message content is unbounded text.
+      const requested = Number.parseInt(context.req.query('limit') ?? '', 10);
+      const limit = Number.isFinite(requested) && requested > 0
+        ? Math.min(requested, MAX_MESSAGES_PAGE)
+        : MAX_MESSAGES_PAGE;
+
+      const messages = dependencies.listMessages(chatId, limit);
       return context.json({ messages });
     } catch (error) {
       const message = sanitizeError(error, 'Unknown error');

@@ -234,6 +234,22 @@ export class DatabaseService {
     return this.db;
   }
 
+  /**
+   * Runs synchronous writes inside one transaction. Bulk inserts issued
+   * outside a transaction pay an fsync each, which made imports scale
+   * terribly. Falls back to a direct call when no database is available so
+   * routes driven by injected mocks still work.
+   */
+  static runInTransaction<T>(fn: () => T): T {
+    let db: Database.Database;
+    try {
+      db = this.getDb();
+    } catch {
+      return fn();
+    }
+    return db.transaction(fn)();
+  }
+
   private static runMigrations(): void {
     const db = this.getDb();
 
@@ -440,8 +456,46 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
-  static listChats(projectId?: string): ChatRecord[] {
+  /**
+   * Chats newest-first, each with its summed token usage.
+   *
+   * When `limit` is set the chats are selected and truncated *before* the
+   * message join, so the token SUM only touches the rows being returned
+   * rather than every message in the database.
+   */
+  static listChats(projectId?: string, limit?: number): ChatRecord[] {
     const db = this.getDb();
+
+    if (limit !== undefined) {
+      const inner = projectId
+        ? `SELECT * FROM chats WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?`
+        : `SELECT * FROM chats ORDER BY updated_at DESC LIMIT ?`;
+
+      const rows = db
+        .prepare(
+          `
+      SELECT
+        c.id,
+        c.project_id,
+        c.title,
+        c.model,
+        c.project_root,
+        c.system_prompt,
+        c.pinned,
+        c.role,
+        c.created_at,
+        c.updated_at,
+        COALESCE(SUM(COALESCE(m.prompt_tokens, 0) + COALESCE(m.completion_tokens, 0)), 0) AS usage
+      FROM (${inner}) c
+      LEFT JOIN messages m ON m.chat_id = c.id
+      GROUP BY c.id
+      ORDER BY c.updated_at DESC
+      `,
+        )
+        .all(...(projectId ? [projectId, limit] : [limit])) as ChatRow[];
+
+      return rows.map((row) => this.mapChat(row));
+    }
 
     const baseQuery = `
       SELECT
@@ -875,20 +929,42 @@ export class DatabaseService {
     return { chatId, messageId: assistantMsgId };
   }
 
-  static listMessages(chatId: string): MessageRecord[] {
+  /**
+   * Messages for a chat, oldest first. `limit` keeps the newest N — an
+   * unbounded read loaded an entire conversation's text on every chat open.
+   */
+  static listMessages(chatId: string, limit?: number): MessageRecord[] {
     const db = this.getDb();
+
+    if (limit === undefined) {
+      const rows = db
+        .prepare(
+          `
+        SELECT id, chat_id, role, content, prompt_tokens, completion_tokens, created_at
+        FROM messages
+        WHERE chat_id = ?
+        ORDER BY created_at ASC
+      `
+        )
+        .all(chatId) as MessageRow[];
+
+      return rows.map((row) => this.mapMessage(row));
+    }
+
+    // Take the newest `limit` rows, then flip back to chronological order.
     const rows = db
       .prepare(
         `
         SELECT id, chat_id, role, content, prompt_tokens, completion_tokens, created_at
         FROM messages
         WHERE chat_id = ?
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC
+        LIMIT ?
       `
       )
-      .all(chatId) as MessageRow[];
+      .all(chatId, limit) as MessageRow[];
 
-    return rows.map((row) => this.mapMessage(row));
+    return rows.reverse().map((row) => this.mapMessage(row));
   }
 
   static insertMessage(input: InsertMessageInput): MessageRecord {
