@@ -223,19 +223,32 @@ async function buildSystemPrompt(
   }
   const personaToolAllowlist = getPersonaToolAllowlist(personaId);
 
-  // Vector memory — embed last user message, search + auto-save.
-  // Skipped when caller sets skipMemory (e.g. internal title-generation calls)
-  // so synthetic prompts don't pollute the vector store.
-  const lastUserMsg = !body.skipMemory && isEmbedLikelyAvailable()
-    ? incomingMessages.slice().reverse().find((m) => m.role === 'user')
-    : undefined;
+  // Memory — recall against the last user message, then store it.
+  //
+  // Vector search when an embedding backend is reachable, keyword search when
+  // it is not. Cloud-only setups have no Ollama, so the old code embedded
+  // nothing, stored nothing and recalled nothing — silently, forever. Memory
+  // now degrades instead of disappearing.
+  //
+  // Skipped when the caller sets skipMemory (internal title generation) so
+  // synthetic prompts don't pollute the store.
+  const lastUserMsg = body.skipMemory
+    ? undefined
+    : incomingMessages.slice().reverse().find((m) => m.role === 'user');
+
   if (lastUserMsg) {
     const userText = normalizeMessageContent(lastUserMsg.content).content;
     if (userText.trim()) {
       try {
-        const queryVec = await deps.embed(userText);
+        const queryVec = isEmbedLikelyAvailable() ? await deps.embedOrNull(userText) : null;
+        if (!queryVec) {
+          markEmbedUnavailable();
+        }
 
-        const memories = deps.searchMemories(queryVec, 3, 0.3);
+        const memories = queryVec
+          ? deps.searchMemories(queryVec, 3, 0.3)
+          : deps.searchMemoriesByKeyword(userText, 3, 0.2);
+
         if (memories.length > 0) {
           const block = memories
             .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
@@ -256,10 +269,8 @@ async function buildSystemPrompt(
             sourceId: (body.chatId as string | null) ?? null,
           });
         }
-      } catch {
-        // Embedding model unavailable — flag so subsequent turns skip the call
-        // entirely until the TTL expires.
-        markEmbedUnavailable();
+      } catch (error) {
+        console.error(`[MEMORY] Recall/store failed: ${error}`);
       }
     }
   }

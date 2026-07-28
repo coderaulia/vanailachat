@@ -16,6 +16,35 @@ export class EmbeddingService {
    * Returns the embedding as a Float32Array.
    */
   static async embed(text: string): Promise<Float32Array> {
+    try {
+      return await this.embedViaOllama(text);
+    } catch (ollamaError) {
+      // Cloud-only setups have no Ollama at all. Fall back to an
+      // OpenAI-compatible /embeddings endpoint when one is configured.
+      const remote = await this.embedViaOpenAICompatible(text);
+      if (remote) {
+        return remote;
+      }
+      throw ollamaError;
+    }
+  }
+
+  /**
+   * Embed, or null when no embedding backend is reachable.
+   *
+   * Callers use this to degrade to keyword memory instead of losing the
+   * memory entirely: previously a missing embedding model meant nothing was
+   * ever stored *or* recalled, silently.
+   */
+  static async embedOrNull(text: string): Promise<Float32Array | null> {
+    try {
+      return await this.embed(text);
+    } catch {
+      return null;
+    }
+  }
+
+  private static async embedViaOllama(text: string): Promise<Float32Array> {
     const baseUrl = OllamaService.getBaseUrl();
     const response = await fetch(`${baseUrl}/api/embed`, {
       method: 'POST',
@@ -34,6 +63,59 @@ export class EmbeddingService {
     }
 
     return new Float32Array(embedding);
+  }
+
+  /**
+   * Try an OpenAI-compatible /embeddings endpoint. Returns null when no
+   * credentials are configured or the endpoint does not support embeddings —
+   * many chat-only gateways (DeepSeek among them) do not.
+   */
+  private static async embedViaOpenAICompatible(text: string): Promise<Float32Array | null> {
+    const setting = (key: string): string => {
+      try {
+        return DatabaseService.getSetting(key) ?? '';
+      } catch {
+        return '';
+      }
+    };
+
+    const candidates = [
+      {
+        baseUrl: process.env.OPENAI_BASE_URL || (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : ''),
+        apiKey: process.env.OPENAI_API_KEY ?? '',
+        model: setting('embedding_model') || 'text-embedding-3-small',
+      },
+      {
+        baseUrl: setting('custom_openai_base_url') || process.env.CUSTOM_OPENAI_BASE_URL || '',
+        apiKey: setting('custom_openai_api_key') || process.env.CUSTOM_OPENAI_API_KEY || '',
+        model: setting('embedding_model') || 'text-embedding-3-small',
+      },
+    ].filter((candidate) => candidate.baseUrl && candidate.apiKey);
+
+    for (const candidate of candidates) {
+      try {
+        const response = await fetch(`${candidate.baseUrl}/embeddings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${candidate.apiKey}`,
+          },
+          body: JSON.stringify({ model: candidate.model, input: text }),
+        });
+
+        if (!response.ok) continue;
+
+        const payload = (await response.json()) as { data?: Array<{ embedding?: number[] }> };
+        const vector = payload.data?.[0]?.embedding;
+        if (vector && vector.length > 0) {
+          return new Float32Array(vector);
+        }
+      } catch {
+        // Try the next candidate.
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -138,6 +220,71 @@ export class EmbeddingService {
     }));
   }
 
+  /** Words too common to carry signal in a token-overlap match. */
+  private static STOPWORDS = new Set([
+    'the', 'and', 'for', 'that', 'this', 'with', 'from', 'you', 'your', 'are', 'was', 'were',
+    'what', 'when', 'where', 'which', 'who', 'how', 'why', 'can', 'could', 'would', 'should',
+    'have', 'has', 'had', 'not', 'but', 'all', 'any', 'our', 'their', 'about', 'into', 'than',
+    'then', 'them', 'they', 'there', 'here', 'his', 'her', 'its', 'been', 'being', 'does', 'did',
+  ]);
+
+  private static tokenize(text: string): string[] {
+    return text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((token) => token.length > 2 && !this.STOPWORDS.has(token));
+  }
+
+  /**
+   * Keyword fallback for when no embedding backend is reachable.
+   *
+   * Scores by the share of query tokens present in an entry, then reuses the
+   * same decay/feedback weighting as vector search so ranking behaves
+   * consistently across both paths. Crude next to embeddings, but the
+   * alternative in a cloud-only setup was no memory at all.
+   */
+  static searchByKeyword(
+    queryText: string,
+    topK: number = 5,
+    threshold: number = 0.2,
+  ): Array<{ id: string; content: string; score: number; metadata: string | null }> {
+    const queryTokens = [...new Set(this.tokenize(queryText))];
+    if (queryTokens.length === 0) return [];
+
+    const entries = DatabaseService.getAllMemoryEntries(1000);
+    const now = Date.now();
+
+    return entries
+      .map((entry) => {
+        const haystack = entry.content.toLowerCase();
+        const hits = queryTokens.filter((token) => haystack.includes(token)).length;
+        const rawScore = hits / queryTokens.length;
+
+        let rating = 0;
+        if (entry.metadata) {
+          try {
+            const meta = JSON.parse(entry.metadata) as { rating?: unknown };
+            if (typeof meta.rating === 'number' && Number.isFinite(meta.rating)) {
+              rating = meta.rating;
+            }
+          } catch {
+            // bad metadata JSON — ignore
+          }
+        }
+
+        return { entry, score: this.applyScoreWeights(rawScore, entry.createdAt, rating, now) };
+      })
+      .filter((scored) => scored.score >= threshold)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK)
+      .map(({ entry, score }) => ({
+        id: entry.id,
+        content: entry.content,
+        score: Math.round(score * 100) / 100,
+        metadata: entry.metadata,
+      }));
+  }
+
   /**
    * Find the most similar entries to a query text.
    * Uses brute-force cosine similarity (fine for <10k entries).
@@ -147,7 +294,12 @@ export class EmbeddingService {
     topK: number = 5,
     threshold: number = 0.3,
   ): Promise<Array<{ id: string; content: string; score: number; metadata: string | null }>> {
-    const queryVec = await this.embed(queryText);
+    const queryVec = await this.embedOrNull(queryText);
+    if (!queryVec) {
+      // No embedding backend: keyword recall rather than an error. The lower
+      // default threshold reflects token overlap scoring lower than cosine.
+      return this.searchByKeyword(queryText, topK, Math.min(threshold, 0.2));
+    }
     return this.searchWithVector(queryVec, topK, threshold);
   }
 }

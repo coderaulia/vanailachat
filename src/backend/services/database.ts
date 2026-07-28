@@ -1027,7 +1027,10 @@ export class DatabaseService {
     id?: string;
     type?: string;
     content: string;
-    embedding: Float32Array;
+    // null when no embedding backend is reachable — the row is still stored so
+    // keyword search can find it, and so nothing is lost if embeddings arrive
+    // later. The column is NOT NULL, hence the empty buffer.
+    embedding: Float32Array | null;
     metadata?: string | null;
     sourceId?: string | null;
   }): MemoryEntryRecord {
@@ -1035,7 +1038,9 @@ export class DatabaseService {
     const id = input.id ?? generateId('mem');
     const type = input.type ?? 'conversation';
     const createdAt = Date.now();
-    const embeddingBlob = Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength);
+    const embeddingBlob = input.embedding
+      ? Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength)
+      : Buffer.alloc(0);
     const embeddingBase64 = embeddingBlob.toString('base64');
 
     db.prepare(

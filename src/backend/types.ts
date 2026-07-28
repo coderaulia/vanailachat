@@ -85,14 +85,23 @@ export interface AppDependencies {
     id?: string;
     type?: string;
     content: string;
-    embedding: Float32Array;
+    /** null when no embedding backend is reachable — kept for keyword recall. */
+    embedding: Float32Array | null;
     metadata?: string | null;
     sourceId?: string | null;
   }) => MemoryEntryRecord;
   deleteMemory: (id: string) => boolean;
   embed: (text: string) => Promise<Float32Array>;
+  /** Embed, or null when every embedding backend is unreachable. */
+  embedOrNull: (text: string) => Promise<Float32Array | null>;
   searchMemories: (
     queryVec: Float32Array,
+    topK?: number,
+    threshold?: number,
+  ) => Array<{ id: string; content: string; score: number; metadata: string | null }>;
+  /** Token-overlap recall used when no embedding backend is available. */
+  searchMemoriesByKeyword: (
+    text: string,
     topK?: number,
     threshold?: number,
   ) => Array<{ id: string; content: string; score: number; metadata: string | null }>;

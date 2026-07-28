@@ -63,6 +63,8 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   upsertMemory: DatabaseService.upsertMemory.bind(DatabaseService),
   deleteMemory: DatabaseService.deleteMemory.bind(DatabaseService),
   embed: EmbeddingService.embed.bind(EmbeddingService),
+  embedOrNull: EmbeddingService.embedOrNull.bind(EmbeddingService),
+  searchMemoriesByKeyword: EmbeddingService.searchByKeyword.bind(EmbeddingService),
   searchMemories: EmbeddingService.searchWithVector.bind(EmbeddingService),
   searchMemoriesByText: EmbeddingService.search.bind(EmbeddingService),
   listSkills: DatabaseService.listSkills.bind(DatabaseService),
