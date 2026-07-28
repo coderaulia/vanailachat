@@ -89,20 +89,34 @@ async function generateChatTitle(
 export function useSendMessage(deps: SendMessageDeps) {
   const lastSentPromptRef = useRef<string>('');
 
-  const handleSend = async (event?: FormEvent) => {
+  /**
+   * Options let regenerate/edit reuse the whole send path.
+   *
+   * `promptOverride` supplies text that is not in the composer, and
+   * `baseConversation` replaces the history the new turn is appended to, so a
+   * retry can drop the answer (and optionally the question) being replaced
+   * instead of stacking a duplicate pair onto the thread.
+   */
+  const handleSend = async (
+    event?: FormEvent,
+    options?: { promptOverride?: string; baseConversation?: Message[] },
+  ) => {
     if (event) event.preventDefault();
 
     const {
       prompt, setPrompt, attachedFiles, setAttachedFiles,
       selectedModel, selectedRole, selectedProjectId, projects, chatHistories,
-      conversation, setConversation, systemPrompt, projectRoot, isSearchEnabled,
+      setConversation, systemPrompt, projectRoot, isSearchEnabled,
       currentChatId, setCurrentChatId, currentChatIdRef,
       abortRef, activeRequestIdRef, setSendingChatIds, setContextWindow,
       setStatusText, updateHistories, saveMessage, upsertChat, patchChat,
       personaId,
     } = deps;
 
-    if (!prompt.trim() && attachedFiles.length === 0) return;
+    const effectivePrompt = options?.promptOverride ?? prompt;
+    const conversation = options?.baseConversation ?? deps.conversation;
+
+    if (!effectivePrompt.trim() && attachedFiles.length === 0) return;
 
     const resolvedModel =
       selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null;
@@ -110,7 +124,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       setStatusText('No model selected. Please wait for models to load or pick one.');
       return;
     }
-    lastSentPromptRef.current = prompt;
+    lastSentPromptRef.current = effectivePrompt;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -127,7 +141,7 @@ export function useSendMessage(deps: SendMessageDeps) {
     const activeChatId = currentChatId;
 
     // Build message content
-    const textPart: { type: 'text'; text: string } = { type: 'text', text: prompt };
+    const textPart: { type: 'text'; text: string } = { type: 'text', text: effectivePrompt };
     const messageContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [textPart];
     attachedFiles
       .filter(f => f.type === 'image')
@@ -137,7 +151,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       .filter(f => f.type === 'text')
       .map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``)
       .join('\n\n');
-    const finalPrompt = fileContext ? `${fileContext}\n\n${prompt}` : prompt;
+    const finalPrompt = fileContext ? `${fileContext}\n\n${effectivePrompt}` : effectivePrompt;
     if (fileContext) textPart.text = finalPrompt;
 
     const startedAt = Date.now();
@@ -409,5 +423,42 @@ export function useSendMessage(deps: SendMessageDeps) {
     }
   };
 
-  return { handleSend, lastSentPromptRef };
+  /**
+   * Re-ask the question that produced a given assistant message.
+   *
+   * The old answer and everything after it are dropped, so the retry replaces
+   * the reply rather than appending a second copy of the exchange.
+   */
+  const handleRegenerate = async (assistantMessageId: string) => {
+    const conversation = deps.conversation;
+    const assistantIndex = conversation.findIndex(m => m.id === assistantMessageId);
+    if (assistantIndex < 1) return;
+
+    const userIndex = conversation.slice(0, assistantIndex).map(m => m.role).lastIndexOf('user');
+    if (userIndex === -1) return;
+
+    const userMessage = conversation[userIndex];
+    if (!userMessage.content.trim()) return;
+
+    await handleSend(undefined, {
+      promptOverride: userMessage.content,
+      baseConversation: conversation.slice(0, userIndex),
+    });
+  };
+
+  /** Replace a user message with edited text and re-run from that point. */
+  const handleEditAndResend = async (userMessageId: string, newContent: string) => {
+    if (!newContent.trim()) return;
+
+    const conversation = deps.conversation;
+    const userIndex = conversation.findIndex(m => m.id === userMessageId);
+    if (userIndex === -1) return;
+
+    await handleSend(undefined, {
+      promptOverride: newContent,
+      baseConversation: conversation.slice(0, userIndex),
+    });
+  };
+
+  return { handleSend, handleRegenerate, handleEditAndResend, lastSentPromptRef };
 }

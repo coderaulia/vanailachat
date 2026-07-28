@@ -48,7 +48,7 @@ export function useChatSession(deps: {
 
   // ── sub-hooks ──────────────────────────────────────────────────────────────
 
-  const { handleSend, lastSentPromptRef } = useSendMessage({
+  const { handleSend, handleRegenerate, handleEditAndResend, lastSentPromptRef } = useSendMessage({
     selectedModel: deps.selectedModel,
     selectedRole: deps.selectedRole,
     selectedProjectId: deps.selectedProjectId,
@@ -318,6 +318,8 @@ export function useChatSession(deps: {
     handleSaveProjectRoot,
     handlePickProjectRoot,
     handleSend,
+    handleRegenerate,
+    handleEditAndResend,
     handleAbort,
     handleResearch,
     contextPercentage,
