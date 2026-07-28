@@ -89,9 +89,13 @@
   overflow-y: auto;
   padding: 24px 0;
   display: grid;
+  /* One fixed reading column, centred in the viewport. Previously the items
+     were centred individually, so each row found its own left edge and the
+     conversation zig-zagged instead of lining up. */
+  grid-template-columns: min(840px, 100% - 32px);
+  justify-content: center;
   align-content: start;
   gap: 20px;
-  justify-items: center;
 }
 
 .chat-empty {
@@ -106,7 +110,6 @@
   display: grid;
   gap: 10px;
   width: 100%;
-  max-width: 840px;
   padding: 18px 24px;
   border-radius: 24px;
   border: 1px solid var(--border-soft);
@@ -114,16 +117,17 @@
   backdrop-filter: blur(10px);
 }
 
+/* The question is short and belongs to the reader, so it sits right and
+   narrow; the answer owns the full column. */
 .message.user {
-  margin-left: auto;
-  margin-right: 10px;
+  max-width: 76%;
+  justify-self: end;
   background: linear-gradient(180deg, rgba(201, 111, 59, 0.16) 0%, rgba(201, 111, 59, 0.08) 100%);
   border-color: rgba(201, 111, 59, 0.18);
 }
 
 .message.assistant {
-  margin-right: auto;
-  margin-left: 10px;
+  justify-self: stretch;
 }
 
 .message__meta {

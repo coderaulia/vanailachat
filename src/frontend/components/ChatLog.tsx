@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
@@ -322,7 +322,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
           </div>
         ) : (
           conversation.map((message, index) => (
-            <div key={message.id}>
+            <Fragment key={message.id}>
               {index === contextStartIndex && contextStartIndex > 0 && (
                 <div className="context-divider" role="separator">
                   <span>
@@ -350,7 +350,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
               isBusy={isCurrentChatSending}
               model={selectedModel}
               />
-            </div>
+            </Fragment>
           ))
         )}
 
