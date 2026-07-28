@@ -28,6 +28,10 @@ function backendProxyPlugin(): Plugin {
   return {
     name: 'dynamic-backend-proxy',
     configureServer(server) {
+      // Vitest loads the Vite config too. The proxy is not used there, and
+      // watchFile would otherwise leave its polling handle open after tests.
+      if (process.env.VITEST) return;
+
       // Load immediately in case backend already ran
       loadPort();
 

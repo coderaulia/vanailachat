@@ -46,12 +46,13 @@ function appWith(overrides: Record<string, unknown> = {}) {
   });
 }
 
-function chatRequest(app: ReturnType<typeof createApp>) {
+function chatRequest(app: ReturnType<typeof createApp>, projectRoot?: string) {
   return app.request('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'llama3',
+      ...(projectRoot ? { projectRoot } : {}),
       messages: [{ role: 'user', content: 'update the config' }],
       stream: true,
     }),
@@ -196,6 +197,18 @@ describe('approval gate in the agent loop', () => {
 
     expect(text).not.toContain('approval_request');
     expect(executeTool).toHaveBeenCalledWith('read_file', { path: 'a.ts' }, null);
+  });
+
+  it('uses the requested project root on the first message of a new chat', async () => {
+    const executeTool = vi.fn().mockResolvedValue('file contents');
+    const app = appWith({
+      fetchFn: toolCallingProvider('read_file', { path: 'a.ts' }),
+      executeTool: executeTool as never,
+    });
+
+    await (await chatRequest(app, 'C:\\work\\example')).text();
+
+    expect(executeTool).toHaveBeenCalledWith('read_file', { path: 'a.ts' }, 'C:\\work\\example');
   });
 
   it('honours require_tool_approval=false', async () => {

@@ -232,6 +232,9 @@ export function useSendMessage(deps: SendMessageDeps) {
           // Same id as the client's own save, which upserts onto the same row.
           assistantMessageId: assistantMessage.id,
           projectId: activeProjectId,
+          // A new chat is persisted only after the stream finishes. Send the
+          // selected root now so coding tools use it on the very first turn.
+          projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
           messages: [
             ...recentConversation.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: messageContent },

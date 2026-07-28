@@ -1,5 +1,4 @@
 import { serve } from '@hono/node-server';
-import type { Server } from 'node:http';
 import { createApp } from './app.js';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
@@ -23,7 +22,7 @@ const app = createApp();
 
 function startServer(port: number, retries: number): Promise<number> {
   return new Promise((resolvePromise, reject) => {
-    const server: Server = serve(
+    const server = serve(
       {
         fetch: app.fetch,
         port,

@@ -27,6 +27,8 @@ export interface ChatRequestBody {
   assistantMessageId?: string;
   /** Project the chat belongs to, needed when the server has to create the chat row before the client does. */
   projectId?: string;
+  /** Working directory selected by the user for local coding tools. */
+  projectRoot?: string | null;
   [key: string]: unknown;
 }
 

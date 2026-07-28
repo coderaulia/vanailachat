@@ -78,6 +78,8 @@ function validateChatRequest(body: unknown): string | null {
   if (b.skipMemory !== undefined && typeof b.skipMemory !== 'boolean') return 'skipMemory: must be boolean';
   if (b.chatId !== undefined && b.chatId !== null && typeof b.chatId !== 'string')
     return 'chatId: must be string';
+  if (b.projectRoot !== undefined && b.projectRoot !== null && typeof b.projectRoot !== 'string')
+    return 'projectRoot: must be string or null';
   if (Array.isArray(b.messages)) {
     for (const msg of b.messages) {
       if (!msg || typeof msg !== 'object') return 'messages[]: each item must be an object';
@@ -86,6 +88,12 @@ function validateChatRequest(body: unknown): string | null {
     }
   }
   return null;
+}
+
+function getRequestedProjectRoot(body: ChatRequestBody): string | null {
+  return typeof body.projectRoot === 'string' && body.projectRoot.trim()
+    ? body.projectRoot.trim()
+    : null;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -178,17 +186,21 @@ async function buildSystemPrompt(
   }
 
   // Project root + directory listing (cached per chat for 5 min)
-  if (chatRecord?.projectRoot) {
-    systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
+  const projectRoot = chatRecord?.projectRoot ?? getRequestedProjectRoot(body);
+  if (projectRoot) {
+    systemPrompt += `\n\n[Project Root]\n${projectRoot}`;
     try {
-      const listing = await getCachedDirListing(deps, chatRecord.id, chatRecord.projectRoot);
+      const cacheId = chatRecord?.id ?? body.chatId ?? projectRoot;
+      const listing = await getCachedDirListing(deps, cacheId, projectRoot);
       systemPrompt += `\n\n[Project Structure]\n${listing}`;
     } catch (error) {
       console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
     }
   }
 
-  systemPrompt += '\n\nYou can also read local project files using read_file.';
+  systemPrompt +=
+    '\n\nFor coding requests with a Project Root, inspect the project with list_directory and read_file before answering. ' +
+    'Call the provided tools; never print shell commands such as `ls` or `cat` as a substitute for a tool call.';
 
   // Enabled skills (via injected dep — no direct DB import).
   //
@@ -234,7 +246,7 @@ async function buildSystemPrompt(
     const personaPrompt = getPersonaSystemPrompt(personaId);
     if (personaPrompt) systemPrompt += `\n\n${personaPrompt}`;
   }
-  const personaToolAllowlist = getPersonaToolAllowlist(personaId);
+  const personaToolAllowlist = getPersonaToolAllowlist(personaId) ?? null;
 
   // Memory — recall against the last user message, then store it.
   //
@@ -360,6 +372,7 @@ function persistAssistantReply(
         id: chatId,
         projectId: (typeof body.projectId === 'string' && body.projectId) || 'default',
         title: content.slice(0, 50) || 'Untitled chat',
+        projectRoot: getRequestedProjectRoot(body),
       });
     }
 
@@ -385,6 +398,7 @@ async function runAgentLoop(
   tools: Record<string, unknown>[],
   deps: AppDependencies,
   chatRecord: ChatRecord | null,
+  projectRoot: string | null,
   signal: AbortSignal,
   body: ChatRequestBody,
 ): Promise<void> {
@@ -533,7 +547,7 @@ async function runAgentLoop(
 
       enqueueToolEvent(toolName, 'start');
       try {
-        const result = await deps.executeTool(toolName, toolArgs, chatRecord?.projectRoot ?? null);
+        const result = await deps.executeTool(toolName, toolArgs, projectRoot);
         currentMessages.push({ role: 'tool', content: result });
         enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '');
       } catch (toolErr) {
@@ -688,6 +702,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         typedBody.search ?? false,
         skillsAvailable,
       );
+      const projectRoot = chatRecord?.projectRoot ?? getRequestedProjectRoot(typedBody);
 
       // Non-streaming path
       if (!clientWantsStreaming) {
@@ -720,6 +735,7 @@ export function chatRouter(dependencies: AppDependencies): Hono {
               tools,
               dependencies,
               chatRecord,
+              projectRoot,
               context.req.raw.signal,
               typedBody,
             );
