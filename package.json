@@ -1,5 +1,5 @@
 {
-  "name": "ollama-vanaila-webui",
+  "name": "vanaila-chat",
   "version": "0.2.0",
   "private": true,
   "type": "module",

@@ -1,6 +1,6 @@
 # VanailaChat
 
-A modern, production-grade local AI chat interface built with **React 19**, **Hono**, and **SQLite**. Supports local models via Ollama and cloud providers (OpenAI, OpenRouter, 9Router) — all from a single self-hosted UI with a premium glassmorphic design.
+A modern, production-grade AI chat interface built with **React 19**, **Hono**, and **SQLite**. Supports local models via Ollama and cloud providers (OpenAI, OpenRouter, 9Router, or any OpenAI-compatible endpoint) — all from a single self-hosted UI with a premium glassmorphic design.
 
 ---
 

@@ -348,8 +348,11 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+/* The sidebar keeps its dark surface in both themes, so the active row stays
+   on the light-on-dark scale — --text-primary is near-black in light mode and
+   left the selected chat unreadable against its own background. */
 :root:not([data-theme="dark"]) .history-item.is-active {
-  color: var(--text-primary);
+  color: var(--text-inverse);
 }
 
 .history-item.is-active::after {
@@ -403,9 +406,12 @@
   color: var(--text-inverse);
 }
 
-:root:not([data-theme="dark"]) .history-item.is-active .history-item__title,
+:root:not([data-theme="dark"]) .history-item.is-active .history-item__title {
+  color: #f7f1e8;
+}
+
 :root:not([data-theme="dark"]) .history-item.is-active .history-item__meta {
-  color: var(--text-primary);
+  color: rgba(247, 241, 232, 0.55);
 }
 
 .sidebar-toggle {
