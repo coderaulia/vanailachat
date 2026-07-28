@@ -259,6 +259,8 @@ export function useSendMessage(deps: SendMessageDeps) {
             list_directory: 'Analyzing directory…',
             run_command: 'Executing command…',
             load_skill: 'Loading skill…',
+            write_file: 'Writing file…',
+            edit_file: 'Editing file…',
           };
           setStatusText(td.tool ? (msgs[td.tool] ?? 'Thinking…') : 'Thinking…');
           return;

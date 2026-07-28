@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -9,6 +10,9 @@ import type { Tool, ToolExecutionResult } from './toolInterface.js';
 import { toToolDefinition } from './toolInterface.js';
 
 const execFilePromise = promisify(execFile);
+
+/** Ceiling for a single tool write, so a runaway generation cannot fill the disk. */
+const MAX_WRITE_BYTES = 1024 * 1024;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -197,7 +201,17 @@ async function assertSafeOutboundUrl(rawUrl: string): Promise<void> {
 
 function isAllowedCommand(command: string, args: string[]): boolean {
   if (command === 'git') {
-    return args.length > 0 && (args[0] === 'log' || args[0] === 'status');
+    // Read-only subcommands only. Anything that rewrites history, moves refs,
+    // or touches the network (commit, push, reset, checkout, clean) stays out
+    // until there is an approval prompt in front of it.
+    const READ_ONLY_GIT = ['log', 'status', 'diff', 'show', 'branch', 'blame', 'ls-files'];
+    if (args.length === 0) return false;
+    if (!READ_ONLY_GIT.includes(args[0])) return false;
+    // `git branch -D name` deletes; only the plain listing form is allowed.
+    if (args[0] === 'branch' && args.some((arg) => arg.startsWith('-') && arg !== '-a' && arg !== '-v')) {
+      return false;
+    }
+    return true;
   }
 
   if (command === 'npm') {
@@ -246,6 +260,19 @@ async function readWithFs(
 }
 
 export class ToolService {
+  /**
+   * Resolve the directory tools operate in.
+   *
+   * projectRoot comes from the chat record — the user typed it into the
+   * project-root field — so an absolute path outside the app is honoured.
+   * Previously anything outside process.cwd() was silently rewritten to the
+   * app's own directory, which meant the tools could only ever read the chat
+   * app itself, never the repo the user was actually asking about.
+   *
+   * This is not a hole for the model to widen: tool arguments are still
+   * confined to whatever root resolves here (resolveWithinRootRealpath), and
+   * the model cannot choose the root.
+   */
   private static getExecutionRoot(projectRoot: string | null): string {
     const cwd = process.cwd();
     if (!projectRoot || !projectRoot.trim()) {
@@ -253,7 +280,14 @@ export class ToolService {
     }
 
     const resolvedRoot = path.resolve(cwd, projectRoot);
-    if (resolvedRoot !== cwd && !resolvedRoot.startsWith(cwd + path.sep)) {
+
+    // A root that does not exist (typo, stale path from another machine) falls
+    // back to cwd rather than failing every tool call with ENOENT.
+    try {
+      if (!statSync(resolvedRoot).isDirectory()) {
+        return cwd;
+      }
+    } catch {
       return cwd;
     }
 
@@ -508,6 +542,100 @@ export class ToolService {
           }
 
           return `Command failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
+    write_file: {
+      name: 'write_file',
+      description:
+        'Create a file or replace its entire contents, relative to the project root. Use edit_file for a targeted change to an existing file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to the project root' },
+          content: { type: 'string', description: 'Full file contents to write' },
+        },
+        required: ['path', 'content'],
+      },
+      execute: async (args: unknown, projectRoot: string | null) => {
+        const requestedPath = parseStringField(args, 'path');
+        const content = parseStringField(args, 'content');
+
+        if (!requestedPath) return 'Write failed: missing path';
+        if (content === null) return 'Write failed: missing content';
+        if (content.length > MAX_WRITE_BYTES) {
+          return `Write failed: content exceeds ${MAX_WRITE_BYTES} bytes`;
+        }
+
+        try {
+          const baseRoot = this.getExecutionRoot(projectRoot);
+          const safePath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+
+          const existed = await fs
+            .stat(safePath)
+            .then(() => true)
+            .catch(() => false);
+
+          await fs.mkdir(path.dirname(safePath), { recursive: true });
+          await fs.writeFile(safePath, content, 'utf-8');
+
+          const relative = path.relative(baseRoot, safePath);
+          console.log(`[TOOL] ${existed ? 'Overwrote' : 'Created'} ${relative}`);
+          return `${existed ? 'Overwrote' : 'Created'} ${relative} (${content.length} bytes)`;
+        } catch (error) {
+          return `Write failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
+    edit_file: {
+      name: 'edit_file',
+      description:
+        'Replace an exact string in an existing file. The old_string must appear exactly once, so include enough surrounding context to be unambiguous.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to the project root' },
+          old_string: { type: 'string', description: 'Exact text to replace, including indentation' },
+          new_string: { type: 'string', description: 'Replacement text' },
+        },
+        required: ['path', 'old_string', 'new_string'],
+      },
+      execute: async (args: unknown, projectRoot: string | null) => {
+        const requestedPath = parseStringField(args, 'path');
+        const oldString = parseStringField(args, 'old_string');
+        const newString = parseStringField(args, 'new_string');
+
+        if (!requestedPath) return 'Edit failed: missing path';
+        if (!oldString) return 'Edit failed: missing old_string';
+        if (newString === null) return 'Edit failed: missing new_string';
+
+        try {
+          const baseRoot = this.getExecutionRoot(projectRoot);
+          const safePath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+          const original = await fs.readFile(safePath, 'utf-8');
+
+          // Ambiguity here means silently editing the wrong line, so it is an
+          // error rather than a first-match replacement.
+          const occurrences = original.split(oldString).length - 1;
+          if (occurrences === 0) {
+            return `Edit failed: old_string not found in ${requestedPath}`;
+          }
+          if (occurrences > 1) {
+            return `Edit failed: old_string appears ${occurrences} times in ${requestedPath}; include more surrounding context to make it unique`;
+          }
+
+          const updated = original.replace(oldString, newString);
+          if (updated.length > MAX_WRITE_BYTES) {
+            return `Edit failed: result exceeds ${MAX_WRITE_BYTES} bytes`;
+          }
+
+          await fs.writeFile(safePath, updated, 'utf-8');
+
+          const relative = path.relative(baseRoot, safePath);
+          console.log(`[TOOL] Edited ${relative}`);
+          return `Edited ${relative} (${oldString.length} -> ${newString.length} bytes at one site)`;
+        } catch (error) {
+          return `Edit failed: ${getErrorMessage(error)}`;
         }
       },
     },
