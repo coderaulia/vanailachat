@@ -594,3 +594,22 @@
     padding: 16px;
   }
 }
+
+/* Checkbox rows in the Behaviour tab. */
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.settings-toggle input[type='checkbox'] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--bg-accent);
+  cursor: pointer;
+}
