@@ -62,8 +62,11 @@ Open the frontend at `http://localhost:5173`. The backend chooses an available l
 | OpenAI | `OPENAI_API_KEY` and optional `OPENAI_BASE_URL`. |
 | 9Router | `NINE_ROUTER_API_KEY` and `NINE_ROUTER_BASE_URL`. |
 | Custom OpenAI-compatible API | `CUSTOM_OPENAI_API_KEY` and `CUSTOM_OPENAI_BASE_URL`. |
+| Claude Code workspace | `ANTHROPIC_API_KEY`; opened from the Coding control in the composer. |
 
 Provider credentials may be supplied through `.env` or saved in Settings. Do not commit `.env`.
+
+The Coding control opens a Claude Code workspace. Choose a local project directory, ask for a plan or implementation, and approve every edit or command before it runs.
 
 ## Main features
 

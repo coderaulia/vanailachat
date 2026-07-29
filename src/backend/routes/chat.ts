@@ -185,23 +185,6 @@ async function buildSystemPrompt(
       '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
   }
 
-  // Project root + directory listing (cached per chat for 5 min)
-  const projectRoot = chatRecord?.projectRoot ?? getRequestedProjectRoot(body);
-  if (projectRoot) {
-    systemPrompt += `\n\n[Project Root]\n${projectRoot}`;
-    try {
-      const cacheId = chatRecord?.id ?? body.chatId ?? projectRoot;
-      const listing = await getCachedDirListing(deps, cacheId, projectRoot);
-      systemPrompt += `\n\n[Project Structure]\n${listing}`;
-    } catch (error) {
-      console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
-    }
-  }
-
-  systemPrompt +=
-    '\n\nFor coding requests with a Project Root, inspect the project with list_directory and read_file before answering. ' +
-    'Call the provided tools; never print shell commands such as `ls` or `cat` as a substitute for a tool call.';
-
   // Enabled skills (via injected dep — no direct DB import).
   //
   // Progressive disclosure: only a name + one-line summary per skill goes into
@@ -316,6 +299,12 @@ export function resolveTools(
     (t as { function?: { name?: string } }).function?.name ?? '';
 
   let tools = [...allTools];
+
+  // Filesystem and command execution now belong exclusively to Claude Code.
+  const retiredCodingTools = new Set([
+    'read_file', 'list_directory', 'search_files', 'run_command', 'write_file', 'edit_file',
+  ]);
+  tools = tools.filter((tool) => !retiredCodingTools.has(toolName(tool)));
 
   // Offering load_skill with nothing to load only invites hallucinated calls.
   if (!skillsAvailable) {

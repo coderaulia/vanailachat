@@ -116,7 +116,7 @@ Always ask for target word count, audience, and channel before drafting.`,
 /** Map role chip value → persona id */
 export const ROLE_TO_PERSONA: Record<string, string> = {
   general:  'general',
-  coding:   'coder',
+  coding:   'general',
   vision:   'vision',
   creative: 'creative',
   content:  'content',

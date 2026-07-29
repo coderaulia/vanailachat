@@ -143,7 +143,7 @@ Your writing principles:
 - **Report**: Executive summary → Findings → Analysis → Recommendations → Appendix
 
 Always ask for target word count, audience, and publication channel before drafting.`,
-    toolAllowlist: ['search_web'],
+    toolAllowlist: ['search_web', 'create_document'],
   },
 };
 
@@ -157,14 +157,13 @@ export function getPersonaSystemPrompt(personaId?: string): string {
 
 /** Get allowed tools for a persona (undefined = all tools allowed) */
 export function getPersonaToolAllowlist(personaId?: string): string[] | undefined {
-  if (!personaId || personaId === 'general') return undefined;
-  return PERSONAS[personaId]?.toolAllowlist;
+  return personaId ? (PERSONAS[personaId]?.toolAllowlist ?? []) : [];
 }
 
 /** Map frontend role chip → persona id */
 export const ROLE_TO_PERSONA: Record<string, string> = {
   general:  'general',
-  coding:   'coder',
+  coding:   'general',
   vision:   'vision',
   creative: 'creative',
   content:  'content',

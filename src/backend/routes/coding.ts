@@ -59,6 +59,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
       if (typeof body.chatId !== 'string' || typeof body.prompt !== 'string' || !body.prompt.trim()) {
         return context.json({ error: 'chatId and prompt are required' }, 400);
       }
+      const prompt = body.prompt;
       const session = dependencies.getCodingSession(body.chatId);
       if (!session) return context.json({ error: 'Create a coding workspace first' }, 400);
       const harness = dependencies.codingHarnesses.get(session.harness);
@@ -71,7 +72,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
           const emit = (event: unknown) => streamController.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
           try {
             for await (const event of harness.run({
-              prompt: body.prompt,
+              prompt,
               cwd: session.workspacePath,
               sessionId: session.harnessSessionId,
               mode,

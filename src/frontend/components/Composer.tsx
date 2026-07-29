@@ -4,6 +4,7 @@ import type { ModelRole } from '../config/modelRoles';
 import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import { ABTestModal } from './ABTestModal';
+import { ClaudeCodeWorkspace } from './ClaudeCodeWorkspace';
 import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
@@ -16,6 +17,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [isResearchEnabled, setIsResearchEnabled] = useState(false);
   const [showABTest, setShowABTest] = useState(false);
+  const [showClaudeCode, setShowClaudeCode] = useState(false);
 
   const {
     attachedFiles,
@@ -60,6 +62,10 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   /** Click a role chip: set role, sync persona, populate system prompt */
   const handleRoleClick = (role: ModelRole) => {
+    if (role === 'coding') {
+      setShowClaudeCode(true);
+      return;
+    }
     onSelectRole(role);
     const personaId = ROLE_TO_PERSONA[role] ?? 'general';
     setPersona(personaId);
@@ -368,6 +374,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
         onClose={() => setShowABTest(false)}
       />
     )}
+    {showClaudeCode && <ClaudeCodeWorkspace onClose={() => setShowClaudeCode(false)} />}
     </>
   );
 }
