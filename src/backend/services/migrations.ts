@@ -319,5 +319,23 @@ export const migrations: Migration[] = [
 
       console.log(`[DB] Deduplicated memories: ${rows.length} -> ${kept}`);
     }
+  },
+  {
+    version: 14,
+    name: 'coding_harness_sessions',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coding_sessions (
+          chat_id TEXT PRIMARY KEY,
+          harness TEXT NOT NULL,
+          harness_session_id TEXT,
+          workspace_path TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ready',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        );
+      `);
+    }
   }
 ];

@@ -9,11 +9,14 @@ import type {
   SkillRecord,
   UpdateProjectInput,
   UpsertChatInput,
+  UpsertCodingSessionInput,
   UpsertFeedbackInput,
   UpsertSkillInput,
+  CodingSessionRecord,
 } from './services/database.js';
 import type { InstalledModelMetadata } from './services/ollama.js';
 import type { ProviderRegistry } from './services/providerRegistry.js';
+import type { CodingHarnessRegistry } from './services/codingHarness.js';
 
 export interface ChatRequestBody {
   model?: string;
@@ -139,4 +142,7 @@ export interface AppDependencies {
   getAllSettings: () => Record<string, string>;
   getSetting: (key: string) => string | null;
   upsertSetting: (key: string, value: string) => void;
+  codingHarnesses: CodingHarnessRegistry;
+  getCodingSession: (chatId: string) => CodingSessionRecord | null;
+  upsertCodingSession: (input: UpsertCodingSessionInput) => CodingSessionRecord;
 }

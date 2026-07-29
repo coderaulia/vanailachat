@@ -11,6 +11,7 @@ import { NineRouterProvider } from './services/nineRouterProvider.js';
 import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
+import { CodingHarnessRegistry } from './services/codingHarness.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
 import { sanitizeError } from './helpers/index.js';
@@ -30,6 +31,7 @@ import { researchRouter } from './routes/research.js';
 import { trainingRouter } from './routes/training.js';
 import { abRouter } from './routes/ab.js';
 import { attachmentsRouter } from './routes/attachments.js';
+import { codingRouter } from './routes/coding.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -76,6 +78,9 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
+  codingHarnesses: new CodingHarnessRegistry([]),
+  getCodingSession: DatabaseService.getCodingSession.bind(DatabaseService),
+  upsertCodingSession: DatabaseService.upsertCodingSession.bind(DatabaseService),
   runInTransaction: DatabaseService.runInTransaction.bind(DatabaseService),
   // Native folder picker. Every platform ships a different one, so each is
   // tried in turn and a missing dialog just yields null (the UI still accepts
@@ -247,6 +252,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   // other expensive endpoints.
   app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
   app.route('/api/attachments', attachmentsRouter());
+  app.route('/api/coding', codingRouter(dependencies));
 
   app.route('/api/chat', chatRouter(dependencies));
 
