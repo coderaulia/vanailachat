@@ -33,6 +33,7 @@ import { trainingRouter } from './routes/training.js';
 import { abRouter } from './routes/ab.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { codingRouter } from './routes/coding.js';
+import { filesystemRouter } from './routes/filesystem.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -91,17 +92,32 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
     const { promisify } = await import('node:util');
     const execFilePromise = promisify(execFile);
 
+    // A native dialog blocks until someone clicks it. Without a cap the HTTP
+    // request hangs forever and the dialog process leaks — one stuck picker
+    // per click, invisible, with the UI showing nothing at all.
+    const DIALOG_TIMEOUT_MS = 2 * 60_000;
+
+    // FolderBrowserDialog has no owner by default, so it can open behind the
+    // browser window and look like nothing happened. A topmost owner form
+    // forces it in front.
+    const windowsScript = [
+      'Add-Type -AssemblyName System.Windows.Forms',
+      '$owner = New-Object System.Windows.Forms.Form',
+      '$owner.TopMost = $true',
+      '$owner.ShowInTaskbar = $false',
+      '$owner.Opacity = 0',
+      '$owner.Show()',
+      "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$dialog.Description = 'Select the folder Claude Code should work in'",
+      '$dialog.ShowNewFolderButton = $true',
+      "if ($dialog.ShowDialog($owner) -eq 'OK') { Write-Output $dialog.SelectedPath }",
+      '$owner.Close()',
+      '$owner.Dispose()',
+    ].join('; ');
+
     const candidates: Array<[string, string[]]> =
       process.platform === 'win32'
-        ? [[
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-STA',
-              '-Command',
-              "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select Project Root'; if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
-            ],
-          ]]
+        ? [['powershell.exe', ['-NoProfile', '-STA', '-Command', windowsScript]]]
         : process.platform === 'darwin'
           ? [[
               'osascript',
@@ -114,11 +130,20 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
 
     for (const [binary, args] of candidates) {
       try {
-        const { stdout } = await execFilePromise(binary, args);
+        const { stdout } = await execFilePromise(binary, args, {
+          timeout: DIALOG_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+          windowsHide: false,
+        });
         const picked = stdout.trim();
         if (picked) return picked;
-      } catch {
-        // Dialog unavailable or cancelled — try the next candidate.
+      } catch (error) {
+        // Cancelling the dialog exits non-zero, which is not an error worth
+        // reporting; a missing dialog binary just means trying the next one.
+        const failure = error as { killed?: boolean; code?: string };
+        if (failure?.killed || failure?.code === 'ETIMEDOUT') {
+          console.warn(`[PICKER] ${binary} timed out after ${DIALOG_TIMEOUT_MS}ms`);
+        }
       }
     }
     return null;
@@ -274,6 +299,9 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
   app.route('/api/attachments', attachmentsRouter());
   app.route('/api/coding', codingRouter(dependencies));
+  // Directory listing for the in-app folder picker (names only, no contents).
+  app.use('/api/fs/*', rateLimiter({ maxRequests: 120, windowMs: 60_000 }));
+  app.route('/api/fs', filesystemRouter());
 
   app.route('/api/chat', chatRouter(dependencies));
 

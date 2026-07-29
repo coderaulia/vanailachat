@@ -272,27 +272,34 @@ export function useChatSession(deps: {
       .catch(err => { console.error(err); deps.setStatusText('Failed to save project root'); });
   };
 
-  const handlePickProjectRoot = async () => {
+  /**
+   * Apply a workspace folder chosen in the in-app picker.
+   *
+   * This used to shell out to a native dialog, which the server could not
+   * reliably display — the request hung and the button looked dead.
+   */
+  const handlePickProjectRoot = async (picked: string) => {
+    const path = picked.trim();
+    if (!path) return;
+
+    setProjectRoot(path);
+    deps.setStatusText(`Workspace: ${path}`);
+
+    const chatId = currentChatIdRef.current;
+    if (!chatId) return;
+
+    const updatedAt = Date.now();
+    deps.updateHistories(prev => {
+      const chat = prev[chatId];
+      if (!chat) return prev;
+      return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
+    });
+
     try {
-      const response = await fetch('/api/pick-directory', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to pick directory');
-      const { path } = await response.json() as { path?: string };
-      if (path) {
-        setProjectRoot(path);
-        const chatId = currentChatIdRef.current;
-        if (chatId) {
-          const updatedAt = Date.now();
-          deps.updateHistories(prev => {
-            const chat = prev[chatId];
-            if (!chat) return prev;
-            return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
-          });
-          void deps.patchChat(chatId, { projectRoot: path, updatedAt });
-        }
-      }
+      await deps.patchChat(chatId, { projectRoot: path, updatedAt });
     } catch (error) {
       console.error(error);
-      deps.setStatusText('Failed to open directory picker');
+      deps.setStatusText('Could not save the workspace folder');
     }
   };
 
