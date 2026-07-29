@@ -9,6 +9,7 @@ interface AllSettings {
   nine_router_api_key?: string;
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
+  anthropic_api_key?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
@@ -102,6 +103,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
 
+  // Claude Code (separate from the chat provider — it is its own agent)
+  const [anthropicKey, setAnthropicKey] = useState('');
+
   // Instructions
   const [baseInstructions, setBaseInstructions] = useState('');
 
@@ -159,6 +163,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         }
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
+        if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
@@ -315,6 +320,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, customBaseUrl, customKey],
   );
 
+  const saveAnthropicKey = useCallback(
+    () => persist([['anthropic_api_key', anthropicKey.trim()]]),
+    [persist, anthropicKey],
+  );
+
   // Profile fields save even when emptied, so clearing one actually sticks.
   const saveUserName = useCallback(
     () => persist([['user_name', userName.trim()]]),
@@ -374,6 +384,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(nineRouterKey, saveNineRouterConfig, ready);
   useAutosave(customBaseUrl, saveCustomConfig, ready);
   useAutosave(customKey, saveCustomConfig, ready);
+  useAutosave(anthropicKey, saveAnthropicKey, ready);
   useAutosave(userName, saveUserName, ready);
   useAutosave(userRole, saveUserRole, ready);
   useAutosave(baseInstructions, saveBaseInstructions, ready);
@@ -585,6 +596,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       />
                     </div>
                   )}
+
+                  {/* Claude Code is a coding agent, not one of the chat
+                      providers above, so it gets its own key regardless of
+                      which provider tab is selected. */}
+                  <div className="settings-field">
+                    <label className="settings-label">Anthropic API Key <span className="settings-optional">(for Claude Code)</span></label>
+                    <input
+                      className="settings-input"
+                      type="password"
+                      value={anthropicKey}
+                      onChange={(e) => setAnthropicKey(e.target.value)}
+                      onBlur={saveAnthropicKey}
+                      placeholder="sk-ant-..."
+                    />
+                    <p className="settings-hint">
+                      Powers the Coding role. Get a key at{' '}
+                      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>.
+                      The ANTHROPIC_API_KEY environment variable is used when this is empty.
+                    </p>
+                  </div>
 
                   <button
                     type="button"
