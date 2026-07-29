@@ -17,7 +17,7 @@ const dirListingCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL_MS = 5 * 60_000;
 const DIR_CACHE_MAX_ENTRIES = 200;
 
-async function getCachedDirListing(
+async function _getCachedDirListing(
   deps: AppDependencies,
   chatId: string,
   projectRoot: string,
