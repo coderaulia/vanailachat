@@ -12,6 +12,7 @@ import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
 import { CodingHarnessRegistry } from './services/codingHarness.js';
+import { ClaudeCodeHarness } from './services/claudeCodeHarness.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
 import { sanitizeError } from './helpers/index.js';
@@ -78,7 +79,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
-  codingHarnesses: new CodingHarnessRegistry([]),
+  codingHarnesses: new CodingHarnessRegistry([new ClaudeCodeHarness()]),
   getCodingSession: DatabaseService.getCodingSession.bind(DatabaseService),
   upsertCodingSession: DatabaseService.upsertCodingSession.bind(DatabaseService),
   runInTransaction: DatabaseService.runInTransaction.bind(DatabaseService),

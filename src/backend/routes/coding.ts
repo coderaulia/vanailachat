@@ -53,5 +53,50 @@ export function codingRouter(dependencies: AppDependencies): Hono {
     }
   });
 
+  app.post('/run', async (context) => {
+    try {
+      const body = await context.req.json() as { chatId?: unknown; prompt?: unknown; mode?: unknown };
+      if (typeof body.chatId !== 'string' || typeof body.prompt !== 'string' || !body.prompt.trim()) {
+        return context.json({ error: 'chatId and prompt are required' }, 400);
+      }
+      const session = dependencies.getCodingSession(body.chatId);
+      if (!session) return context.json({ error: 'Create a coding workspace first' }, 400);
+      const harness = dependencies.codingHarnesses.get(session.harness);
+      if (!harness) return context.json({ error: 'Coding harness is unavailable' }, 503);
+      const mode = body.mode === 'plan' ? 'plan' : 'implement';
+      const controller = new AbortController();
+      const stream = new ReadableStream({
+        async start(streamController) {
+          const encoder = new TextEncoder();
+          const emit = (event: unknown) => streamController.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          try {
+            for await (const event of harness.run({
+              prompt: body.prompt,
+              cwd: session.workspacePath,
+              sessionId: session.harnessSessionId,
+              mode,
+              signal: controller.signal,
+            })) {
+              if (event.type === 'session') {
+                dependencies.upsertCodingSession({ ...session, harnessSessionId: event.sessionId, status: 'running' });
+              }
+              emit({ coding_event: event });
+            }
+            dependencies.upsertCodingSession({ ...session, status: 'ready' });
+            streamController.close();
+          } catch (error) {
+            dependencies.upsertCodingSession({ ...session, status: 'error' });
+            emit({ error: sanitizeError(error, 'Claude Code run failed') });
+            streamController.close();
+          }
+        },
+        cancel() { controller.abort(); },
+      });
+      return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' } });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'Unable to start Claude Code') }, 500);
+    }
+  });
+
   return app;
 }
