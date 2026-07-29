@@ -1,13 +1,21 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { createApp } from '../app.js';
+import { providerSupportsTools } from '../routes/chat.js';
 import { OllamaService } from '../services/ollama.js';
 import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
 
 /** Upstream that asks for a tool call on the first turn, then answers. */
 function toolCallingProvider(tool: string, args: Record<string, unknown>) {
   let turn = 0;
-  return vi.fn<typeof fetch>().mockImplementation(async () => {
+  return vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
     turn += 1;
+    if (turn === 2) {
+      const request = JSON.parse(String(init?.body)) as {
+        messages: Array<{ role: string; tool_call_id?: string }>;
+      };
+      const toolResult = request.messages.find((message) => message.role === 'tool');
+      expect(toolResult?.tool_call_id).toBe('c1');
+    }
     const body =
       turn === 1
         ? [
@@ -24,6 +32,32 @@ function toolCallingProvider(tool: string, args: Record<string, unknown>) {
             JSON.stringify({ message: { role: 'assistant', content: 'done' } }),
             JSON.stringify({ done: true }),
           ];
+
+    return new Response(body.join('\n') + '\n', {
+      status: 200,
+      headers: { 'Content-Type': 'application/x-ndjson' },
+    });
+  });
+}
+
+/** Upstream that prints a command as text, then answers after receiving results. */
+function textualCommandProvider(commandText: string) {
+  let turn = 0;
+  return vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+    turn += 1;
+    const content = turn === 1 ? commandText : 'I inspected the files and found the cause.';
+    const body = [
+      JSON.stringify({ message: { role: 'assistant', content }, done: false }),
+      JSON.stringify({ done: true }),
+    ];
+
+    if (turn === 2) {
+      const request = JSON.parse(String(init?.body)) as {
+        messages: Array<{ role: string; content: string; tool_calls?: unknown[] }>;
+      };
+      expect(request.messages.at(-1)?.content).toContain('Automatic read-only project inspection results');
+      expect(request.messages.some((message) => message.tool_calls?.length === 0)).toBe(false);
+    }
 
     return new Response(body.join('\n') + '\n', {
       status: 200,
@@ -60,6 +94,12 @@ function chatRequest(app: ReturnType<typeof createApp>, projectRoot?: string) {
 }
 
 describe('approval helpers', () => {
+  it('offers tools to OpenAI-compatible providers without capability metadata', () => {
+    expect(providerSupportsTools('custom', [])).toBe(true);
+    expect(providerSupportsTools('9router', [])).toBe(true);
+    expect(providerSupportsTools('ollama', [])).toBe(false);
+  });
+
   it('gates only the tools that change state', () => {
     expect(isMutatingTool('write_file')).toBe(true);
     expect(isMutatingTool('edit_file')).toBe(true);
@@ -199,6 +239,34 @@ describe('approval gate in the agent loop', () => {
     expect(executeTool).toHaveBeenCalledWith('read_file', { path: 'a.ts' }, null);
   });
 
+  it('streams a generated document link even if the model does not repeat it', async () => {
+    const descriptor = {
+      kind: 'generated_file',
+      name: 'offer-letter.docx',
+      url: '/api/attachments/generated/token--offer-letter.docx',
+      bytes: 1234,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+    const executeTool = vi.fn().mockResolvedValue(JSON.stringify(descriptor));
+    const app = appWith({
+      fetchFn: toolCallingProvider('create_document', {
+        filename: 'offer-letter.docx',
+        content: 'Welcome',
+      }),
+      executeTool: executeTool as never,
+    });
+
+    const responseText = await (await chatRequest(app)).text();
+
+    expect(responseText).toContain('"generated_file"');
+    expect(responseText).toContain(descriptor.url);
+    expect(executeTool).toHaveBeenCalledWith(
+      'create_document',
+      { filename: 'offer-letter.docx', content: 'Welcome' },
+      null,
+    );
+  });
+
   it('uses the requested project root on the first message of a new chat', async () => {
     const executeTool = vi.fn().mockResolvedValue('file contents');
     const app = appWith({
@@ -209,6 +277,55 @@ describe('approval gate in the agent loop', () => {
     await (await chatRequest(app, 'C:\\work\\example')).text();
 
     expect(executeTool).toHaveBeenCalledWith('read_file', { path: 'a.ts' }, 'C:\\work\\example');
+  });
+
+  it('executes printed read commands for models without native tool support', async () => {
+    const executeTool = vi.fn().mockResolvedValue('package contents');
+    const fetchFn = textualCommandProvider(
+      'Let me inspect it.\n\ncd "C:\\work\\example" && cat package.json',
+    );
+    const app = appWith({
+      fetchFn,
+      executeTool: executeTool as never,
+      getModelDetails: async () => ({ capabilities: ['chat'] }),
+    });
+
+    const responseText = await (await chatRequest(app, 'C:\\work\\example')).text();
+
+    expect(responseText).toContain('I inspected the files and found the cause.');
+    expect(responseText).not.toContain('cat package.json');
+    expect(executeTool).toHaveBeenCalledWith(
+      'read_file',
+      { path: 'package.json' },
+      'C:\\work\\example',
+    );
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const firstRequest = JSON.parse(String((fetchFn.mock.calls[0][1] as RequestInit).body)) as {
+      tools?: unknown[];
+    };
+    expect(firstRequest.tools).toBeUndefined();
+  });
+
+  it('recovers when a model announces inspection without calling a tool', async () => {
+    const executeTool = vi.fn().mockResolvedValue('package.json\nsrc\nREADME.md');
+    const fetchFn = textualCommandProvider(
+      '<think></think>Let me use the proper tools to read the key files.',
+    );
+    const app = appWith({
+      fetchFn,
+      executeTool: executeTool as never,
+      getModelDetails: async () => ({ capabilities: ['chat'] }),
+    });
+
+    const responseText = await (await chatRequest(app, 'C:\\work\\example')).text();
+
+    expect(responseText).toContain('I inspected the files and found the cause.');
+    expect(responseText).not.toContain('Let me use the proper tools');
+    expect(executeTool).toHaveBeenCalledWith(
+      'list_directory',
+      { path: '.', maxDepth: 3 },
+      'C:\\work\\example',
+    );
   });
 
   it('honours require_tool_approval=false', async () => {

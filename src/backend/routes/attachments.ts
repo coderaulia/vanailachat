@@ -1,12 +1,39 @@
 import { Hono } from 'hono';
 import { sanitizeError } from '../helpers/index.js';
 import { extractDocumentText } from '../services/documentExtractor.js';
+import {
+  generatedDocumentsDirectory,
+  readGeneratedDocument,
+} from '../services/generatedDocuments.js';
 
 /** Reject oversized uploads before reading them into memory. */
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-export function attachmentsRouter(): Hono {
+export function attachmentsRouter(
+  generatedDirectory = generatedDocumentsDirectory(),
+): Hono {
   const app = new Hono();
+
+  /** Download a generated file by its opaque, server-issued token. */
+  app.get('/generated/:token', async (context) => {
+    try {
+      const { descriptor, data } = await readGeneratedDocument(
+        context.req.param('token'),
+        generatedDirectory,
+      );
+      context.header('Content-Type', descriptor.mimeType);
+      context.header('Content-Disposition', `attachment; filename="${descriptor.name}"`);
+      context.header('Content-Length', String(data.byteLength));
+      context.header('Cache-Control', 'private, no-store');
+      const body = data.buffer.slice(
+        data.byteOffset,
+        data.byteOffset + data.byteLength,
+      ) as ArrayBuffer;
+      return context.body(body);
+    } catch {
+      return context.json({ error: 'Generated document not found' }, 404);
+    }
+  });
 
   /**
    * Extract readable text from an uploaded document.

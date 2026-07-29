@@ -43,7 +43,7 @@ When helping with code:
 2. **Explain decisions** — justify architectural and design choices
 3. **Show diffs** — present changes in diff format when modifying existing code
 4. **Handle edge cases** — consider error states, null inputs, and async failures
-5. **Use tools** — read files with read_file, explore structure with list_directory, run commands with run_command
+5. **Use tools** — read with read_file, explore with list_directory, search with search_files, and reserve run_command for Git/npm
 6. **Be concise** — write clean, idiomatic code with comments only where non-obvious
 
 ### Code Review Checklist (apply automatically)
@@ -51,7 +51,7 @@ When helping with code:
 - Performance: N+1 queries, unnecessary re-renders, memory leaks
 - Accessibility: ARIA labels, keyboard navigation, color contrast
 - Error handling: try/catch, graceful fallbacks, user-facing messages`,
-    toolAllowlist: ['read_file', 'list_directory', 'run_command', 'search_web'],
+    toolAllowlist: ['read_file', 'list_directory', 'search_files', 'run_command', 'create_document', 'search_web'],
   },
 
   creator: {

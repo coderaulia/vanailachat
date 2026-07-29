@@ -13,6 +13,57 @@ export interface OpenAIUsage {
   total_tokens?: number;
 }
 
+interface OpenAICompatibleMessage {
+  role: string;
+  content: unknown;
+  tool_call_id?: string;
+  tool_calls?: unknown;
+}
+
+/**
+ * Keep compatibility payloads strict. Some gateways reject an explicitly
+ * empty tool_calls array even though JavaScript treats that array as truthy.
+ */
+export function toOpenAICompatibleMessage(
+  message: OpenAICompatibleMessage,
+): Record<string, unknown> {
+  const content = message.role === 'tool' && typeof message.content !== 'string'
+    ? JSON.stringify(message.content ?? {})
+    : message.content;
+  const result: Record<string, unknown> = {
+    role: message.role,
+    content,
+  };
+
+  if (message.tool_call_id) result.tool_call_id = message.tool_call_id;
+  if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+    result.tool_calls = message.tool_calls.map((toolCall) => {
+      if (!toolCall || typeof toolCall !== 'object') return toolCall;
+      const record = toolCall as Record<string, unknown>;
+      const fn = record.function;
+      if (!fn || typeof fn !== 'object') return toolCall;
+
+      const functionRecord = fn as Record<string, unknown>;
+      const args = functionRecord.arguments;
+      return {
+        ...record,
+        function: {
+          ...functionRecord,
+          // OpenAI-compatible APIs require a JSON-encoded string here. The
+          // internal/Ollama representation uses an object for execution.
+          arguments: typeof args === 'string' ? args : JSON.stringify(args ?? {}),
+        },
+      };
+    });
+  }
+
+  return result;
+}
+
+export function hasToolCalls(value: unknown): value is unknown[] {
+  return Array.isArray(value) && value.length > 0;
+}
+
 /**
  * Map OpenAI usage onto the Ollama-shaped fields the frontend reads, keeping
  * the original object too so either accessor works.
@@ -64,6 +115,11 @@ export async function postChatCompletions(options: {
   let response = await send(requestBody);
 
   if (!response.ok && response.status === 400 && streaming) {
+    const errorText = await response.clone().text();
+    const streamOptionsRejected = /stream[_ -]?options|include[_ -]?usage/i.test(errorText);
+    if (!streamOptionsRejected) {
+      throw new Error(`${providerLabel} API error: ${response.status} ${errorText}`);
+    }
     console.warn(
       `[${providerLabel}] stream_options rejected (400); retrying without usage reporting`,
     );

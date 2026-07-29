@@ -126,9 +126,22 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
 };
 
 /** Build a fresh ProviderRegistry using injected fetchFn and getBaseUrl so tests can mock them. */
-function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string): ProviderRegistry {
+function buildProviderRegistry(
+  fetchFn: typeof fetch,
+  getBaseUrl: () => string,
+  getInstalledModels: () => Promise<string[]>,
+  getModelDetails: (modelName: string) => Promise<unknown>,
+): ProviderRegistry {
   const registry = new ProviderRegistry();
-  registry.register(new OllamaProvider(fetchFn, getBaseUrl));
+  registry.register(
+    new OllamaProvider(
+      fetchFn,
+      getBaseUrl,
+      getInstalledModels,
+      async (modelName) =>
+        (await getModelDetails(modelName)) as Record<string, unknown> | null,
+    ),
+  );
   try {
     registry.register(new OpenAIProvider());
   } catch {
@@ -150,7 +163,14 @@ function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string):
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   // Merge non-registry deps first so fetchFn override is visible when building registry
   const baseDeps = { ...defaultDependencies, ...overrides };
-  const registry = overrides.providerRegistry ?? buildProviderRegistry(baseDeps.fetchFn, baseDeps.getBaseUrl);
+  const registry =
+    overrides.providerRegistry ??
+    buildProviderRegistry(
+      baseDeps.fetchFn,
+      baseDeps.getBaseUrl,
+      baseDeps.getInstalledModels,
+      baseDeps.getModelDetails,
+    );
   const dependencies: AppDependencies = { ...baseDeps, providerRegistry: registry };
 
   const app = new Hono();

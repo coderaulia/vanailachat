@@ -4,7 +4,6 @@ import type { ModelRole } from '../config/modelRoles';
 import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import { ABTestModal } from './ABTestModal';
-import { ClaudeCodeWorkspace } from './ClaudeCodeWorkspace';
 import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
@@ -17,7 +16,6 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [isResearchEnabled, setIsResearchEnabled] = useState(false);
   const [showABTest, setShowABTest] = useState(false);
-  const [showClaudeCode, setShowClaudeCode] = useState(false);
 
   const {
     attachedFiles,
@@ -62,10 +60,6 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   /** Click a role chip: set role, sync persona, populate system prompt */
   const handleRoleClick = (role: ModelRole) => {
-    if (role === 'coding') {
-      setShowClaudeCode(true);
-      return;
-    }
     onSelectRole(role);
     const personaId = ROLE_TO_PERSONA[role] ?? 'general';
     setPersona(personaId);
@@ -129,13 +123,13 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
           {/* Project root — coding role only */}
           {selectedRole === 'coding' ? (
             <div className="project-root-field">
-              <label>Project Root</label>
+              <label>Workspace</label>
               <input
                 className="project-root-input"
                 value={projectRoot}
                 onChange={(event) => onSetProjectRoot(event.target.value)}
                 onBlur={onSaveProjectRoot}
-                placeholder="/absolute/path/to/project"
+                placeholder="Pick a folder for Claude Code to work in"
               />
               <button
                 type="button"
@@ -374,7 +368,6 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
         onClose={() => setShowABTest(false)}
       />
     )}
-    {showClaudeCode && <ClaudeCodeWorkspace onClose={() => setShowClaudeCode(false)} />}
     </>
   );
 }

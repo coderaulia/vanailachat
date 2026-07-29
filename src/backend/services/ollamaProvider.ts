@@ -12,10 +12,22 @@ export class OllamaProvider implements LLMProvider {
 
   private fetchFn: typeof fetch;
   private baseUrlFn: () => string;
+  private listModelsFn: () => Promise<string[]>;
+  private getModelDetailsFn: (modelName: string) => Promise<Record<string, unknown> | null>;
 
-  constructor(fetchImpl?: typeof fetch, getBaseUrl?: () => string) {
+  constructor(
+    fetchImpl?: typeof fetch,
+    getBaseUrl?: () => string,
+    listModels?: () => Promise<string[]>,
+    getModelDetails?: (modelName: string) => Promise<Record<string, unknown> | null>,
+  ) {
     this.fetchFn = fetchImpl ?? fetch;
     this.baseUrlFn = getBaseUrl ?? (() => OllamaService.getBaseUrl());
+    this.listModelsFn = listModels ?? (() => OllamaService.getInstalledModels());
+    this.getModelDetailsFn =
+      getModelDetails ??
+      (async (modelName) =>
+        OllamaService.getModelDetails(modelName) as unknown as Record<string, unknown> | null);
   }
 
   private getBaseUrl(): string {
@@ -23,13 +35,12 @@ export class OllamaProvider implements LLMProvider {
   }
 
   async listModels(): Promise<string[]> {
-    return OllamaService.getInstalledModels();
+    return this.listModelsFn();
   }
 
   async getModelDetails(modelName: string): Promise<Record<string, unknown> | null> {
     try {
-      const details = await OllamaService.getModelDetails(modelName);
-      return details as unknown as Record<string, unknown> | null;
+      return await this.getModelDetailsFn(modelName);
     } catch {
       return null;
     }

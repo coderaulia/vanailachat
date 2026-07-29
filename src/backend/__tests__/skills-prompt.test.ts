@@ -111,10 +111,21 @@ describe('load_skill availability', () => {
   });
 
   it('survives a persona tool allowlist that omits it', () => {
-    const tools = resolveTools(allTools(), true, ['read_file'], false, true);
+    // read_url stands in for "a tool the persona does allow". The filesystem
+    // and command tools are no longer offered here at all — Claude Code owns
+    // that surface now — so they cannot be used to make this assertion.
+    const tools = resolveTools(allTools(), true, ['read_url'], false, true);
     expect(names(tools)).toContain('load_skill');
-    expect(names(tools)).toContain('read_file');
-    expect(names(tools)).not.toContain('run_command');
+    expect(names(tools)).toContain('read_url');
+    expect(names(tools)).not.toContain('create_document');
+  });
+
+  it('no longer offers the retired filesystem and command tools', () => {
+    const offered = names(resolveTools(allTools(), true, null, true, true));
+
+    for (const retired of ['read_file', 'list_directory', 'search_files', 'run_command', 'write_file', 'edit_file']) {
+      expect(offered).not.toContain(retired);
+    }
   });
 });
 

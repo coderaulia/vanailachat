@@ -5,6 +5,10 @@ import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/per
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
 import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
+import {
+  isUnverifiedGeneratedFileClaim,
+  parseGeneratedDocumentResult,
+} from '../services/generatedDocuments.js';
 
 // ── caches ────────────────────────────────────────────────────────────────────
 
@@ -330,7 +334,18 @@ export function resolveTools(
   return tools;
 }
 
-type AnyMessage = { role: string; content: unknown; tool_calls?: unknown[] };
+/** OpenAI-compatible gateways commonly omit capability metadata entirely. */
+export function providerSupportsTools(providerId: string, capabilities: string[]): boolean {
+  if (capabilities.includes('tools')) return true;
+  return ['openai', 'custom', '9router'].includes(providerId);
+}
+
+type AnyMessage = {
+  role: string;
+  content: unknown;
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+};
 
 /**
  * Write the finished assistant reply straight from the server.
@@ -403,6 +418,8 @@ async function runAgentLoop(
   let iteration = 0;
   const maxIterations = 7;
   const toolCallHistory = new Set<string>();
+  const generatedFiles: Array<{ name: string; url: string }> = [];
+  let fileClaimCorrections = 0;
 
   const enqueue = (obj: unknown) => {
     try {
@@ -463,9 +480,12 @@ async function runAgentLoop(
           console.warn('[CHAT] Skipping malformed stream line:', parseError instanceof Error ? parseError.message : 'unknown');
           continue;
         }
-        if (data.message?.tool_calls) {
+        if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
           isToolCall = true;
-          assistantMessage.tool_calls = data.message.tool_calls as typeof assistantMessage.tool_calls;
+          assistantMessage.tool_calls = data.message.tool_calls.map((toolCall, index) => ({
+            ...(toolCall as typeof assistantMessage.tool_calls[number]),
+            id: (toolCall as { id?: string }).id || `call_${iteration}_${index}`,
+          }));
         }
         if (data.message?.content) assistantMessage.content += data.message.content;
         if (!isToolCall) controller.enqueue(encoder.encode(line + '\n'));
@@ -474,10 +494,15 @@ async function runAgentLoop(
 
     if (streamBuffer.trim()) {
       try {
-        const data = JSON.parse(streamBuffer);
-        if (data.message?.tool_calls) {
+        const data = JSON.parse(streamBuffer) as {
+          message?: { content?: string; tool_calls?: unknown[] };
+        };
+        if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
           isToolCall = true;
-          assistantMessage.tool_calls = data.message.tool_calls;
+          assistantMessage.tool_calls = data.message.tool_calls.map((toolCall, index) => ({
+            ...(toolCall as typeof assistantMessage.tool_calls[number]),
+            id: (toolCall as { id?: string }).id || `call_${iteration}_${index}`,
+          }));
         }
         if (!isToolCall) controller.enqueue(encoder.encode(streamBuffer + '\n'));
       } catch (parseError) {
@@ -486,7 +511,31 @@ async function runAgentLoop(
     }
 
     if (!isToolCall) {
-      persistAssistantReply(deps, chatRecord, body, assistantMessage.content);
+      if (
+        generatedFiles.length === 0 &&
+        fileClaimCorrections < 2 &&
+        isUnverifiedGeneratedFileClaim(assistantMessage.content)
+      ) {
+        fileClaimCorrections++;
+        currentMessages.push({ role: 'assistant', content: assistantMessage.content });
+        currentMessages.push({
+          role: 'user',
+          content:
+            '[Application correction] No file exists because create_document was not called. ' +
+            'Do not mention a sandbox or imaginary server file. If the user requested a document, call create_document now with the complete document content; otherwise clearly say that no file was generated.',
+        });
+        continue;
+      }
+
+      const generatedLinks = generatedFiles
+        .map((file) => `[Download ${file.name}](${file.url})`)
+        .join('\n\n');
+      persistAssistantReply(
+        deps,
+        chatRecord,
+        body,
+        [generatedLinks, assistantMessage.content].filter(Boolean).join('\n\n'),
+      );
       controller.close();
       return;
     }
@@ -497,6 +546,7 @@ async function runAgentLoop(
     for (const tc of assistantMessage.tool_calls) {
       const toolName = tc.function?.name ?? 'unknown';
       const toolArgs = tc.function?.arguments;
+      const toolCallId = tc.id as string;
 
       // Sort keys to prevent dedup misses from key-order differences
       const callKey = `${toolName}:${JSON.stringify(toolArgs ?? {}, Object.keys(toolArgs ?? {}).sort())}`;
@@ -528,6 +578,7 @@ async function runAgentLoop(
           currentMessages.push({
             role: 'tool',
             content: `The user declined this ${toolName} call. Do not retry it; ask what to do differently.`,
+            tool_call_id: toolCallId,
           });
           enqueueToolEvent(toolName, 'error', 'Declined by user');
           continue;
@@ -537,11 +588,20 @@ async function runAgentLoop(
       enqueueToolEvent(toolName, 'start');
       try {
         const result = await deps.executeTool(toolName, toolArgs, projectRoot);
-        currentMessages.push({ role: 'tool', content: result });
+        currentMessages.push({ role: 'tool', content: result, tool_call_id: toolCallId });
+        const generatedFile = parseGeneratedDocumentResult(result);
+        if (generatedFile) {
+          generatedFiles.push({ name: generatedFile.name, url: generatedFile.url });
+          enqueue({ generated_file: generatedFile });
+        }
         enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '');
       } catch (toolErr) {
         const errMsg = toolErr instanceof Error ? toolErr.message : 'Unknown error';
-        currentMessages.push({ role: 'tool', content: `Error: ${errMsg}` });
+        currentMessages.push({
+          role: 'tool',
+          content: `Error: ${errMsg}`,
+          tool_call_id: toolCallId,
+        });
         enqueueToolEvent(toolName, 'error', errMsg);
       }
     }
@@ -684,13 +744,15 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         capabilities?: string[];
       } | null;
       const capabilities = modelDetails?.capabilities ?? [];
-      const tools = resolveTools(
-        dependencies.getToolDefinitions() as Record<string, unknown>[],
-        capabilities.includes('tools'),
-        personaToolAllowlist,
-        typedBody.search ?? false,
-        skillsAvailable,
-      );
+      const tools = typedBody.skipMemory
+        ? []
+        : resolveTools(
+            dependencies.getToolDefinitions() as Record<string, unknown>[],
+            providerSupportsTools(provider.id, capabilities),
+            personaToolAllowlist,
+            typedBody.search ?? false,
+            skillsAvailable,
+          );
       const projectRoot = chatRecord?.projectRoot ?? getRequestedProjectRoot(typedBody);
 
       // Non-streaming path

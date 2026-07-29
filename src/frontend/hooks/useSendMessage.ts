@@ -219,9 +219,46 @@ export function useSendMessage(deps: SendMessageDeps) {
     let assistantContentForSave = '';
     let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
 
+    // The coding role drives Claude Code, which owns the filesystem and runs
+    // in a workspace rather than off the conversation history. It streams the
+    // same NDJSON envelope, so everything downstream is shared.
+    const workspacePath = (existingChat?.projectRoot ?? projectRoot).trim();
+    const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
+
     try {
+      if (useCodingHarness) {
+        // The session records which directory the harness may touch. It has to
+        // exist before /run, and the chat row has to exist before the session
+        // because coding_sessions.chat_id is a foreign key.
+        await upsertChat({
+          id: chatId,
+          projectId: activeProjectId,
+          title,
+          model: resolvedModel,
+          projectRoot: workspacePath,
+          role: 'coding',
+        } as Parameters<typeof upsertChat>[0]);
+
+        const sessionResponse = await fetch('/api/coding/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId, harness: 'claude-code', workspacePath }),
+        });
+        if (!sessionResponse.ok) {
+          const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
+          throw new Error(detail?.error ?? 'Could not open the coding workspace');
+        }
+      }
+
       const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
-      const response = await fetch('/api/chat', {
+      const response = useCodingHarness
+        ? await fetch('/api/coding/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: abortController.signal,
+            body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement' }),
+          })
+        : await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
@@ -269,11 +306,57 @@ export function useSendMessage(deps: SendMessageDeps) {
           setStatusText('Thinking…');
           return;
         }
+
+        // Claude Code speaks its own envelope: prose arrives as text events and
+        // each tool use is announced separately, so the transcript shows what
+        // it did rather than going silent between edits.
+        const coding = (data as unknown as {
+          coding_event?: { type?: string; text?: string; name?: string };
+        }).coding_event;
+        if (coding) {
+          if (coding.type === 'text' && coding.text) {
+            fullContent += coding.text;
+            assistantContentForSave = fullContent;
+          } else if (coding.type === 'tool' && coding.name) {
+            setStatusText(`Claude Code: ${coding.name}`);
+          }
+
+          if (rafId === null) {
+            rafId = requestAnimationFrame(() => {
+              rafId = null;
+              if (currentChatIdRef.current === chatId) {
+                setConversation(prev => {
+                  if (prev.length === 0) return prev;
+                  const updated = [...prev];
+                  const last = updated.length - 1;
+                  if (updated[last]?.role === 'assistant')
+                    updated[last] = { ...updated[last], content: fullContent };
+                  return updated;
+                });
+              }
+            });
+          }
+          return;
+        }
+
+        // The harness reports failures inline rather than as an HTTP status,
+        // because the stream has already started by then.
+        const codingError = (data as unknown as { error?: string }).error;
+        if (codingError) {
+          fullContent += `
+
+**Claude Code error:** ${codingError}`;
+          assistantContentForSave = fullContent;
+          setStatusText(`Claude Code: ${codingError}`);
+          return;
+        }
         // Tool event — update status only
         if ((data as unknown as { tool_event?: boolean }).tool_event) {
           const td = data as unknown as { tool?: string };
           const msgs: Record<string, string> = {
+            create_document: 'Creating document...',
             read_file: 'Reading file…',
+            search_files: 'Searching project files…',
             search_web: 'Searching the web…',
             list_directory: 'Analyzing directory…',
             run_command: 'Executing command…',
@@ -283,6 +366,18 @@ export function useSendMessage(deps: SendMessageDeps) {
           };
           setStatusText(td.tool ? (msgs[td.tool] ?? 'Thinking…') : 'Thinking…');
           return;
+        }
+
+        let generatedFileAdded = false;
+        if (data.generated_file) {
+          const file = data.generated_file;
+          const link = `[Download ${file.name}](${file.url})`;
+          if (!fullContent.includes(file.url)) {
+            fullContent += `${fullContent ? '\n\n' : ''}${link}`;
+            assistantContentForSave = fullContent;
+            generatedFileAdded = true;
+          }
+          setStatusText(`Created ${file.name}`);
         }
 
         const contentChunk = data.message?.content || '';
@@ -302,7 +397,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           setContextWindow(prev => ({ ...prev, current: finalUsage }));
         }
 
-        if (!contentChunk && !data.done) return;
+        if (!contentChunk && !data.done && !generatedFileAdded) return;
         if (rafId !== null) return;
         rafId = requestAnimationFrame(() => {
           rafId = null;

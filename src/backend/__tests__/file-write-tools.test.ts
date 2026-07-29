@@ -105,7 +105,7 @@ describe('git allowlist', () => {
   it('permits read-only subcommands', async () => {
     const definitions = ToolService.getToolDefinitions() as Array<{ function?: { name?: string } }>;
     expect(definitions.map((d) => d.function?.name)).toEqual(
-      expect.arrayContaining(['write_file', 'edit_file', 'run_command']),
+      expect.arrayContaining(['write_file', 'edit_file', 'search_files', 'run_command']),
     );
 
     // diff was previously rejected, which made reviewing your own changes impossible.
