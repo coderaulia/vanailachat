@@ -15,3 +15,6 @@ data/
 
 # Backups may contain full chat history
 backups/
+
+# Dev server logs
+*.log

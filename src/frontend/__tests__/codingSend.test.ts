@@ -53,7 +53,7 @@ function makeDeps(overrides: Partial<SendMessageDeps> = {}): SendMessageDeps {
 /** Routes /api/coding/* and /api/chat to separate stubs. */
 function stubFetch(codingLines: string[]) {
   const calls: string[] = [];
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
     calls.push(String(url));
     if (String(url).includes('/api/coding/sessions')) {
       return { ok: true, json: async () => ({ session: {} }) };

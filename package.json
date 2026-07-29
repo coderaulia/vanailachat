@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/predev.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "tsx watch src/backend/index.ts",
+    "dev:backend": "node --import tsx --watch src/backend/index.ts",
     "dev:frontend": "vite",
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "tsc --project tsconfig.backend.json",
