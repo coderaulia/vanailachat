@@ -76,6 +76,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
               sessionId: session.harnessSessionId,
               mode,
               signal: controller.signal,
+              onApproval: (approval) => emit({ approval_request: approval }),
             })) {
               if (event.type === 'session') {
                 dependencies.upsertCodingSession({ ...session, harnessSessionId: event.sessionId, status: 'running' });

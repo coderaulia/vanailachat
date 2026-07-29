@@ -13,6 +13,14 @@ export interface CodingRunInput {
   sessionId?: string | null;
   mode: 'plan' | 'implement';
   signal: AbortSignal;
+  onApproval?: (approval: CodingApproval) => void;
+}
+
+export interface CodingApproval {
+  id: string;
+  tool: string;
+  summary: string;
+  details: Record<string, unknown>;
 }
 
 export type CodingEvent =
