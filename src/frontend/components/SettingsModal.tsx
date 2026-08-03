@@ -9,9 +9,13 @@ interface AllSettings {
   nine_router_api_key?: string;
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
+  anthropic_api_key?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
+  require_tool_approval?: string;
+  skills_inline?: string;
+  model_pricing?: string;
   onboarding_done?: string;
 }
 
@@ -25,7 +29,7 @@ interface MemoryEntry {
   createdAt: number;
 }
 
-type Tab = 'ai' | 'profile' | 'instructions' | 'memories' | 'training' | 'about';
+type Tab = 'ai' | 'profile' | 'instructions' | 'behaviour' | 'memories' | 'training' | 'about';
 
 interface TrainingStats {
   pairs: number;
@@ -99,8 +103,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
 
+  // Claude Code (separate from the chat provider — it is its own agent)
+  const [anthropicKey, setAnthropicKey] = useState('');
+
   // Instructions
   const [baseInstructions, setBaseInstructions] = useState('');
+
+  // Behaviour
+  const [requireApproval, setRequireApproval] = useState(true);
+  const [skillsInline, setSkillsInline] = useState(false);
+  const [modelPricing, setModelPricing] = useState('');
+  const [pricingError, setPricingError] = useState<string | null>(null);
 
   // Memories
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
@@ -150,9 +163,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         }
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
+        if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
+        // Approval defaults to on, so only an explicit 'false' turns it off.
+        setRequireApproval(s.require_tool_approval !== 'false');
+        setSkillsInline(s.skills_inline === 'true');
+        if (s.model_pricing) setModelPricing(s.model_pricing);
       })
       .catch(() => {/* best-effort */})
       .finally(() => setLoading(false));
@@ -302,6 +320,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, customBaseUrl, customKey],
   );
 
+  const saveAnthropicKey = useCallback(
+    () => persist([['anthropic_api_key', anthropicKey.trim()]]),
+    [persist, anthropicKey],
+  );
+
   // Profile fields save even when emptied, so clearing one actually sticks.
   const saveUserName = useCallback(
     () => persist([['user_name', userName.trim()]]),
@@ -318,6 +341,40 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, baseInstructions],
   );
 
+  const toggleApproval = useCallback(
+    (next: boolean) => {
+      setRequireApproval(next);
+      void persist([['require_tool_approval', next ? 'true' : 'false']]);
+    },
+    [persist],
+  );
+
+  const toggleSkillsInline = useCallback(
+    (next: boolean) => {
+      setSkillsInline(next);
+      void persist([['skills_inline', next ? 'true' : 'false']]);
+    },
+    [persist],
+  );
+
+  // Saved only when it parses, so a half-typed object cannot break cost display.
+  const saveModelPricing = useCallback(() => {
+    const raw = modelPricing.trim();
+    if (!raw) {
+      setPricingError(null);
+      return persist([['model_pricing', '']]);
+    }
+
+    try {
+      JSON.parse(raw);
+      setPricingError(null);
+      return persist([['model_pricing', raw]]);
+    } catch (error) {
+      setPricingError(error instanceof Error ? error.message : 'Invalid JSON');
+      return Promise.resolve();
+    }
+  }, [persist, modelPricing]);
+
   // Autosave every field so an Escape or backdrop dismissal cannot lose edits.
   const ready = !loading;
   useAutosave(ollamaHost, saveOllamaHost, ready);
@@ -327,6 +384,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(nineRouterKey, saveNineRouterConfig, ready);
   useAutosave(customBaseUrl, saveCustomConfig, ready);
   useAutosave(customKey, saveCustomConfig, ready);
+  useAutosave(anthropicKey, saveAnthropicKey, ready);
   useAutosave(userName, saveUserName, ready);
   useAutosave(userRole, saveUserRole, ready);
   useAutosave(baseInstructions, saveBaseInstructions, ready);
@@ -352,6 +410,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'ai',           label: 'AI Connection',  icon: '🧠' },
     { id: 'profile',      label: 'Profile',         icon: '🪪' },
     { id: 'instructions', label: 'Instructions',    icon: '📋' },
+    { id: 'behaviour',    label: 'Behaviour',       icon: '⚙️' },
     { id: 'memories',     label: 'Memories',        icon: '🧩' },
     { id: 'training',     label: 'Training',        icon: '🧪' },
     { id: 'about',        label: 'About',           icon: 'ℹ️' },
@@ -538,6 +597,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
+                  {/* Claude Code is a coding agent, not one of the chat
+                      providers above, so it gets its own key regardless of
+                      which provider tab is selected. */}
+                  <div className="settings-field">
+                    <label className="settings-label">Anthropic API Key <span className="settings-optional">(for Claude Code)</span></label>
+                    <input
+                      className="settings-input"
+                      type="password"
+                      value={anthropicKey}
+                      onChange={(e) => setAnthropicKey(e.target.value)}
+                      onBlur={saveAnthropicKey}
+                      placeholder="sk-ant-..."
+                    />
+                    <p className="settings-hint">
+                      Powers the Coding role. Get a key at{' '}
+                      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>.
+                      The ANTHROPIC_API_KEY environment variable is used when this is empty.
+                    </p>
+                  </div>
+
                   <button
                     type="button"
                     className={`settings-test-btn ${testStatus}`}
@@ -595,6 +674,64 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       placeholder={`e.g. Always respond concisely. Prefer TypeScript over JavaScript. When writing code, add comments for non-obvious logic.`}
                     />
                     <p className="settings-hint">These instructions are injected into every conversation as system context.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Behaviour ── */}
+              {activeTab === 'behaviour' && (
+                <div className="settings-section">
+                  <div className="settings-field">
+                    <label className="settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={requireApproval}
+                        onChange={(e) => toggleApproval(e.target.checked)}
+                      />
+                      <span>Ask before the AI writes files or runs commands</span>
+                    </label>
+                    <p className="settings-hint">
+                      Applies to write_file, edit_file and run_command. Reading files, listing
+                      directories and web search are never gated. Turning this off lets an agent
+                      turn change files on disk with no prompt.
+                    </p>
+                  </div>
+
+                  <div className="settings-field">
+                    <label className="settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={skillsInline}
+                        onChange={(e) => toggleSkillsInline(e.target.checked)}
+                      />
+                      <span>Send full skill text with every message</span>
+                    </label>
+                    <p className="settings-hint">
+                      Off by default: skills are listed by name and the model loads the full text
+                      only when it needs it. Turning this on costs the whole skill body in every
+                      request — reasonable on a local model, expensive on a metered one.
+                    </p>
+                  </div>
+
+                  <div className="settings-field">
+                    <label className="settings-label">
+                      Model pricing <span className="settings-optional">(optional)</span>
+                    </label>
+                    <textarea
+                      className="settings-textarea"
+                      rows={6}
+                      spellCheck={false}
+                      value={modelPricing}
+                      onChange={(e) => setModelPricing(e.target.value)}
+                      onBlur={saveModelPricing}
+                      placeholder={'{\n  "deepseek-v4-flash": { "input": 0.27, "output": 1.1 }\n}'}
+                    />
+                    {pricingError && <p className="settings-error">Not saved — {pricingError}</p>}
+                    <p className="settings-hint">
+                      USD per 1M tokens, keyed by model id without the provider prefix. Needed for
+                      models a built-in price list cannot know; without a rate the app shows token
+                      counts only rather than guessing a cost.
+                    </p>
                   </div>
                 </div>
               )}

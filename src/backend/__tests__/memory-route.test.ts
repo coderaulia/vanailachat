@@ -46,9 +46,9 @@ describe('memory route', () => {
 
   it('POST /api/memory stores a new memory', async () => {
     const embedding = new Float32Array([0.1, 0.2, 0.3]);
-    const embed = vi.fn().mockResolvedValue(embedding);
+    const embedOrNull = vi.fn().mockResolvedValue(embedding);
     const upsertMemory = vi.fn().mockReturnValue({ ...entry, content: 'note text' });
-    const app = createApp({ embed, upsertMemory });
+    const app = createApp({ embedOrNull, upsertMemory });
 
     const response = await app.request('/api/memory', {
       method: 'POST',
@@ -57,9 +57,24 @@ describe('memory route', () => {
     });
 
     expect(response.status).toBe(201);
-    expect(embed).toHaveBeenCalledWith('note text');
+    expect(embedOrNull).toHaveBeenCalledWith('note text');
     expect(upsertMemory).toHaveBeenCalledOnce();
     expect(upsertMemory.mock.calls[0][0].embedding).toBe(embedding);
+  });
+
+  it('POST /api/memory still stores when no embedding backend is reachable', async () => {
+    const embedOrNull = vi.fn().mockResolvedValue(null);
+    const upsertMemory = vi.fn().mockReturnValue({ ...entry, content: 'note text' });
+    const app = createApp({ embedOrNull, upsertMemory });
+
+    const response = await app.request('/api/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'note text', type: 'manual' }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(upsertMemory.mock.calls[0][0].embedding).toBeNull();
   });
 
   it('POST /api/memory rejects empty content', async () => {

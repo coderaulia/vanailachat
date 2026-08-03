@@ -1,6 +1,12 @@
 import type { LLMProvider, ChatRequest } from './provider.js';
 import { openAIStreamToNDJSON } from './streamAdapter.js';
-import { postChatCompletions, usageToOllamaFields, type OpenAIUsage } from './openAICompat.js';
+import {
+  hasToolCalls,
+  postChatCompletions,
+  toOpenAICompatibleMessage,
+  usageToOllamaFields,
+  type OpenAIUsage,
+} from './openAICompat.js';
 
 /**
  * OpenAI-compatible provider (covers OpenAI, OpenRouter, Azure, etc.)
@@ -51,12 +57,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async chatStream(request: ChatRequest, signal?: AbortSignal): Promise<Response> {
-    const openaiMessages = request.messages.map((m) => {
-      const msg: Record<string, unknown> = { role: m.role, content: m.content };
-      if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
-      if (m.tool_calls) msg.tool_calls = m.tool_calls;
-      return msg;
-    });
+    const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
       model: request.model,
@@ -81,12 +82,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async chat(request: ChatRequest, signal?: AbortSignal): Promise<Record<string, unknown>> {
-    const openaiMessages = request.messages.map((m) => {
-      const msg: Record<string, unknown> = { role: m.role, content: m.content };
-      if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
-      if (m.tool_calls) msg.tool_calls = m.tool_calls;
-      return msg;
-    });
+    const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
       model: request.model,
@@ -117,7 +113,9 @@ export class OpenAIProvider implements LLMProvider {
       message: {
         role: 'assistant',
         content: firstChoice?.message?.content ?? '',
-        ...(firstChoice?.message?.tool_calls ? { tool_calls: firstChoice.message.tool_calls } : {}),
+        ...(hasToolCalls(firstChoice?.message?.tool_calls)
+          ? { tool_calls: firstChoice.message.tool_calls }
+          : {}),
       },
       done: true,
       ...usageToOllamaFields(data.usage),

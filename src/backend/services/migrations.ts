@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { memoryContentId } from './memoryId.js';
 
 export interface Migration {
   version: number;
@@ -231,6 +232,109 @@ export const migrations: Migration[] = [
       // Same temp-B-tree sort on the project list, on a much smaller table.
       db.exec(`
         CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at ASC);
+      `);
+    }
+  },
+  {
+    version: 12,
+    name: 'messages_fts',
+    up: (db) => {
+      // Full-text index over message bodies. Sidebar search matched chat
+      // titles only, so anything discussed inside a conversation was
+      // unfindable once the title stopped describing it.
+      //
+      // contentless-delete FTS5 external-content table stays in sync with
+      // `messages` through the triggers below rather than duplicating text.
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+          content,
+          content='messages',
+          content_rowid='rowid',
+          tokenize='unicode61'
+        );
+      `);
+
+      db.exec(`
+        INSERT INTO messages_fts(rowid, content)
+        SELECT rowid, content FROM messages;
+      `);
+
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content) VALUES ('delete', old.rowid, old.content);
+          INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+        END;
+      `);
+    }
+  },
+  {
+    version: 13,
+    name: 'dedupe_memories',
+    up: (db) => {
+      // Memories were keyed by a random id, so the chat route storing the last
+      // user message on every turn piled up copies of the same text — one real
+      // database held 19 rows of a single question. Rows are re-keyed to a
+      // content hash here so old rows collide with future writes instead of
+      // producing one more duplicate, keeping the earliest copy of each.
+      const rows = db
+        .prepare('SELECT id, type, content, embedding, metadata, source_id, created_at FROM memories ORDER BY created_at ASC')
+        .all() as Array<{
+          id: string;
+          type: string;
+          content: string;
+          embedding: Buffer;
+          metadata: string | null;
+          source_id: string | null;
+          created_at: number;
+        }>;
+
+      if (rows.length === 0) return;
+
+      const insert = db.prepare(
+        `INSERT OR IGNORE INTO memories (id, type, content, embedding, metadata, source_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+
+      db.exec('DELETE FROM memories');
+
+      let kept = 0;
+      for (const row of rows) {
+        const result = insert.run(
+          memoryContentId(row.type, row.content),
+          row.type,
+          row.content,
+          row.embedding,
+          row.metadata,
+          row.source_id,
+          row.created_at,
+        );
+        if (result.changes > 0) kept += 1;
+      }
+
+      console.log(`[DB] Deduplicated memories: ${rows.length} -> ${kept}`);
+    }
+  },
+  {
+    version: 14,
+    name: 'coding_harness_sessions',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS coding_sessions (
+          chat_id TEXT PRIMARY KEY,
+          harness TEXT NOT NULL,
+          harness_session_id TEXT,
+          workspace_path TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'ready',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+        );
       `);
     }
   }

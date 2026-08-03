@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { FormEvent, MutableRefObject, Dispatch, SetStateAction } from 'react';
-import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat } from '../types/chat';
+import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, PendingApproval } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
@@ -33,6 +33,7 @@ export interface SendMessageDeps {
   setSendingChatIds: Dispatch<SetStateAction<Record<string, boolean>>>;
   setContextWindow: Dispatch<SetStateAction<ContextWindow>>;
   setStatusText: (text: string) => void;
+  setPendingApproval: Dispatch<SetStateAction<PendingApproval | null>>;
   updateHistories: (updater: (prev: Record<string, Chat>) => Record<string, Chat>) => void;
   // Persistence
   saveMessage: (chatId: string, message: Message, options?: { promptTokens?: number; completionTokens?: number }) => Promise<void>;
@@ -89,20 +90,34 @@ async function generateChatTitle(
 export function useSendMessage(deps: SendMessageDeps) {
   const lastSentPromptRef = useRef<string>('');
 
-  const handleSend = async (event?: FormEvent) => {
+  /**
+   * Options let regenerate/edit reuse the whole send path.
+   *
+   * `promptOverride` supplies text that is not in the composer, and
+   * `baseConversation` replaces the history the new turn is appended to, so a
+   * retry can drop the answer (and optionally the question) being replaced
+   * instead of stacking a duplicate pair onto the thread.
+   */
+  const handleSend = async (
+    event?: FormEvent,
+    options?: { promptOverride?: string; baseConversation?: Message[] },
+  ) => {
     if (event) event.preventDefault();
 
     const {
       prompt, setPrompt, attachedFiles, setAttachedFiles,
       selectedModel, selectedRole, selectedProjectId, projects, chatHistories,
-      conversation, setConversation, systemPrompt, projectRoot, isSearchEnabled,
+      setConversation, systemPrompt, projectRoot, isSearchEnabled,
       currentChatId, setCurrentChatId, currentChatIdRef,
       abortRef, activeRequestIdRef, setSendingChatIds, setContextWindow,
       setStatusText, updateHistories, saveMessage, upsertChat, patchChat,
-      personaId,
+      setPendingApproval, personaId,
     } = deps;
 
-    if (!prompt.trim() && attachedFiles.length === 0) return;
+    const effectivePrompt = options?.promptOverride ?? prompt;
+    const conversation = options?.baseConversation ?? deps.conversation;
+
+    if (!effectivePrompt.trim() && attachedFiles.length === 0) return;
 
     const resolvedModel =
       selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null;
@@ -110,7 +125,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       setStatusText('No model selected. Please wait for models to load or pick one.');
       return;
     }
-    lastSentPromptRef.current = prompt;
+    lastSentPromptRef.current = effectivePrompt;
 
     if (abortRef.current) {
       abortRef.current.abort();
@@ -127,7 +142,7 @@ export function useSendMessage(deps: SendMessageDeps) {
     const activeChatId = currentChatId;
 
     // Build message content
-    const textPart: { type: 'text'; text: string } = { type: 'text', text: prompt };
+    const textPart: { type: 'text'; text: string } = { type: 'text', text: effectivePrompt };
     const messageContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [textPart];
     attachedFiles
       .filter(f => f.type === 'image')
@@ -137,7 +152,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       .filter(f => f.type === 'text')
       .map(f => `[File: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``)
       .join('\n\n');
-    const finalPrompt = fileContext ? `${fileContext}\n\n${prompt}` : prompt;
+    const finalPrompt = fileContext ? `${fileContext}\n\n${effectivePrompt}` : effectivePrompt;
     if (fileContext) textPart.text = finalPrompt;
 
     const startedAt = Date.now();
@@ -204,15 +219,59 @@ export function useSendMessage(deps: SendMessageDeps) {
     let assistantContentForSave = '';
     let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
 
+    // The coding role drives Claude Code, which owns the filesystem and runs
+    // in a workspace rather than off the conversation history. It streams the
+    // same NDJSON envelope, so everything downstream is shared.
+    const workspacePath = (existingChat?.projectRoot ?? projectRoot).trim();
+    const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
+
     try {
+      if (useCodingHarness) {
+        // The session records which directory the harness may touch. It has to
+        // exist before /run, and the chat row has to exist before the session
+        // because coding_sessions.chat_id is a foreign key.
+        await upsertChat({
+          id: chatId,
+          projectId: activeProjectId,
+          title,
+          model: resolvedModel,
+          projectRoot: workspacePath,
+          role: 'coding',
+        } as Parameters<typeof upsertChat>[0]);
+
+        const sessionResponse = await fetch('/api/coding/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId, harness: 'claude-code', workspacePath }),
+        });
+        if (!sessionResponse.ok) {
+          const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
+          throw new Error(detail?.error ?? 'Could not open the coding workspace');
+        }
+      }
+
       const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
-      const response = await fetch('/api/chat', {
+      const response = useCodingHarness
+        ? await fetch('/api/coding/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: abortController.signal,
+            body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement' }),
+          })
+        : await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortController.signal,
         body: JSON.stringify({
           model: resolvedModel,
           chatId,
+          // Lets the server persist the reply itself if this tab dies mid-stream.
+          // Same id as the client's own save, which upserts onto the same row.
+          assistantMessageId: assistantMessage.id,
+          projectId: activeProjectId,
+          // A new chat is persisted only after the stream finishes. Send the
+          // selected root now so coding tools use it on the very first turn.
+          projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
           messages: [
             ...recentConversation.map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: messageContent },
@@ -232,18 +291,93 @@ export function useSendMessage(deps: SendMessageDeps) {
 
       const applyEvent = (data: ReturnType<typeof parseStreamLine>) => {
         if (!data) return;
+
+        // A tool call is parked server-side until the user decides.
+        const approval = (data as unknown as { approval_request?: PendingApproval }).approval_request;
+        if (approval) {
+          setPendingApproval(approval);
+          setStatusText(`Waiting for approval: ${approval.summary}`);
+          return;
+        }
+
+        const resolved = (data as unknown as { approval_resolved?: { id: string } }).approval_resolved;
+        if (resolved) {
+          setPendingApproval(prev => (prev?.id === resolved.id ? null : prev));
+          setStatusText('Thinking…');
+          return;
+        }
+
+        // Claude Code speaks its own envelope: prose arrives as text events and
+        // each tool use is announced separately, so the transcript shows what
+        // it did rather than going silent between edits.
+        const coding = (data as unknown as {
+          coding_event?: { type?: string; text?: string; name?: string };
+        }).coding_event;
+        if (coding) {
+          if (coding.type === 'text' && coding.text) {
+            fullContent += coding.text;
+            assistantContentForSave = fullContent;
+          } else if (coding.type === 'tool' && coding.name) {
+            setStatusText(`Claude Code: ${coding.name}`);
+          }
+
+          if (rafId === null) {
+            rafId = requestAnimationFrame(() => {
+              rafId = null;
+              if (currentChatIdRef.current === chatId) {
+                setConversation(prev => {
+                  if (prev.length === 0) return prev;
+                  const updated = [...prev];
+                  const last = updated.length - 1;
+                  if (updated[last]?.role === 'assistant')
+                    updated[last] = { ...updated[last], content: fullContent };
+                  return updated;
+                });
+              }
+            });
+          }
+          return;
+        }
+
+        // The harness reports failures inline rather than as an HTTP status,
+        // because the stream has already started by then.
+        const codingError = (data as unknown as { error?: string }).error;
+        if (codingError) {
+          fullContent += `
+
+**Claude Code error:** ${codingError}`;
+          assistantContentForSave = fullContent;
+          setStatusText(`Claude Code: ${codingError}`);
+          return;
+        }
         // Tool event — update status only
         if ((data as unknown as { tool_event?: boolean }).tool_event) {
           const td = data as unknown as { tool?: string };
           const msgs: Record<string, string> = {
+            create_document: 'Creating document...',
             read_file: 'Reading file…',
+            search_files: 'Searching project files…',
             search_web: 'Searching the web…',
             list_directory: 'Analyzing directory…',
             run_command: 'Executing command…',
             load_skill: 'Loading skill…',
+            write_file: 'Writing file…',
+            edit_file: 'Editing file…',
           };
           setStatusText(td.tool ? (msgs[td.tool] ?? 'Thinking…') : 'Thinking…');
           return;
+        }
+
+        let generatedFileAdded = false;
+        if (data.generated_file) {
+          const file = data.generated_file;
+          const link = `[Download ${file.name}](${file.url})`;
+          if (!fullContent.includes(file.url)) {
+            fullContent += `${fullContent ? '\n\n' : ''}${link}`;
+            assistantContentForSave = fullContent;
+            generatedFileAdded = true;
+          }
+          setStatusText(`Created ${file.name}`);
         }
 
         const contentChunk = data.message?.content || '';
@@ -263,7 +397,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           setContextWindow(prev => ({ ...prev, current: finalUsage }));
         }
 
-        if (!contentChunk && !data.done) return;
+        if (!contentChunk && !data.done && !generatedFileAdded) return;
         if (rafId !== null) return;
         rafId = requestAnimationFrame(() => {
           rafId = null;
@@ -409,5 +543,42 @@ export function useSendMessage(deps: SendMessageDeps) {
     }
   };
 
-  return { handleSend, lastSentPromptRef };
+  /**
+   * Re-ask the question that produced a given assistant message.
+   *
+   * The old answer and everything after it are dropped, so the retry replaces
+   * the reply rather than appending a second copy of the exchange.
+   */
+  const handleRegenerate = async (assistantMessageId: string) => {
+    const conversation = deps.conversation;
+    const assistantIndex = conversation.findIndex(m => m.id === assistantMessageId);
+    if (assistantIndex < 1) return;
+
+    const userIndex = conversation.slice(0, assistantIndex).map(m => m.role).lastIndexOf('user');
+    if (userIndex === -1) return;
+
+    const userMessage = conversation[userIndex];
+    if (!userMessage.content.trim()) return;
+
+    await handleSend(undefined, {
+      promptOverride: userMessage.content,
+      baseConversation: conversation.slice(0, userIndex),
+    });
+  };
+
+  /** Replace a user message with edited text and re-run from that point. */
+  const handleEditAndResend = async (userMessageId: string, newContent: string) => {
+    if (!newContent.trim()) return;
+
+    const conversation = deps.conversation;
+    const userIndex = conversation.findIndex(m => m.id === userMessageId);
+    if (userIndex === -1) return;
+
+    await handleSend(undefined, {
+      promptOverride: newContent,
+      baseConversation: conversation.slice(0, userIndex),
+    });
+  };
+
+  return { handleSend, handleRegenerate, handleEditAndResend, lastSentPromptRef };
 }

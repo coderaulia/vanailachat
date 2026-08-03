@@ -11,6 +11,8 @@ import { NineRouterProvider } from './services/nineRouterProvider.js';
 import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
+import { CodingHarnessRegistry } from './services/codingHarness.js';
+import { ClaudeCodeHarness } from './services/claudeCodeHarness.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
 import { sanitizeError } from './helpers/index.js';
@@ -29,6 +31,9 @@ import { skillsRouter } from './routes/skills.js';
 import { researchRouter } from './routes/research.js';
 import { trainingRouter } from './routes/training.js';
 import { abRouter } from './routes/ab.js';
+import { attachmentsRouter } from './routes/attachments.js';
+import { codingRouter } from './routes/coding.js';
+import { filesystemRouter } from './routes/filesystem.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -48,6 +53,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   upsertChat: DatabaseService.upsertChat.bind(DatabaseService),
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
+  searchMessages: DatabaseService.searchMessages.bind(DatabaseService),
   insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
   getMessage: DatabaseService.getMessage.bind(DatabaseService),
   upsertFeedback: DatabaseService.upsertFeedback.bind(DatabaseService),
@@ -63,6 +69,8 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   upsertMemory: DatabaseService.upsertMemory.bind(DatabaseService),
   deleteMemory: DatabaseService.deleteMemory.bind(DatabaseService),
   embed: EmbeddingService.embed.bind(EmbeddingService),
+  embedOrNull: EmbeddingService.embedOrNull.bind(EmbeddingService),
+  searchMemoriesByKeyword: EmbeddingService.searchByKeyword.bind(EmbeddingService),
   searchMemories: EmbeddingService.searchWithVector.bind(EmbeddingService),
   searchMemoriesByText: EmbeddingService.search.bind(EmbeddingService),
   listSkills: DatabaseService.listSkills.bind(DatabaseService),
@@ -72,6 +80,9 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
+  codingHarnesses: new CodingHarnessRegistry([new ClaudeCodeHarness()]),
+  getCodingSession: DatabaseService.getCodingSession.bind(DatabaseService),
+  upsertCodingSession: DatabaseService.upsertCodingSession.bind(DatabaseService),
   runInTransaction: DatabaseService.runInTransaction.bind(DatabaseService),
   // Native folder picker. Every platform ships a different one, so each is
   // tried in turn and a missing dialog just yields null (the UI still accepts
@@ -81,17 +92,32 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
     const { promisify } = await import('node:util');
     const execFilePromise = promisify(execFile);
 
+    // A native dialog blocks until someone clicks it. Without a cap the HTTP
+    // request hangs forever and the dialog process leaks — one stuck picker
+    // per click, invisible, with the UI showing nothing at all.
+    const DIALOG_TIMEOUT_MS = 2 * 60_000;
+
+    // FolderBrowserDialog has no owner by default, so it can open behind the
+    // browser window and look like nothing happened. A topmost owner form
+    // forces it in front.
+    const windowsScript = [
+      'Add-Type -AssemblyName System.Windows.Forms',
+      '$owner = New-Object System.Windows.Forms.Form',
+      '$owner.TopMost = $true',
+      '$owner.ShowInTaskbar = $false',
+      '$owner.Opacity = 0',
+      '$owner.Show()',
+      "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$dialog.Description = 'Select the folder Claude Code should work in'",
+      '$dialog.ShowNewFolderButton = $true',
+      "if ($dialog.ShowDialog($owner) -eq 'OK') { Write-Output $dialog.SelectedPath }",
+      '$owner.Close()',
+      '$owner.Dispose()',
+    ].join('; ');
+
     const candidates: Array<[string, string[]]> =
       process.platform === 'win32'
-        ? [[
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-STA',
-              '-Command',
-              "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select Project Root'; if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
-            ],
-          ]]
+        ? [['powershell.exe', ['-NoProfile', '-STA', '-Command', windowsScript]]]
         : process.platform === 'darwin'
           ? [[
               'osascript',
@@ -104,11 +130,20 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
 
     for (const [binary, args] of candidates) {
       try {
-        const { stdout } = await execFilePromise(binary, args);
+        const { stdout } = await execFilePromise(binary, args, {
+          timeout: DIALOG_TIMEOUT_MS,
+          killSignal: 'SIGKILL',
+          windowsHide: false,
+        });
         const picked = stdout.trim();
         if (picked) return picked;
-      } catch {
-        // Dialog unavailable or cancelled — try the next candidate.
+      } catch (error) {
+        // Cancelling the dialog exits non-zero, which is not an error worth
+        // reporting; a missing dialog binary just means trying the next one.
+        const failure = error as { killed?: boolean; code?: string };
+        if (failure?.killed || failure?.code === 'ETIMEDOUT') {
+          console.warn(`[PICKER] ${binary} timed out after ${DIALOG_TIMEOUT_MS}ms`);
+        }
       }
     }
     return null;
@@ -116,9 +151,22 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
 };
 
 /** Build a fresh ProviderRegistry using injected fetchFn and getBaseUrl so tests can mock them. */
-function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string): ProviderRegistry {
+function buildProviderRegistry(
+  fetchFn: typeof fetch,
+  getBaseUrl: () => string,
+  getInstalledModels: () => Promise<string[]>,
+  getModelDetails: (modelName: string) => Promise<unknown>,
+): ProviderRegistry {
   const registry = new ProviderRegistry();
-  registry.register(new OllamaProvider(fetchFn, getBaseUrl));
+  registry.register(
+    new OllamaProvider(
+      fetchFn,
+      getBaseUrl,
+      getInstalledModels,
+      async (modelName) =>
+        (await getModelDetails(modelName)) as Record<string, unknown> | null,
+    ),
+  );
   try {
     registry.register(new OpenAIProvider());
   } catch {
@@ -140,7 +188,14 @@ function buildProviderRegistry(fetchFn: typeof fetch, getBaseUrl: () => string):
 export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   // Merge non-registry deps first so fetchFn override is visible when building registry
   const baseDeps = { ...defaultDependencies, ...overrides };
-  const registry = overrides.providerRegistry ?? buildProviderRegistry(baseDeps.fetchFn, baseDeps.getBaseUrl);
+  const registry =
+    overrides.providerRegistry ??
+    buildProviderRegistry(
+      baseDeps.fetchFn,
+      baseDeps.getBaseUrl,
+      baseDeps.getInstalledModels,
+      baseDeps.getModelDetails,
+    );
   const dependencies: AppDependencies = { ...baseDeps, providerRegistry: registry };
 
   const app = new Hono();
@@ -239,6 +294,15 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.route('/api/training', trainingRouter(dependencies));
   app.use('/api/ab/*', rateLimiter({ maxRequests: 10, windowMs: 60_000 }));
   app.route('/api/ab', abRouter(dependencies));
+  // Document extraction is CPU-bound unzip/parse work — cap it like the
+  // other expensive endpoints.
+  app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
+  app.route('/api/attachments', attachmentsRouter());
+  app.route('/api/coding', codingRouter(dependencies));
+  // Directory listing for the in-app folder picker (names only, no contents).
+  app.use('/api/fs/*', rateLimiter({ maxRequests: 120, windowMs: 60_000 }));
+  app.route('/api/fs', filesystemRouter());
+
   app.route('/api/chat', chatRouter(dependencies));
 
   return app;

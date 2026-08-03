@@ -35,7 +35,9 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
         return context.json({ error: 'Content required' }, 400);
       }
 
-      const embedding = await dependencies.embed(body.content);
+      // Null when no embedding backend is reachable — the memory is still
+      // stored and remains findable through keyword recall.
+      const embedding = await dependencies.embedOrNull(body.content);
       const record = dependencies.upsertMemory({
         type: body.type ?? 'manual',
         content: body.content,
@@ -71,10 +73,12 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
       // message. Run a bounded number concurrently instead — unbounded would
       // flood the embedding model on a long chat.
       const CONCURRENCY = 4;
-      const embeddings: Array<Awaited<ReturnType<typeof dependencies.embed>>> = [];
+      const embeddings: Array<Float32Array | null> = [];
       for (let start = 0; start < messages.length; start += CONCURRENCY) {
         const batch = messages.slice(start, start + CONCURRENCY);
-        embeddings.push(...(await Promise.all(batch.map((msg) => dependencies.embed(msg.content)))));
+        embeddings.push(
+          ...(await Promise.all(batch.map((msg) => dependencies.embedOrNull(msg.content)))),
+        );
       }
 
       messages.forEach((msg, index) => {

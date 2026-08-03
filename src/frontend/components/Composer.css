@@ -128,6 +128,8 @@
 }
 
 .project-root-field {
+  /* Anchor for the folder picker popover. */
+  position: relative;
   margin-bottom: 12px;
   display: flex;
   flex-wrap: wrap;

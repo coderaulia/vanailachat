@@ -82,6 +82,38 @@ describe('openAIStreamToNDJSON', () => {
     expect(toolCalls[0].function.name).toBe('read_file');
     expect(toolCalls[0].function.arguments).toEqual({ path: 'a.txt' });
   });
+
+  it('flushes accumulated tool calls when the provider ends without a finish reason', async () => {
+    const upstream = sseResponse([
+      JSON.stringify({
+        choices: [{
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: 'call_2',
+              type: 'function',
+              function: { name: 'list_directory', arguments: '{"path":"."}' },
+            }],
+          },
+        }],
+      }),
+      '[DONE]',
+    ]);
+
+    const lines = await readLines(openAIStreamToNDJSON(upstream, 'm'));
+    const toolLine = lines.find((line) =>
+      Array.isArray((line.message as { tool_calls?: unknown[] } | undefined)?.tool_calls),
+    );
+
+    expect(toolLine).toMatchObject({
+      message: {
+        tool_calls: [{
+          id: 'call_2',
+          function: { name: 'list_directory', arguments: { path: '.' } },
+        }],
+      },
+    });
+  });
 });
 
 describe('OpenAI-compatible request', () => {
@@ -118,6 +150,26 @@ describe('OpenAI-compatible request', () => {
         stream_options?: unknown;
       };
       expect(retryBody.stream_options).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not retry unrelated bad-request errors', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('invalid type: map, expected a string', { status: 400 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const provider = new CustomOpenAIProvider();
+      await expect(
+        provider.chatStream({
+          model: 'deepseek-chat',
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+      ).rejects.toThrow('invalid type: map');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

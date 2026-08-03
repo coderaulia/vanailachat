@@ -9,11 +9,14 @@ import type {
   SkillRecord,
   UpdateProjectInput,
   UpsertChatInput,
+  UpsertCodingSessionInput,
   UpsertFeedbackInput,
   UpsertSkillInput,
+  CodingSessionRecord,
 } from './services/database.js';
 import type { InstalledModelMetadata } from './services/ollama.js';
 import type { ProviderRegistry } from './services/providerRegistry.js';
+import type { CodingHarnessRegistry } from './services/codingHarness.js';
 
 export interface ChatRequestBody {
   model?: string;
@@ -23,6 +26,12 @@ export interface ChatRequestBody {
   search?: boolean;
   /** Skip memory search + auto-save. Used for internal calls (title generation, etc.) so that the synthetic prompt is not embedded into the vector store. */
   skipMemory?: boolean;
+  /** Client-generated id for the reply, so the server-side safety-net write and the client's own write land on the same row. */
+  assistantMessageId?: string;
+  /** Project the chat belongs to, needed when the server has to create the chat row before the client does. */
+  projectId?: string;
+  /** Working directory selected by the user for local coding tools. */
+  projectRoot?: string | null;
   [key: string]: unknown;
 }
 
@@ -44,6 +53,20 @@ export interface AppDependencies {
   upsertChat: (input: UpsertChatInput) => ChatRecord;
   deleteChat: (id: string) => boolean;
   listMessages: (chatId: string, limit?: number) => MessageRecord[];
+  /** Full-text search over message bodies (FTS5). */
+  searchMessages: (
+    query: string,
+    limit?: number,
+    projectId?: string,
+  ) => Array<{
+    chatId: string;
+    chatTitle: string;
+    projectId: string;
+    messageId: string;
+    role: string;
+    snippet: string;
+    createdAt: number;
+  }>;
   insertMessage: (input: InsertMessageInput) => MessageRecord;
   getMessage: (id: string) => MessageRecord | null;
   upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;
@@ -85,14 +108,23 @@ export interface AppDependencies {
     id?: string;
     type?: string;
     content: string;
-    embedding: Float32Array;
+    /** null when no embedding backend is reachable — kept for keyword recall. */
+    embedding: Float32Array | null;
     metadata?: string | null;
     sourceId?: string | null;
   }) => MemoryEntryRecord;
   deleteMemory: (id: string) => boolean;
   embed: (text: string) => Promise<Float32Array>;
+  /** Embed, or null when every embedding backend is unreachable. */
+  embedOrNull: (text: string) => Promise<Float32Array | null>;
   searchMemories: (
     queryVec: Float32Array,
+    topK?: number,
+    threshold?: number,
+  ) => Array<{ id: string; content: string; score: number; metadata: string | null }>;
+  /** Token-overlap recall used when no embedding backend is available. */
+  searchMemoriesByKeyword: (
+    text: string,
     topK?: number,
     threshold?: number,
   ) => Array<{ id: string; content: string; score: number; metadata: string | null }>;
@@ -110,4 +142,7 @@ export interface AppDependencies {
   getAllSettings: () => Record<string, string>;
   getSetting: (key: string) => string | null;
   upsertSetting: (key: string, value: string) => void;
+  codingHarnesses: CodingHarnessRegistry;
+  getCodingSession: (chatId: string) => CodingSessionRecord | null;
+  upsertCodingSession: (input: UpsertCodingSessionInput) => CodingSessionRecord;
 }

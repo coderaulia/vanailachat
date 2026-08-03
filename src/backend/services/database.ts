@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { migrations } from './migrations.js';
+import { memoryContentId } from './memoryId.js';
 
 const DEFAULT_PROJECT_NAME = 'Default';
 
@@ -138,6 +139,24 @@ export interface InsertMessageInput {
   promptTokens?: number | null;
   completionTokens?: number | null;
   createdAt?: number;
+}
+
+export interface CodingSessionRecord {
+  chatId: string;
+  harness: string;
+  harnessSessionId: string | null;
+  workspacePath: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UpsertCodingSessionInput {
+  chatId: string;
+  harness: string;
+  harnessSessionId?: string | null;
+  workspacePath: string;
+  status: string;
 }
 
 interface MemoryEntryRow {
@@ -463,6 +482,87 @@ export class DatabaseService {
    * message join, so the token SUM only touches the rows being returned
    * rather than every message in the database.
    */
+  /**
+   * Full-text search over message bodies, grouped into one hit per chat.
+   *
+   * FTS5 MATCH syntax would otherwise leak to the user — a stray quote or a
+   * bare `AND` raises "fts5: syntax error". The query is tokenised and each
+   * term quoted so arbitrary typing behaves like a plain keyword search.
+   */
+  static searchMessages(
+    query: string,
+    limit = 30,
+    projectId?: string,
+  ): Array<{
+    chatId: string;
+    chatTitle: string;
+    projectId: string;
+    messageId: string;
+    role: string;
+    snippet: string;
+    createdAt: number;
+  }> {
+    const db = this.getDb();
+
+    const terms = query
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((term) => term.length > 1)
+      .map((term) => `"${term}"`);
+
+    if (terms.length === 0) return [];
+
+    const matchExpression = terms.join(' AND ');
+
+    const sql = `
+      SELECT
+        m.id      AS message_id,
+        m.chat_id AS chat_id,
+        m.role    AS role,
+        m.created_at AS created_at,
+        c.title   AS chat_title,
+        c.project_id AS project_id,
+        snippet(messages_fts, 0, '', '', '…', 12) AS snippet,
+        bm25(messages_fts) AS rank
+      FROM messages_fts
+      JOIN messages m ON m.rowid = messages_fts.rowid
+      JOIN chats c ON c.id = m.chat_id
+      WHERE messages_fts MATCH ?
+        ${projectId ? 'AND c.project_id = ?' : ''}
+      ORDER BY rank
+      LIMIT ?
+    `;
+
+    const params: unknown[] = projectId
+      ? [matchExpression, projectId, limit]
+      : [matchExpression, limit];
+
+    try {
+      const rows = db.prepare(sql).all(...params) as Array<{
+        message_id: string;
+        chat_id: string;
+        role: string;
+        created_at: number;
+        chat_title: string;
+        project_id: string;
+        snippet: string;
+      }>;
+
+      return rows.map((row) => ({
+        chatId: row.chat_id,
+        chatTitle: row.chat_title,
+        projectId: row.project_id,
+        messageId: row.message_id,
+        role: row.role,
+        snippet: row.snippet,
+        createdAt: row.created_at,
+      }));
+    } catch (error) {
+      console.error('[DB] Message search failed:', error);
+      return [];
+    }
+  }
+
   static listChats(projectId?: string, limit?: number): ChatRecord[] {
     const db = this.getDb();
 
@@ -1002,6 +1102,43 @@ export class DatabaseService {
     return this.mapMessage(message);
   }
 
+  static getCodingSession(chatId: string): CodingSessionRecord | null {
+    const row = this.getDb().prepare(
+      `SELECT chat_id, harness, harness_session_id, workspace_path, status, created_at, updated_at
+       FROM coding_sessions WHERE chat_id = ?`,
+    ).get(chatId) as {
+      chat_id: string; harness: string; harness_session_id: string | null; workspace_path: string;
+      status: string; created_at: number; updated_at: number;
+    } | undefined;
+    return row ? {
+      chatId: row.chat_id,
+      harness: row.harness,
+      harnessSessionId: row.harness_session_id,
+      workspacePath: row.workspace_path,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    } : null;
+  }
+
+  static upsertCodingSession(input: UpsertCodingSessionInput): CodingSessionRecord {
+    const db = this.getDb();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO coding_sessions (chat_id, harness, harness_session_id, workspace_path, status, created_at, updated_at)
+       VALUES (@chatId, @harness, @harnessSessionId, @workspacePath, @status, @now, @now)
+       ON CONFLICT(chat_id) DO UPDATE SET
+         harness = excluded.harness,
+         harness_session_id = COALESCE(excluded.harness_session_id, coding_sessions.harness_session_id),
+         workspace_path = excluded.workspace_path,
+         status = excluded.status,
+         updated_at = excluded.updated_at`,
+    ).run({ ...input, harnessSessionId: input.harnessSessionId ?? null, now });
+    const session = this.getCodingSession(input.chatId);
+    if (!session) throw new Error('Failed to save coding session');
+    return session;
+  }
+
   // ─── Vector Memory ───
 
   static getAllMemoryEntries(limit?: number): MemoryEntryRecord[] {
@@ -1027,15 +1164,22 @@ export class DatabaseService {
     id?: string;
     type?: string;
     content: string;
-    embedding: Float32Array;
+    // null when no embedding backend is reachable — the row is still stored so
+    // keyword search can find it, and so nothing is lost if embeddings arrive
+    // later. The column is NOT NULL, hence the empty buffer.
+    embedding: Float32Array | null;
     metadata?: string | null;
     sourceId?: string | null;
   }): MemoryEntryRecord {
     const db = this.getDb();
-    const id = input.id ?? generateId('mem');
     const type = input.type ?? 'conversation';
+    // Content-derived id, so storing the same memory twice updates one row
+    // instead of appending a duplicate.
+    const id = input.id ?? memoryContentId(type, input.content);
     const createdAt = Date.now();
-    const embeddingBlob = Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength);
+    const embeddingBlob = input.embedding
+      ? Buffer.from(input.embedding.buffer, input.embedding.byteOffset, input.embedding.byteLength)
+      : Buffer.alloc(0);
     const embeddingBase64 = embeddingBlob.toString('base64');
 
     db.prepare(

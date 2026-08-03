@@ -4,6 +4,11 @@ import { normalizeMessageContent, sanitizeError } from '../helpers/index.js';
 import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
+import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
+import {
+  isUnverifiedGeneratedFileClaim,
+  parseGeneratedDocumentResult,
+} from '../services/generatedDocuments.js';
 
 // ── caches ────────────────────────────────────────────────────────────────────
 
@@ -16,7 +21,7 @@ const dirListingCache = new Map<string, DirCacheEntry>();
 const DIR_CACHE_TTL_MS = 5 * 60_000;
 const DIR_CACHE_MAX_ENTRIES = 200;
 
-async function getCachedDirListing(
+async function _getCachedDirListing(
   deps: AppDependencies,
   chatId: string,
   projectRoot: string,
@@ -77,6 +82,8 @@ function validateChatRequest(body: unknown): string | null {
   if (b.skipMemory !== undefined && typeof b.skipMemory !== 'boolean') return 'skipMemory: must be boolean';
   if (b.chatId !== undefined && b.chatId !== null && typeof b.chatId !== 'string')
     return 'chatId: must be string';
+  if (b.projectRoot !== undefined && b.projectRoot !== null && typeof b.projectRoot !== 'string')
+    return 'projectRoot: must be string or null';
   if (Array.isArray(b.messages)) {
     for (const msg of b.messages) {
       if (!msg || typeof msg !== 'object') return 'messages[]: each item must be an object';
@@ -87,7 +94,25 @@ function validateChatRequest(body: unknown): string | null {
   return null;
 }
 
+function getRequestedProjectRoot(body: ChatRequestBody): string | null {
+  return typeof body.projectRoot === 'string' && body.projectRoot.trim()
+    ? body.projectRoot.trim()
+    : null;
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Approval is on unless explicitly disabled, so an upgrade never silently
+ * grants write access that did not exist before.
+ */
+function approvalsRequired(deps: AppDependencies): boolean {
+  try {
+    return deps.getSetting('require_tool_approval') !== 'false';
+  } catch {
+    return true;
+  }
+}
 
 /** One-line summary for the skill index: stored description, else the first real line. */
 function summarizeSkill(description: string | null, content: string): string {
@@ -164,19 +189,6 @@ async function buildSystemPrompt(
       '\n\nWeb search is enabled. ALWAYS use search_web if the user asks for real-time information, news, or facts you are unsure about.';
   }
 
-  // Project root + directory listing (cached per chat for 5 min)
-  if (chatRecord?.projectRoot) {
-    systemPrompt += `\n\n[Project Root]\n${chatRecord.projectRoot}`;
-    try {
-      const listing = await getCachedDirListing(deps, chatRecord.id, chatRecord.projectRoot);
-      systemPrompt += `\n\n[Project Structure]\n${listing}`;
-    } catch (error) {
-      console.error(`[SYSTEM PROMPT] Failed to list directory: ${error}`);
-    }
-  }
-
-  systemPrompt += '\n\nYou can also read local project files using read_file.';
-
   // Enabled skills (via injected dep — no direct DB import).
   //
   // Progressive disclosure: only a name + one-line summary per skill goes into
@@ -221,21 +233,34 @@ async function buildSystemPrompt(
     const personaPrompt = getPersonaSystemPrompt(personaId);
     if (personaPrompt) systemPrompt += `\n\n${personaPrompt}`;
   }
-  const personaToolAllowlist = getPersonaToolAllowlist(personaId);
+  const personaToolAllowlist = getPersonaToolAllowlist(personaId) ?? null;
 
-  // Vector memory — embed last user message, search + auto-save.
-  // Skipped when caller sets skipMemory (e.g. internal title-generation calls)
-  // so synthetic prompts don't pollute the vector store.
-  const lastUserMsg = !body.skipMemory && isEmbedLikelyAvailable()
-    ? incomingMessages.slice().reverse().find((m) => m.role === 'user')
-    : undefined;
+  // Memory — recall against the last user message, then store it.
+  //
+  // Vector search when an embedding backend is reachable, keyword search when
+  // it is not. Cloud-only setups have no Ollama, so the old code embedded
+  // nothing, stored nothing and recalled nothing — silently, forever. Memory
+  // now degrades instead of disappearing.
+  //
+  // Skipped when the caller sets skipMemory (internal title generation) so
+  // synthetic prompts don't pollute the store.
+  const lastUserMsg = body.skipMemory
+    ? undefined
+    : incomingMessages.slice().reverse().find((m) => m.role === 'user');
+
   if (lastUserMsg) {
     const userText = normalizeMessageContent(lastUserMsg.content).content;
     if (userText.trim()) {
       try {
-        const queryVec = await deps.embed(userText);
+        const queryVec = isEmbedLikelyAvailable() ? await deps.embedOrNull(userText) : null;
+        if (!queryVec) {
+          markEmbedUnavailable();
+        }
 
-        const memories = deps.searchMemories(queryVec, 3, 0.3);
+        const memories = queryVec
+          ? deps.searchMemories(queryVec, 3, 0.3)
+          : deps.searchMemoriesByKeyword(userText, 3, 0.2);
+
         if (memories.length > 0) {
           const block = memories
             .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
@@ -256,10 +281,8 @@ async function buildSystemPrompt(
             sourceId: (body.chatId as string | null) ?? null,
           });
         }
-      } catch {
-        // Embedding model unavailable — flag so subsequent turns skip the call
-        // entirely until the TTL expires.
-        markEmbedUnavailable();
+      } catch (error) {
+        console.error(`[MEMORY] Recall/store failed: ${error}`);
       }
     }
   }
@@ -280,6 +303,12 @@ export function resolveTools(
     (t as { function?: { name?: string } }).function?.name ?? '';
 
   let tools = [...allTools];
+
+  // Filesystem and command execution now belong exclusively to Claude Code.
+  const retiredCodingTools = new Set([
+    'read_file', 'list_directory', 'search_files', 'run_command', 'write_file', 'edit_file',
+  ]);
+  tools = tools.filter((tool) => !retiredCodingTools.has(toolName(tool)));
 
   // Offering load_skill with nothing to load only invites hallucinated calls.
   if (!skillsAvailable) {
@@ -305,7 +334,63 @@ export function resolveTools(
   return tools;
 }
 
-type AnyMessage = { role: string; content: unknown; tool_calls?: unknown[] };
+/** OpenAI-compatible gateways commonly omit capability metadata entirely. */
+export function providerSupportsTools(providerId: string, capabilities: string[]): boolean {
+  if (capabilities.includes('tools')) return true;
+  return ['openai', 'custom', '9router'].includes(providerId);
+}
+
+type AnyMessage = {
+  role: string;
+  content: unknown;
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+};
+
+/**
+ * Write the finished assistant reply straight from the server.
+ *
+ * Persistence used to be entirely client-driven: the browser POSTed the reply
+ * after the stream ended, so closing the tab (or a crash) mid-answer lost text
+ * the server had already produced in full. The client keeps saving — it owns
+ * token counts and ordering — but both writes carry the same client-supplied
+ * id and insertMessage upserts on it, so the two converge on one row instead
+ * of duplicating.
+ */
+function persistAssistantReply(
+  deps: AppDependencies,
+  chatRecord: ChatRecord | null,
+  body: ChatRequestBody,
+  content: string,
+): void {
+  const chatId = typeof body.chatId === 'string' ? body.chatId : null;
+  const messageId = typeof body.assistantMessageId === 'string' ? body.assistantMessageId : null;
+
+  if (!chatId || !messageId || !content.trim()) return;
+
+  try {
+    // A brand-new chat has no row yet — the client upserts it only after the
+    // stream finishes — and messages.chat_id is a foreign key.
+    if (!chatRecord) {
+      deps.upsertChat({
+        id: chatId,
+        projectId: (typeof body.projectId === 'string' && body.projectId) || 'default',
+        title: content.slice(0, 50) || 'Untitled chat',
+        projectRoot: getRequestedProjectRoot(body),
+      });
+    }
+
+    deps.insertMessage({
+      id: messageId,
+      chatId,
+      role: 'assistant',
+      content,
+    });
+  } catch (error) {
+    // Never fail the response over the safety net.
+    console.error('[CHAT] Server-side reply persist failed:', error);
+  }
+}
 
 async function runAgentLoop(
   controller: ReadableStreamDefaultController<Uint8Array>,
@@ -317,12 +402,24 @@ async function runAgentLoop(
   tools: Record<string, unknown>[],
   deps: AppDependencies,
   chatRecord: ChatRecord | null,
+  projectRoot: string | null,
   signal: AbortSignal,
+  body: ChatRequestBody,
 ): Promise<void> {
   const currentMessages = [...initialMessages];
+  // Tracked so an aborted stream denies anything still waiting instead of
+  // leaving the promise (and the user's prompt) dangling.
+  const pendingApprovalIds = new Set<string>();
+  signal.addEventListener('abort', () => {
+    ApprovalService.denyAll([...pendingApprovalIds]);
+    pendingApprovalIds.clear();
+  });
+
   let iteration = 0;
   const maxIterations = 7;
   const toolCallHistory = new Set<string>();
+  const generatedFiles: Array<{ name: string; url: string }> = [];
+  let fileClaimCorrections = 0;
 
   const enqueue = (obj: unknown) => {
     try {
@@ -383,9 +480,12 @@ async function runAgentLoop(
           console.warn('[CHAT] Skipping malformed stream line:', parseError instanceof Error ? parseError.message : 'unknown');
           continue;
         }
-        if (data.message?.tool_calls) {
+        if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
           isToolCall = true;
-          assistantMessage.tool_calls = data.message.tool_calls as typeof assistantMessage.tool_calls;
+          assistantMessage.tool_calls = data.message.tool_calls.map((toolCall, index) => ({
+            ...(toolCall as typeof assistantMessage.tool_calls[number]),
+            id: (toolCall as { id?: string }).id || `call_${iteration}_${index}`,
+          }));
         }
         if (data.message?.content) assistantMessage.content += data.message.content;
         if (!isToolCall) controller.enqueue(encoder.encode(line + '\n'));
@@ -394,10 +494,15 @@ async function runAgentLoop(
 
     if (streamBuffer.trim()) {
       try {
-        const data = JSON.parse(streamBuffer);
-        if (data.message?.tool_calls) {
+        const data = JSON.parse(streamBuffer) as {
+          message?: { content?: string; tool_calls?: unknown[] };
+        };
+        if (Array.isArray(data.message?.tool_calls) && data.message.tool_calls.length > 0) {
           isToolCall = true;
-          assistantMessage.tool_calls = data.message.tool_calls;
+          assistantMessage.tool_calls = data.message.tool_calls.map((toolCall, index) => ({
+            ...(toolCall as typeof assistantMessage.tool_calls[number]),
+            id: (toolCall as { id?: string }).id || `call_${iteration}_${index}`,
+          }));
         }
         if (!isToolCall) controller.enqueue(encoder.encode(streamBuffer + '\n'));
       } catch (parseError) {
@@ -405,7 +510,35 @@ async function runAgentLoop(
       }
     }
 
-    if (!isToolCall) { controller.close(); return; }
+    if (!isToolCall) {
+      if (
+        generatedFiles.length === 0 &&
+        fileClaimCorrections < 2 &&
+        isUnverifiedGeneratedFileClaim(assistantMessage.content)
+      ) {
+        fileClaimCorrections++;
+        currentMessages.push({ role: 'assistant', content: assistantMessage.content });
+        currentMessages.push({
+          role: 'user',
+          content:
+            '[Application correction] No file exists because create_document was not called. ' +
+            'Do not mention a sandbox or imaginary server file. If the user requested a document, call create_document now with the complete document content; otherwise clearly say that no file was generated.',
+        });
+        continue;
+      }
+
+      const generatedLinks = generatedFiles
+        .map((file) => `[Download ${file.name}](${file.url})`)
+        .join('\n\n');
+      persistAssistantReply(
+        deps,
+        chatRecord,
+        body,
+        [generatedLinks, assistantMessage.content].filter(Boolean).join('\n\n'),
+      );
+      controller.close();
+      return;
+    }
 
     currentMessages.push(assistantMessage as AnyMessage);
 
@@ -413,20 +546,62 @@ async function runAgentLoop(
     for (const tc of assistantMessage.tool_calls) {
       const toolName = tc.function?.name ?? 'unknown';
       const toolArgs = tc.function?.arguments;
+      const toolCallId = tc.id as string;
 
       // Sort keys to prevent dedup misses from key-order differences
       const callKey = `${toolName}:${JSON.stringify(toolArgs ?? {}, Object.keys(toolArgs ?? {}).sort())}`;
       if (toolCallHistory.has(callKey)) { skippedCount++; continue; }
       toolCallHistory.add(callKey);
 
+      // Gate anything that changes state behind an explicit decision. The
+      // stream is one-way, so the request goes out as an event and the loop
+      // parks on a promise the approval endpoint resolves.
+      if (isMutatingTool(toolName) && approvalsRequired(deps)) {
+        const approvalId = `apr_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        pendingApprovalIds.add(approvalId);
+
+        enqueue({
+          approval_request: {
+            id: approvalId,
+            tool: toolName,
+            summary: describeToolCall(toolName, toolArgs),
+            details: (toolArgs ?? {}) as Record<string, unknown>,
+          },
+        });
+
+        const approved = await ApprovalService.request(approvalId);
+        pendingApprovalIds.delete(approvalId);
+        enqueue({ approval_resolved: { id: approvalId, approved } });
+
+        if (!approved) {
+          // Reported back to the model so it can adjust rather than retry blindly.
+          currentMessages.push({
+            role: 'tool',
+            content: `The user declined this ${toolName} call. Do not retry it; ask what to do differently.`,
+            tool_call_id: toolCallId,
+          });
+          enqueueToolEvent(toolName, 'error', 'Declined by user');
+          continue;
+        }
+      }
+
       enqueueToolEvent(toolName, 'start');
       try {
-        const result = await deps.executeTool(toolName, toolArgs, chatRecord?.projectRoot ?? null);
-        currentMessages.push({ role: 'tool', content: result });
+        const result = await deps.executeTool(toolName, toolArgs, projectRoot);
+        currentMessages.push({ role: 'tool', content: result, tool_call_id: toolCallId });
+        const generatedFile = parseGeneratedDocumentResult(result);
+        if (generatedFile) {
+          generatedFiles.push({ name: generatedFile.name, url: generatedFile.url });
+          enqueue({ generated_file: generatedFile });
+        }
         enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '');
       } catch (toolErr) {
         const errMsg = toolErr instanceof Error ? toolErr.message : 'Unknown error';
-        currentMessages.push({ role: 'tool', content: `Error: ${errMsg}` });
+        currentMessages.push({
+          role: 'tool',
+          content: `Error: ${errMsg}`,
+          tool_call_id: toolCallId,
+        });
         enqueueToolEvent(toolName, 'error', errMsg);
       }
     }
@@ -450,6 +625,29 @@ async function runAgentLoop(
 
 export function chatRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
+
+  /**
+   * Answer a pending tool-approval request.
+   *
+   * Separate from the streaming response because that connection is one-way:
+   * the loop is parked on a promise this resolves.
+   */
+  app.post('/approve', async (context) => {
+    let body: { id?: unknown; approved?: unknown };
+    try {
+      body = await context.req.json();
+    } catch {
+      return context.json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
+    if (typeof body.id !== 'string' || typeof body.approved !== 'boolean') {
+      return context.json({ error: 'id: required string, approved: required boolean' }, 400);
+    }
+
+    // Unknown ids are already-settled or timed-out requests, not errors.
+    const settled = ApprovalService.resolve(body.id, body.approved);
+    return context.json({ settled });
+  });
 
   app.post('/', async (context) => {
     let body: unknown;
@@ -546,13 +744,16 @@ export function chatRouter(dependencies: AppDependencies): Hono {
         capabilities?: string[];
       } | null;
       const capabilities = modelDetails?.capabilities ?? [];
-      const tools = resolveTools(
-        dependencies.getToolDefinitions() as Record<string, unknown>[],
-        capabilities.includes('tools'),
-        personaToolAllowlist,
-        typedBody.search ?? false,
-        skillsAvailable,
-      );
+      const tools = typedBody.skipMemory
+        ? []
+        : resolveTools(
+            dependencies.getToolDefinitions() as Record<string, unknown>[],
+            providerSupportsTools(provider.id, capabilities),
+            personaToolAllowlist,
+            typedBody.search ?? false,
+            skillsAvailable,
+          );
+      const projectRoot = chatRecord?.projectRoot ?? getRequestedProjectRoot(typedBody);
 
       // Non-streaming path
       if (!clientWantsStreaming) {
@@ -585,7 +786,9 @@ export function chatRouter(dependencies: AppDependencies): Hono {
               tools,
               dependencies,
               chatRecord,
+              projectRoot,
               context.req.raw.signal,
+              typedBody,
             );
           } catch (err) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

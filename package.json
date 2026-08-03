@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/predev.js",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "tsx watch src/backend/index.ts",
+    "dev:backend": "node --import tsx --watch src/backend/index.ts",
     "dev:frontend": "vite",
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "tsc --project tsconfig.backend.json",
@@ -19,14 +19,17 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.220",
     "@hono/node-server": "^1.13.7",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.9.0",
     "dompurify": "^3.2.3",
     "duck-duck-scrape": "^2.2.7",
+    "fflate": "^0.8.3",
     "highlight.js": "^11.11.1",
     "hono": "^4.6.14",
     "marked": "^15.0.4",
+    "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

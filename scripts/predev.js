@@ -4,6 +4,8 @@ import { execSync } from 'child_process';
 // Frees the port recorded by the previous backend run. Windows and Unix share
 // no common way to do this, so each platform gets its own lookup + kill.
 const PORT_FILE = '.port';
+/** Must match server.port in vite.config.ts, which runs with strictPort. */
+const FRONTEND_PORT = 5173;
 const isWindows = process.platform === 'win32';
 
 function findPids(port) {
@@ -11,8 +13,12 @@ function findPids(port) {
     const result = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' });
     return result
       .split('\n')
-      .map(l => l.trim().split(/\s+/).pop())
-      .filter(p => p && /^\d+$/.test(p) && p !== '0');
+      .map((line) => line.trim().split(/\s+/))
+      // `findstr :5173` also matches :51730 and remote addresses, so the local
+      // address column is compared exactly rather than trusting the filter.
+      .filter((columns) => columns.length >= 5 && columns[1]?.endsWith(`:${port}`))
+      .map((columns) => columns[columns.length - 1])
+      .filter((pid) => pid && /^\d+$/.test(pid) && pid !== '0');
   }
 
   // lsof ships with macOS and most Linux distros; fuser covers the rest.
@@ -25,17 +31,79 @@ function findPids(port) {
   }
 }
 
+function kill(pid) {
+  try {
+    execSync(isWindows ? `taskkill /PID ${pid} /F` : `kill -9 ${pid}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Backends orphaned by an interrupted run (closed terminal, Ctrl+C that missed
+ * the child) keep running without ever binding a port, so clearing the port
+ * from .port does not find them. They then sit there while the next run starts
+ * a second copy, and .port points at whichever wrote last — which is how the
+ * UI ends up rendering empty against a dead backend.
+ */
+function killOrphanedBackends() {
+  const projectDir = process.cwd();
+
+  try {
+    if (isWindows) {
+      const script =
+        `Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | ` +
+        `Where-Object { $_.CommandLine -like '*${projectDir.replaceAll('\\', '\\\\')}*' -and $_.CommandLine -like '*src/backend/index.ts*' } | ` +
+        `Select-Object -ExpandProperty ProcessId`;
+      const output = execSync(`powershell -NoProfile -Command "${script}"`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      return output.split('\n').map((p) => p.trim()).filter(Boolean).filter(kill).length;
+    }
+
+    const output = execSync(`pgrep -f "${projectDir}.*src/backend/index.ts"`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return output
+      .split('\n')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .filter((pid) => pid !== String(process.pid))
+      .filter(kill).length;
+  } catch {
+    // No matches, or the lookup tool is unavailable — nothing to clean up.
+    return 0;
+  }
+}
+
 if (existsSync(PORT_FILE)) {
   const port = readFileSync(PORT_FILE, 'utf8').trim();
   if (port) {
     try {
       const pids = [...new Set(findPids(port))];
-      for (const pid of pids) {
-        try {
-          execSync(isWindows ? `taskkill /PID ${pid} /F` : `kill -9 ${pid}`, { stdio: 'ignore' });
-        } catch {}
-      }
+      for (const pid of pids) kill(pid);
       console.log(`[predev] Cleared port ${port}`);
     } catch {}
   }
+}
+
+// Vite runs with strictPort, so a leftover frontend from a previous run makes
+// the next `npm run dev` fail outright rather than drifting to another port.
+// Freeing it here keeps the failure honest without making it the user's chore.
+try {
+  const frontendPids = [...new Set(findPids(FRONTEND_PORT))];
+  if (frontendPids.length > 0) {
+    for (const pid of frontendPids) kill(pid);
+    console.log(`[predev] Cleared frontend port ${FRONTEND_PORT}`);
+  }
+} catch {
+  // Nothing listening — findPids exits non-zero when it matches nothing.
+}
+
+const orphans = killOrphanedBackends();
+if (orphans > 0) {
+  console.log(`[predev] Stopped ${orphans} orphaned backend process(es)`);
 }

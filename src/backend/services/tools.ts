@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
+import { statSync } from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -7,8 +8,14 @@ import { promisify } from 'node:util';
 import { SafeSearchType, search } from 'duck-duck-scrape';
 import type { Tool, ToolExecutionResult } from './toolInterface.js';
 import { toToolDefinition } from './toolInterface.js';
+import { generateDocument } from './generatedDocuments.js';
 
 const execFilePromise = promisify(execFile);
+
+/** Ceiling for a single tool write, so a runaway generation cannot fill the disk. */
+const MAX_WRITE_BYTES = 1024 * 1024;
+const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
+const MAX_SEARCH_OUTPUT_CHARS = 40_000;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -45,9 +52,30 @@ function parseNumberField(args: unknown, key: string): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function parseBooleanField(args: unknown, key: string): boolean | null {
+  if (typeof args !== 'object' || args === null) return null;
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === 'boolean' ? value : null;
+}
+
+function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isWithinPath(root: string, candidate: string): boolean {
+  const comparableRoot = comparablePath(root);
+  const comparableCandidate = comparablePath(candidate);
+  return (
+    comparableCandidate === comparableRoot ||
+    comparableCandidate.startsWith(comparableRoot + path.sep)
+  );
+}
+
 function resolveWithinRoot(root: string, requestedPath: string): string {
-  const resolvedPath = path.resolve(root, requestedPath);
-  if (resolvedPath !== root && !resolvedPath.startsWith(root + path.sep)) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(resolvedRoot, requestedPath);
+  if (!isWithinPath(resolvedRoot, resolvedPath)) {
     throw new Error('Access denied: path outside project directory');
   }
 
@@ -77,7 +105,7 @@ async function resolveWithinRootRealpath(root: string, requestedPath: string): P
     realRoot = root;
   }
 
-  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+  if (!isWithinPath(realRoot, real)) {
     throw new Error('Access denied: symlink target outside project directory');
   }
 
@@ -106,8 +134,115 @@ function isIgnoredPath(relativePath: string, patterns: string[]): boolean {
       return false;
     }
 
+    if (clean.includes('*') || clean.includes('?')) {
+      const target = clean.includes('/') ? normalizedNoSlash : path.basename(normalizedNoSlash);
+      return globRegex(clean).test(target);
+    }
+
     return normalizedNoSlash === clean || normalizedNoSlash.startsWith(`${clean}/`);
   });
+}
+
+async function getIgnorePatterns(root: string): Promise<string[]> {
+  try {
+    return (await fs.readFile(path.join(root, '.gitignore'), 'utf-8'))
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && !line.startsWith('!'));
+  } catch {
+    return [];
+  }
+}
+
+function globRegex(pattern: string): RegExp {
+  const normalized = pattern.replaceAll('\\', '/');
+  let expression = '^';
+  for (let index = 0; index < normalized.length; index++) {
+    const char = normalized[index];
+    if (char === '*' && normalized[index + 1] === '*') {
+      if (normalized[index + 2] === '/') {
+        expression += '(?:.*/)?';
+        index += 2;
+      } else {
+        expression += '.*';
+        index++;
+      }
+    } else if (char === '*') {
+      expression += '[^/]*';
+    } else if (char === '?') {
+      expression += '[^/]';
+    } else {
+      expression += char.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+    }
+  }
+  return new RegExp(expression + '$', 'i');
+}
+
+async function searchFilesWithFs(options: {
+  baseRoot: string;
+  query: string;
+  requestedPath: string;
+  filePattern: string | null;
+  caseSensitive: boolean;
+  maxResults: number;
+}): Promise<string> {
+  const { baseRoot, query, requestedPath, filePattern, caseSensitive, maxResults } = options;
+  const targetPath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+  const ignorePatterns = await getIgnorePatterns(baseRoot);
+  const patternRegex = filePattern ? globRegex(filePattern) : null;
+  const needle = caseSensitive ? query : query.toLowerCase();
+  const matches: string[] = [];
+
+  const inspectFile = async (filePath: string) => {
+    if (matches.length >= maxResults) return;
+    const relative = path.relative(baseRoot, filePath).replaceAll('\\', '/');
+    const patternTarget = filePattern?.includes('/') ? relative : path.basename(relative);
+    if (patternRegex && !patternRegex.test(patternTarget)) return;
+
+    try {
+      const stats = await fs.stat(filePath);
+      if (!stats.isFile() || stats.size > MAX_SEARCH_FILE_BYTES) return;
+      const bytes = await fs.readFile(filePath);
+      if (bytes.subarray(0, 8192).includes(0)) return;
+      const lines = bytes.toString('utf-8').split(/\r?\n/);
+      for (let index = 0; index < lines.length && matches.length < maxResults; index++) {
+        const haystack = caseSensitive ? lines[index] : lines[index].toLowerCase();
+        if (haystack.includes(needle)) {
+          matches.push(`${relative}:${index + 1}: ${lines[index].slice(0, 500)}`);
+        }
+      }
+    } catch {
+      // A file can disappear or become unreadable during a recursive scan.
+    }
+  };
+
+  const walk = async (currentPath: string): Promise<void> => {
+    if (matches.length >= maxResults) return;
+    const stats = await fs.stat(currentPath);
+    if (stats.isFile()) {
+      await inspectFile(currentPath);
+      return;
+    }
+    if (!stats.isDirectory()) return;
+
+    const entries = await fs.readdir(currentPath, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (matches.length >= maxResults) break;
+      const absolute = path.join(currentPath, entry.name);
+      const relative = path.relative(baseRoot, absolute);
+      if (isIgnoredPath(relative, ignorePatterns)) continue;
+      if (entry.isDirectory()) await walk(absolute);
+      else if (entry.isFile()) await inspectFile(absolute);
+      // Symlinks are deliberately not followed.
+    }
+  };
+
+  await walk(targetPath);
+  if (matches.length === 0) {
+    return `No matches for ${JSON.stringify(query)} under ${requestedPath}`;
+  }
+  return matches.join('\n').slice(0, MAX_SEARCH_OUTPUT_CHARS);
 }
 
 /**
@@ -196,8 +331,19 @@ async function assertSafeOutboundUrl(rawUrl: string): Promise<void> {
 }
 
 function isAllowedCommand(command: string, args: string[]): boolean {
+  command = command.toLowerCase();
   if (command === 'git') {
-    return args.length > 0 && (args[0] === 'log' || args[0] === 'status');
+    // Read-only subcommands only. Anything that rewrites history, moves refs,
+    // or touches the network (commit, push, reset, checkout, clean) stays out
+    // until there is an approval prompt in front of it.
+    const READ_ONLY_GIT = ['log', 'status', 'diff', 'show', 'branch', 'blame', 'ls-files'];
+    if (args.length === 0) return false;
+    if (!READ_ONLY_GIT.includes(args[0])) return false;
+    // `git branch -D name` deletes; only the plain listing form is allowed.
+    if (args[0] === 'branch' && args.some((arg) => arg.startsWith('-') && arg !== '-a' && arg !== '-v')) {
+      return false;
+    }
+    return true;
   }
 
   if (command === 'npm') {
@@ -208,7 +354,10 @@ function isAllowedCommand(command: string, args: string[]): boolean {
     return args.length === 2 && args[0] === 'run' && args[1] === 'lint';
   }
 
-  if (command === 'cat' || command === 'ls') {
+  if (
+    ['cat', 'type', 'get-content', 'ls', 'dir', 'get-childitem', 'grep', 'rg', 'select-string', 'findstr']
+      .includes(command)
+  ) {
     return true;
   }
 
@@ -216,16 +365,14 @@ function isAllowedCommand(command: string, args: string[]): boolean {
 }
 
 /**
- * Native stand-in for `cat` and `ls`. Both are coreutils, so shelling out to
- * them only works on Unix; reading through fs keeps run_command identical
- * across platforms and avoids depending on whatever is on PATH.
+ * Platform-independent stand-in for shell-style read and list aliases.
  */
 async function readWithFs(
   command: 'cat' | 'ls',
   args: string[],
   baseRoot: string,
 ): Promise<string> {
-  const paths = args.filter((arg) => !arg.startsWith('-'));
+  const paths = args.filter((arg) => !arg.startsWith('-') && !/^\/[A-Za-z]+$/.test(arg));
   const targets = paths.length > 0 ? paths : ['.'];
 
   const sections = await Promise.all(
@@ -245,7 +392,24 @@ async function readWithFs(
   return sections.join('\n').trim() || 'Command completed with no output';
 }
 
+export function executableForPlatform(command: string, platform: NodeJS.Platform): string {
+  return platform === 'win32' && command.toLowerCase() === 'npm' ? 'npm.cmd' : command;
+}
+
 export class ToolService {
+  /**
+   * Resolve the directory tools operate in.
+   *
+   * projectRoot comes from the chat record — the user typed it into the
+   * project-root field — so an absolute path outside the app is honoured.
+   * Previously anything outside process.cwd() was silently rewritten to the
+   * app's own directory, which meant the tools could only ever read the chat
+   * app itself, never the repo the user was actually asking about.
+   *
+   * This is not a hole for the model to widen: tool arguments are still
+   * confined to whatever root resolves here (resolveWithinRootRealpath), and
+   * the model cannot choose the root.
+   */
   private static getExecutionRoot(projectRoot: string | null): string {
     const cwd = process.cwd();
     if (!projectRoot || !projectRoot.trim()) {
@@ -253,7 +417,14 @@ export class ToolService {
     }
 
     const resolvedRoot = path.resolve(cwd, projectRoot);
-    if (resolvedRoot !== cwd && !resolvedRoot.startsWith(cwd + path.sep)) {
+
+    // A root that does not exist (typo, stale path from another machine) falls
+    // back to cwd rather than failing every tool call with ENOENT.
+    try {
+      if (!statSync(resolvedRoot).isDirectory()) {
+        return cwd;
+      }
+    } catch {
       return cwd;
     }
 
@@ -386,6 +557,39 @@ export class ToolService {
         }
       },
     },
+    search_files: {
+      name: 'search_files',
+      description:
+        'Search text inside project files using a platform-independent filesystem scan. Use this instead of grep, rg, findstr, or Select-String.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Plain text to find' },
+          path: { type: 'string', description: 'Relative file or directory to search (default: .)' },
+          file_pattern: { type: 'string', description: 'Optional glob such as *.ts or src/**/*.tsx' },
+          case_sensitive: { type: 'boolean', description: 'Use case-sensitive matching (default: false)' },
+          max_results: { type: 'number', description: 'Maximum matching lines, 1-200 (default: 100)' },
+        },
+        required: ['query'],
+      },
+      execute: async (args: unknown, projectRoot: string | null) => {
+        const query = parseStringField(args, 'query');
+        if (!query) return 'Search failed: missing query';
+
+        try {
+          return await searchFilesWithFs({
+            baseRoot: this.getExecutionRoot(projectRoot),
+            query,
+            requestedPath: parseStringField(args, 'path') || '.',
+            filePattern: parseStringField(args, 'file_pattern'),
+            caseSensitive: parseBooleanField(args, 'case_sensitive') ?? false,
+            maxResults: Math.max(1, Math.min(200, parseNumberField(args, 'max_results') ?? 100)),
+          });
+        } catch (error) {
+          return `Search failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
     list_directory: {
       name: 'list_directory',
       description: 'List files and folders in a directory recursively up to a depth limit',
@@ -403,19 +607,8 @@ export class ToolService {
 
         try {
           const baseRoot = this.getExecutionRoot(projectRoot);
-          const targetPath = resolveWithinRoot(baseRoot, requestedPath);
-          const gitignorePath = path.join(baseRoot, '.gitignore');
-
-          let ignorePatterns: string[] = [];
-          try {
-            const gitignore = await fs.readFile(gitignorePath, 'utf-8');
-            ignorePatterns = gitignore
-              .split(/\r?\n/)
-              .map((line) => line.trim())
-              .filter((line) => line && !line.startsWith('#') && !line.startsWith('!'));
-          } catch {
-            // No .gitignore found.
-          }
+          const targetPath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+          const ignorePatterns = await getIgnorePatterns(baseRoot);
 
           const treeLines: string[] = [];
 
@@ -452,11 +645,12 @@ export class ToolService {
     },
     run_command: {
       name: 'run_command',
-      description: 'Run a safe allowlisted command in the project root',
+      description:
+        'Run an allowlisted Git or npm command. For files, use list_directory, read_file, and search_files instead of OS shell commands.',
       parameters: {
         type: 'object',
         properties: {
-          command: { type: 'string', description: 'Command executable name (git, npm, cat, ls)' },
+          command: { type: 'string', description: 'Command executable name (git or npm)' },
           args: { type: 'array', description: 'Command arguments as array of strings' },
         },
         required: ['command'],
@@ -475,28 +669,38 @@ export class ToolService {
 
         try {
           const baseRoot = this.getExecutionRoot(projectRoot);
+          const normalizedCommand = command.toLowerCase();
 
-          // cat/ls are coreutils and do not exist on Windows. Serve them from
-          // fs so the allowlist behaves identically on every platform.
-          if (command === 'cat' || command === 'ls') {
-            return await readWithFs(command, commandArgs, baseRoot);
+          // Shell-style read aliases are implemented with Node filesystem
+          // APIs, so their native executables are never required.
+          if (['cat', 'type', 'get-content'].includes(normalizedCommand)) {
+            return await readWithFs('cat', commandArgs, baseRoot);
+          }
+          if (['ls', 'dir', 'get-childitem'].includes(normalizedCommand)) {
+            return await readWithFs('ls', commandArgs, baseRoot);
+          }
+          if (['grep', 'rg', 'select-string', 'findstr'].includes(normalizedCommand)) {
+            const operands = commandArgs.filter((arg) => !arg.startsWith('-') && !arg.startsWith('/'));
+            const query = operands[0];
+            if (!query) return 'Search failed: missing query';
+            return await searchFilesWithFs({
+              baseRoot,
+              query,
+              requestedPath: operands[1] && !operands[1].includes('*') ? operands[1] : '.',
+              filePattern: operands[1]?.includes('*') ? operands[1] : null,
+              caseSensitive: false,
+              maxResults: 100,
+            });
           }
 
-          // npm ships as npm.cmd on Windows and Node refuses to execFile a
-          // .cmd without a shell. Passed as a single command line because
-          // isAllowedCommand restricts npm's arguments to the fixed literals
-          // "test" and "run lint" — nothing here is caller-controlled.
-          const { stdout, stderr } =
-            process.platform === 'win32' && command === 'npm'
-              ? await execFilePromise(`npm.cmd ${commandArgs.join(' ')}`, {
-                  cwd: baseRoot,
-                  maxBuffer: 1024 * 1024,
-                  shell: true,
-                })
-              : await execFilePromise(command, commandArgs, {
-                  cwd: baseRoot,
-                  maxBuffer: 1024 * 1024,
-                });
+          // npm ships as npm.cmd on Windows; only fixed allowlisted arguments
+          // reach the platform-specific executable below.
+          const executable = executableForPlatform(normalizedCommand, process.platform);
+          const { stdout, stderr } = await execFilePromise(executable, commandArgs, {
+            cwd: baseRoot,
+            maxBuffer: 1024 * 1024,
+            shell: process.platform === 'win32' && executable.endsWith('.cmd'),
+          });
 
           return [stdout, stderr].filter(Boolean).join('\n').trim() || 'Command completed with no output';
         } catch (error) {
@@ -508,6 +712,128 @@ export class ToolService {
           }
 
           return `Command failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
+    write_file: {
+      name: 'write_file',
+      description:
+        'Create a file or replace its entire contents, relative to the project root. Use edit_file for a targeted change to an existing file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to the project root' },
+          content: { type: 'string', description: 'Full file contents to write' },
+        },
+        required: ['path', 'content'],
+      },
+      execute: async (args: unknown, projectRoot: string | null) => {
+        const requestedPath = parseStringField(args, 'path');
+        const content = parseStringField(args, 'content');
+
+        if (!requestedPath) return 'Write failed: missing path';
+        if (content === null) return 'Write failed: missing content';
+        if (content.length > MAX_WRITE_BYTES) {
+          return `Write failed: content exceeds ${MAX_WRITE_BYTES} bytes`;
+        }
+
+        try {
+          const baseRoot = this.getExecutionRoot(projectRoot);
+          const safePath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+
+          const existed = await fs
+            .stat(safePath)
+            .then(() => true)
+            .catch(() => false);
+
+          await fs.mkdir(path.dirname(safePath), { recursive: true });
+          await fs.writeFile(safePath, content, 'utf-8');
+
+          const relative = path.relative(baseRoot, safePath);
+          console.log(`[TOOL] ${existed ? 'Overwrote' : 'Created'} ${relative}`);
+          return `${existed ? 'Overwrote' : 'Created'} ${relative} (${content.length} bytes)`;
+        } catch (error) {
+          return `Write failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
+    create_document: {
+      name: 'create_document',
+      description:
+        'Create a real downloadable Microsoft Word .docx file on the application server. Use this whenever the user asks to generate, export, save, or download a document. Never claim a document exists without calling this tool.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filename: { type: 'string', description: 'Download filename, ending in .docx' },
+          content: { type: 'string', description: 'Complete document text. Markdown headings and bullets are converted to Word formatting.' },
+        },
+        required: ['filename', 'content'],
+      },
+      timeoutMs: 30_000,
+      execute: async (args: unknown) => {
+        const filename = parseStringField(args, 'filename');
+        const content = parseStringField(args, 'content');
+        if (!filename) return 'Document creation failed: missing filename';
+        if (content === null) return 'Document creation failed: missing content';
+
+        try {
+          const generated = await generateDocument(filename, content);
+          console.log(`[TOOL] Generated downloadable document: ${generated.name}`);
+          return JSON.stringify(generated);
+        } catch (error) {
+          return `Document creation failed: ${getErrorMessage(error)}`;
+        }
+      },
+    },
+    edit_file: {
+      name: 'edit_file',
+      description:
+        'Replace an exact string in an existing file. The old_string must appear exactly once, so include enough surrounding context to be unambiguous.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path relative to the project root' },
+          old_string: { type: 'string', description: 'Exact text to replace, including indentation' },
+          new_string: { type: 'string', description: 'Replacement text' },
+        },
+        required: ['path', 'old_string', 'new_string'],
+      },
+      execute: async (args: unknown, projectRoot: string | null) => {
+        const requestedPath = parseStringField(args, 'path');
+        const oldString = parseStringField(args, 'old_string');
+        const newString = parseStringField(args, 'new_string');
+
+        if (!requestedPath) return 'Edit failed: missing path';
+        if (!oldString) return 'Edit failed: missing old_string';
+        if (newString === null) return 'Edit failed: missing new_string';
+
+        try {
+          const baseRoot = this.getExecutionRoot(projectRoot);
+          const safePath = await resolveWithinRootRealpath(baseRoot, requestedPath);
+          const original = await fs.readFile(safePath, 'utf-8');
+
+          // Ambiguity here means silently editing the wrong line, so it is an
+          // error rather than a first-match replacement.
+          const occurrences = original.split(oldString).length - 1;
+          if (occurrences === 0) {
+            return `Edit failed: old_string not found in ${requestedPath}`;
+          }
+          if (occurrences > 1) {
+            return `Edit failed: old_string appears ${occurrences} times in ${requestedPath}; include more surrounding context to make it unique`;
+          }
+
+          const updated = original.replace(oldString, newString);
+          if (updated.length > MAX_WRITE_BYTES) {
+            return `Edit failed: result exceeds ${MAX_WRITE_BYTES} bytes`;
+          }
+
+          await fs.writeFile(safePath, updated, 'utf-8');
+
+          const relative = path.relative(baseRoot, safePath);
+          console.log(`[TOOL] Edited ${relative}`);
+          return `Edited ${relative} (${oldString.length} -> ${newString.length} bytes at one site)`;
+        } catch (error) {
+          return `Edit failed: ${getErrorMessage(error)}`;
         }
       },
     },

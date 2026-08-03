@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
 import type { Message } from '../types/chat';
 import { useChat } from '../context/ChatContext';
+import { estimateCost, formatCost } from '../config/modelPricing';
+import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 
 interface MessageItemProps {
   message: Message;
@@ -15,10 +17,33 @@ interface MessageItemProps {
   renderMarkdown: (content: string) => string;
   onCopy: (id: string, content: string) => void;
   onRate: (id: string, rating: number) => void;
+  onRegenerate: (id: string) => void;
+  onEdit: (id: string, content: string) => void;
+  isBusy: boolean;
+  model: string | null;
 }
 
-const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate, onRegenerate, onEdit, isBusy, model }: MessageItemProps) {
   const html = useMemo(() => renderMarkdown(message.content), [renderMarkdown, message.content]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+
+  const beginEdit = () => {
+    setDraft(message.content);
+    setIsEditing(true);
+  };
+
+  const submitEdit = () => {
+    setIsEditing(false);
+    if (draft.trim() && draft !== message.content) onEdit(message.id, draft);
+  };
+
+  // null for local models and for any id without a known rate — better to show
+  // tokens alone than to invent a price.
+  const cost = useMemo(
+    () => estimateCost(model, message.promptTokens, message.completionTokens),
+    [model, message.promptTokens, message.completionTokens],
+  );
 
   return (
     <div
@@ -58,6 +83,38 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
               </button>
             </>
           )}
+          {message.role === 'assistant' && !isTyping && message.content.length > 0 && (
+            <button
+              type="button"
+              className="message__action-btn"
+              title="Regenerate this answer"
+              disabled={isBusy}
+              onClick={() => onRegenerate(message.id)}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                <path d="M3 21v-5h5" />
+              </svg>
+              Retry
+            </button>
+          )}
+          {message.role === 'user' && !isEditing && (
+            <button
+              type="button"
+              className="message__action-btn"
+              title="Edit this message and ask again"
+              disabled={isBusy}
+              onClick={beginEdit}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+              Edit
+            </button>
+          )}
           {message.role === 'assistant' && (
             <button
               type="button"
@@ -86,10 +143,37 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
         </div>
       </div>
       <div className="message__body">
-        <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
+        {isEditing ? (
+          <div className="message__edit">
+            <textarea
+              className="message__edit-input"
+              value={draft}
+              autoFocus
+              rows={Math.min(12, draft.split('\n').length + 1)}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault();
+                  submitEdit();
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setIsEditing(false);
+                }
+              }}
+            />
+            <div className="message__edit-actions">
+              <button type="button" className="message__action-btn" onClick={() => setIsEditing(false)}>Cancel</button>
+              <button type="button" className="message__action-btn is-primary" onClick={submitEdit}>Send again</button>
+            </div>
+          </div>
+        ) : (
+          <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
         {showTokens && message.role === 'assistant' ? (
           <div className="message__tokens">
             ↑ {message.promptTokens ?? 0} ↓ {message.completionTokens ?? 0} tokens
+            {cost !== null && <span className="message__cost">· {formatCost(cost)}</span>}
           </div>
         ) : null}
       </div>
@@ -103,7 +187,12 @@ interface ChatLogProps {
 }
 
 export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
-  const { conversation, isCurrentChatSending } = useChat();
+  const { conversation, isCurrentChatSending, handleRegenerate, handleEditAndResend, selectedModel } = useChat();
+
+  // The request only carries the newest MAX_CONVERSATION_HISTORY messages, so
+  // anything above this index is visible to the reader but invisible to the
+  // model. That used to happen silently and read as the model "forgetting".
+  const contextStartIndex = Math.max(0, conversation.length - MAX_CONVERSATION_HISTORY);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
   const [feedbackRatings, setFeedbackRatings] = useState<Record<string, number>>({});
@@ -233,8 +322,16 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
           </div>
         ) : (
           conversation.map((message, index) => (
-            <MessageItem
-              key={message.id}
+            <Fragment key={message.id}>
+              {index === contextStartIndex && contextStartIndex > 0 && (
+                <div className="context-divider" role="separator">
+                  <span>
+                    Older messages are no longer sent to the model — only the
+                    last {MAX_CONVERSATION_HISTORY} are included
+                  </span>
+                </div>
+              )}
+              <MessageItem
               message={message}
               isTyping={
                 isCurrentChatSending &&
@@ -248,7 +345,12 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
               renderMarkdown={renderMarkdown}
               onCopy={handleCopyMessage}
               onRate={handleRate}
-            />
+              onRegenerate={handleRegenerate}
+              onEdit={handleEditAndResend}
+              isBusy={isCurrentChatSending}
+              model={selectedModel}
+              />
+            </Fragment>
           ))
         )}
 

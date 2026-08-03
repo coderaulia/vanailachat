@@ -81,6 +81,22 @@ export interface StreamEvent {
   done?: boolean;
   prompt_eval_count?: number;
   eval_count?: number;
+  approval_request?: PendingApproval;
+  approval_resolved?: { id: string; approved: boolean };
+  generated_file?: {
+    name: string;
+    url: string;
+    bytes: number;
+    mimeType: string;
+  };
+}
+
+/** A tool call waiting on the user before it runs. */
+export interface PendingApproval {
+  id: string;
+  tool: string;
+  summary: string;
+  details: Record<string, unknown>;
 }
 
 

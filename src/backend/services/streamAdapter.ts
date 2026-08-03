@@ -58,9 +58,44 @@ export function openAIStreamToNDJSON(
   // the frontend reads — so hold the usage and translate it on close.
   let usage: SSEUsage | null = null;
 
+  const takeMergedToolCalls = () => {
+    const calls = Object.entries(mergedToolCalls).map(([index, tc]) => {
+      let args: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(tc.function.arguments || '{}') as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          args = parsed as Record<string, unknown>;
+        }
+      } catch (error) {
+        console.warn(
+          '[STREAM] Tool arguments were not valid JSON; returning an empty object so the model can retry:',
+          error instanceof Error ? error.message : 'unknown error',
+        );
+      }
+
+      return {
+        id: tc.id || `call_stream_${index}`,
+        type: tc.type || 'function',
+        function: {
+          name: tc.function.name,
+          arguments: args,
+        },
+      };
+    });
+    mergedToolCalls = {};
+    return calls;
+  };
+
   const stream = new ReadableStream({
     async pull(controller) {
       const closeWithUsage = () => {
+        if (Object.keys(mergedToolCalls).length > 0) {
+          controller.enqueue(encoder.encode(JSON.stringify({
+            model,
+            message: { role: 'assistant', tool_calls: takeMergedToolCalls() },
+            done: false,
+          }) + '\n'));
+        }
         const final: Record<string, unknown> = { model, done: true };
         if (usage) {
           if (typeof usage.prompt_tokens === 'number') final.prompt_eval_count = usage.prompt_tokens;
@@ -143,15 +178,7 @@ export function openAIStreamToNDJSON(
             // not 'stop', when the model asks for a tool — keying on 'stop'
             // alone dropped the accumulated calls entirely.
             if (choice.finish_reason && Object.keys(mergedToolCalls).length > 0) {
-              message.tool_calls = Object.values(mergedToolCalls).map((tc) => ({
-                id: tc.id,
-                type: tc.type,
-                function: {
-                  name: tc.function.name,
-                  arguments: JSON.parse(tc.function.arguments || '{}'),
-                },
-              }));
-              mergedToolCalls = {};
+              message.tool_calls = takeMergedToolCalls();
             }
 
             if (Object.keys(message).length > 0) {

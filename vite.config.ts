@@ -28,6 +28,10 @@ function backendProxyPlugin(): Plugin {
   return {
     name: 'dynamic-backend-proxy',
     configureServer(server) {
+      // Vitest loads the Vite config too. The proxy is not used there, and
+      // watchFile would otherwise leave its polling handle open after tests.
+      if (process.env.VITEST) return;
+
       // Load immediately in case backend already ran
       loadPort();
 
@@ -83,7 +87,15 @@ export default defineConfig({
     },
   },
   server: {
-    // No static proxy — handled dynamically by backendProxyPlugin above
+    // No static proxy — handled dynamically by backendProxyPlugin above.
+    //
+    // strictPort matters more than it looks: without it a second `npm run dev`
+    // silently starts on 5174 while an older instance keeps 5173. Both read the
+    // same .port file, so the new tab can end up pointing at a backend that is
+    // dead or belongs to the other instance, and the app just renders empty.
+    // Failing to start is the honest outcome — it says the port is taken.
+    port: 5173,
+    strictPort: true,
   },
   test: {
     environment: 'node',

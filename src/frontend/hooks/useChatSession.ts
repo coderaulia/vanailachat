@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
-import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat } from '../types/chat';
+import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, PendingApproval } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
 import { DEFAULT_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW } from '../config/constants';
 import { toModelRole } from '../utils/chatUtils';
@@ -38,6 +38,7 @@ export function useChatSession(deps: {
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
 
   const currentChatIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -48,7 +49,7 @@ export function useChatSession(deps: {
 
   // ── sub-hooks ──────────────────────────────────────────────────────────────
 
-  const { handleSend, lastSentPromptRef } = useSendMessage({
+  const { handleSend, handleRegenerate, handleEditAndResend, lastSentPromptRef } = useSendMessage({
     selectedModel: deps.selectedModel,
     selectedRole: deps.selectedRole,
     selectedProjectId: deps.selectedProjectId,
@@ -72,11 +73,32 @@ export function useChatSession(deps: {
     setSendingChatIds,
     setContextWindow,
     setStatusText: deps.setStatusText,
+    setPendingApproval,
     updateHistories: deps.updateHistories,
     saveMessage: deps.saveMessage,
     upsertChat: deps.upsertChat,
     patchChat: deps.patchChat,
   });
+
+  /**
+   * Answer a parked tool call. Cleared optimistically so the prompt cannot be
+   * double-submitted while the request is in flight.
+   */
+  const respondToApproval = async (approved: boolean) => {
+    const approval = pendingApproval;
+    if (!approval) return;
+
+    setPendingApproval(null);
+    try {
+      await fetch('/api/chat/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: approval.id, approved }),
+      });
+    } catch {
+      deps.setStatusText('Could not send the decision — the request will time out and be denied.');
+    }
+  };
 
   const { handleResearch } = useResearch({
     selectedModel: deps.selectedModel,
@@ -149,23 +171,53 @@ export function useChatSession(deps: {
     })();
   };
 
+  /** Formats the browser cannot read as text — the backend unpacks these. */
+  const NEEDS_EXTRACTION = /\.(docx|xlsx|xlsm|pdf)$/i;
+
   const handleAttach = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
-    await Promise.all(Array.from(files).map(file =>
-      new Promise<void>(resolve => {
+    await Promise.all(Array.from(files).map(async file => {
+      if (file.type.startsWith('image/')) {
+        const content = await new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'image' } as Attachment]);
+        return;
+      }
+
+      // Office and PDF files are ZIP/binary containers. Reading them as text
+      // yields mojibake, so they go to the backend extractor instead.
+      if (NEEDS_EXTRACTION.test(file.name)) {
+        try {
+          const form = new FormData();
+          form.append('file', file);
+          const response = await fetch('/api/attachments/extract', { method: 'POST', body: form });
+          const payload = await response.json() as { text?: string; error?: string };
+
+          if (!response.ok || typeof payload.text !== 'string') {
+            throw new Error(payload.error || 'Extraction failed');
+          }
+
+          deps.setAttachedFiles(prev => [...prev, { name: file.name, content: payload.text!, type: 'text' } as Attachment]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Extraction failed';
+          deps.setStatusText(`Could not read ${file.name}: ${message}`);
+        }
+        return;
+      }
+
+      const content = await new Promise<string>(resolve => {
         const reader = new FileReader();
-        reader.onload = e => {
-          const content = e.target?.result as string;
-          const type = file.type.startsWith('image/') ? 'image' : 'text';
-          deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type } as Attachment]);
-          resolve();
-        };
-        if (file.type.startsWith('image/')) reader.readAsDataURL(file);
-        else reader.readAsText(file);
-      })
-    ));
+        reader.onload = e => resolve(e.target?.result as string);
+        reader.readAsText(file);
+      });
+      deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'text' } as Attachment]);
+    }));
+
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -220,27 +272,34 @@ export function useChatSession(deps: {
       .catch(err => { console.error(err); deps.setStatusText('Failed to save project root'); });
   };
 
-  const handlePickProjectRoot = async () => {
+  /**
+   * Apply a workspace folder chosen in the in-app picker.
+   *
+   * This used to shell out to a native dialog, which the server could not
+   * reliably display — the request hung and the button looked dead.
+   */
+  const handlePickProjectRoot = async (picked: string) => {
+    const path = picked.trim();
+    if (!path) return;
+
+    setProjectRoot(path);
+    deps.setStatusText(`Workspace: ${path}`);
+
+    const chatId = currentChatIdRef.current;
+    if (!chatId) return;
+
+    const updatedAt = Date.now();
+    deps.updateHistories(prev => {
+      const chat = prev[chatId];
+      if (!chat) return prev;
+      return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
+    });
+
     try {
-      const response = await fetch('/api/pick-directory', { method: 'POST' });
-      if (!response.ok) throw new Error('Failed to pick directory');
-      const { path } = await response.json() as { path?: string };
-      if (path) {
-        setProjectRoot(path);
-        const chatId = currentChatIdRef.current;
-        if (chatId) {
-          const updatedAt = Date.now();
-          deps.updateHistories(prev => {
-            const chat = prev[chatId];
-            if (!chat) return prev;
-            return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
-          });
-          void deps.patchChat(chatId, { projectRoot: path, updatedAt });
-        }
-      }
+      await deps.patchChat(chatId, { projectRoot: path, updatedAt });
     } catch (error) {
       console.error(error);
-      deps.setStatusText('Failed to open directory picker');
+      deps.setStatusText('Could not save the workspace folder');
     }
   };
 
@@ -288,6 +347,10 @@ export function useChatSession(deps: {
     handleSaveProjectRoot,
     handlePickProjectRoot,
     handleSend,
+    pendingApproval,
+    respondToApproval,
+    handleRegenerate,
+    handleEditAndResend,
     handleAbort,
     handleResearch,
     contextPercentage,

@@ -4,6 +4,7 @@ import type { ModelRole } from '../config/modelRoles';
 import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import { ABTestModal } from './ABTestModal';
+import { FolderPicker } from './FolderPicker';
 import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
@@ -16,6 +17,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
   const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [isResearchEnabled, setIsResearchEnabled] = useState(false);
   const [showABTest, setShowABTest] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
 
   const {
     attachedFiles,
@@ -123,19 +125,29 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
           {/* Project root — coding role only */}
           {selectedRole === 'coding' ? (
             <div className="project-root-field">
-              <label>Project Root</label>
+              {showFolderPicker && (
+                <FolderPicker
+                  initialPath={projectRoot}
+                  onClose={() => setShowFolderPicker(false)}
+                  onSelect={(picked) => {
+                    setShowFolderPicker(false);
+                    onPickProjectRoot(picked);
+                  }}
+                />
+              )}
+              <label>Workspace</label>
               <input
                 className="project-root-input"
                 value={projectRoot}
                 onChange={(event) => onSetProjectRoot(event.target.value)}
                 onBlur={onSaveProjectRoot}
-                placeholder="/absolute/path/to/project"
+                placeholder="Pick a folder for Claude Code to work in"
               />
               <button
                 type="button"
                 className="btn btn-secondary icon-btn project-root-picker"
-                onClick={onPickProjectRoot}
-                title="Open Folder"
+                onClick={() => setShowFolderPicker((open) => !open)}
+                title="Browse for a folder"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -308,7 +320,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 onChange={onAttach}
                 multiple
                 hidden
-                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php"
+                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php,.docx,.xlsx,.xlsm,.pdf"
               />
 
               {/* Clear + Send */}

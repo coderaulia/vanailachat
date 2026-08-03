@@ -2,12 +2,14 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
+import { ApprovalPrompt } from './components/ApprovalPrompt';
 import './App.css';
 import { Sidebar } from './components/Sidebar';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
 import { ChatProvider, useChat } from './context/ChatContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { OnboardingWizard, useOnboarding } from './components/OnboardingWizard';
+import { setPricingOverrides } from './config/modelPricing';
 
 // Rendered only on demand, so they are kept out of the initial bundle.
 // OnboardingWizard stays eager: useOnboarding runs on every load.
@@ -25,6 +27,20 @@ const AppShell = () => {
   const [showTokens, setShowTokens] = useState(false);
   const { show: showOnboarding, markDone } = useOnboarding();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Per-model rates the built-in table cannot know — a gateway serves its own
+  // model names at its own prices. Stored as JSON in the model_pricing setting.
+  useEffect(() => {
+    fetch('/api/settings/model_pricing')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        const raw = (data as { value?: string } | null)?.value;
+        if (raw) setPricingOverrides(JSON.parse(raw));
+      })
+      .catch(() => {
+        // No overrides configured — built-in rates still apply.
+      });
+  }, []);
 
   const {
     currentChatId,
@@ -98,6 +114,7 @@ const AppShell = () => {
               renderMarkdown={renderMarkdown}
             />
 
+            <ApprovalPrompt />
             <Composer thinkingSeconds={thinkingSeconds} />
           </>
         ) : (
