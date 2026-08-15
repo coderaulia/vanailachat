@@ -1,4 +1,14 @@
-node_modules/
+# Dependencies
+node_modules
+.pnpm-store
+
+# Next.js build output
+.next/
+out/
+
+# Keep the lockfile checked into Git!
+!pnpm-lock.yaml
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

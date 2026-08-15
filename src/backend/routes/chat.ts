@@ -234,7 +234,6 @@ async function buildSystemPrompt(
     if (personaPrompt) systemPrompt += `\n\n${personaPrompt}`;
   }
   const personaToolAllowlist = getPersonaToolAllowlist(personaId) ?? null;
-
   // Memory — recall against the last user message, then store it.
   //
   // Vector search when an embedding backend is reachable, keyword search when
