@@ -55,11 +55,12 @@ export function codingRouter(dependencies: AppDependencies): Hono {
 
   app.post('/run', async (context) => {
     try {
-      const body = await context.req.json() as { chatId?: unknown; prompt?: unknown; mode?: unknown };
+      const body = await context.req.json() as { chatId?: unknown; prompt?: unknown; mode?: unknown; model?: unknown };
       if (typeof body.chatId !== 'string' || typeof body.prompt !== 'string' || !body.prompt.trim()) {
         return context.json({ error: 'chatId and prompt are required' }, 400);
       }
       const prompt = body.prompt;
+      const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined;
       const session = dependencies.getCodingSession(body.chatId);
       if (!session) return context.json({ error: 'Create a coding workspace first' }, 400);
       const harness = dependencies.codingHarnesses.get(session.harness);
@@ -76,6 +77,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
               cwd: session.workspacePath,
               sessionId: session.harnessSessionId,
               mode,
+              model,
               signal: controller.signal,
               onApproval: (approval) => emit({ approval_request: approval }),
             })) {

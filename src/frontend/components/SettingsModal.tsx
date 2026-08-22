@@ -12,6 +12,7 @@ interface AllSettings {
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
   anthropic_api_key?: string;
+  fcc_server_url?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
@@ -116,8 +117,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
 
-  // Claude Code (separate from the chat provider — it is its own agent)
+  // Claude Code & Free Claude Code (FCC)
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [fccServerUrl, setFccServerUrl] = useState('');
 
   // Instructions
   const [baseInstructions, setBaseInstructions] = useState('');
@@ -183,6 +185,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
         if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
         if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
+        if (s.fcc_server_url) setFccServerUrl(s.fcc_server_url);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
@@ -344,6 +347,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, anthropicKey],
   );
 
+  const saveFccServerUrl = useCallback(
+    () => persist([['fcc_server_url', fccServerUrl.trim()]]),
+    [persist, fccServerUrl],
+  );
+
   // Profile fields save even when emptied, so clearing one actually sticks.
   const saveUserName = useCallback(
     () => persist([['user_name', userName.trim()]]),
@@ -404,6 +412,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(customBaseUrl, saveCustomConfig, ready);
   useAutosave(customKey, saveCustomConfig, ready);
   useAutosave(anthropicKey, saveAnthropicKey, ready);
+  useAutosave(fccServerUrl, saveFccServerUrl, ready);
   useAutosave(userName, saveUserName, ready);
   useAutosave(userRole, saveUserRole, ready);
   useAutosave(baseInstructions, saveBaseInstructions, ready);
@@ -628,24 +637,44 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {/* Claude Code is a coding agent, not one of the chat
-                      providers above, so it gets its own key regardless of
-                      which provider tab is selected. */}
-                  <div className="settings-field">
-                    <label className="settings-label">Anthropic API Key <span className="settings-optional">(for Claude Code)</span></label>
-                    <input
-                      className="settings-input"
-                      type="password"
-                      value={anthropicKey}
-                      onChange={(e) => setAnthropicKey(e.target.value)}
-                      onBlur={saveAnthropicKey}
-                      placeholder="sk-ant-..."
-                    />
-                    <p className="settings-hint">
-                      Powers the Coding role. Get a key at{' '}
-                      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>.
-                      The ANTHROPIC_API_KEY environment variable is used when this is empty.
+                  {/* Coding Workspace / Free Claude Code Integration */}
+                  <div className="settings-field settings-field--fcc">
+                    <div className="settings-fcc-badge-row">
+                      <label className="settings-label">Coding Workspace Engine</label>
+                      <span className="settings-fcc-badge">
+                        ⚡ Powered by <a href="https://github.com/alishahryar1/free-claude-code" target="_blank" rel="noreferrer">Free Claude Code</a>
+                      </span>
+                    </div>
+                    <p className="settings-hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
+                      By default, Claude Code runs directly in the browser using your connected providers (Ollama, OpenRouter, 9Router, Custom) with zero extra setup.
                     </p>
+
+                    <div className="settings-subfields">
+                      <div className="settings-subfield">
+                        <label className="settings-sublabel">Direct Anthropic API Key <span className="settings-optional">(optional)</span></label>
+                        <input
+                          className="settings-input"
+                          type="password"
+                          value={anthropicKey}
+                          onChange={(e) => setAnthropicKey(e.target.value)}
+                          onBlur={saveAnthropicKey}
+                          placeholder="sk-ant-... (leave blank to use Free Claude Code)"
+                        />
+                        <p className="settings-subhint">Leave blank to route Claude Code through your active provider.</p>
+                      </div>
+
+                      <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                        <label className="settings-sublabel">External FCC Server URL <span className="settings-optional">(optional)</span></label>
+                        <input
+                          className="settings-input"
+                          value={fccServerUrl}
+                          onChange={(e) => setFccServerUrl(e.target.value)}
+                          onBlur={saveFccServerUrl}
+                          placeholder="http://127.0.0.1:8082 (leave blank to use built-in FCC proxy)"
+                        />
+                        <p className="settings-subhint">Only needed if running a standalone <code>fcc-server</code> daemon.</p>
+                      </div>
+                    </div>
                   </div>
 
                   <button

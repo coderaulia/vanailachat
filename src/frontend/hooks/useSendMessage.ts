@@ -256,7 +256,7 @@ export function useSendMessage(deps: SendMessageDeps) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: abortController.signal,
-            body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement' }),
+            body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement', model: resolvedModel }),
           })
         : await fetch('/api/chat', {
         method: 'POST',

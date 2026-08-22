@@ -1,3 +1,15 @@
+/**
+ * Claude Code CLI / Agent SDK Adapter
+ *
+ * Integrated with Free Claude Code (alishahryar1/free-claude-code):
+ * https://github.com/alishahryar1/free-claude-code
+ *
+ * Enables Claude Code to run in the browser using direct Anthropic credentials
+ * OR free/local/cloud providers via the Free Claude Code compatibility proxy.
+ */
+
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { ApprovalService, describeToolCall } from './approvals.js';
 import { DatabaseService } from './database.js';
@@ -13,16 +25,27 @@ function textFromContent(content: unknown): string {
     .join('');
 }
 
-/** Claude Code CLI adapter. The harness owns filesystem and command execution. */
+function getLocalBackendUrl(): string {
+  try {
+    const portFile = resolve(process.cwd(), '.port');
+    if (existsSync(portFile)) {
+      const port = readFileSync(portFile, 'utf-8').trim();
+      if (port) return `http://127.0.0.1:${port}/api/fcc`;
+    }
+  } catch {
+    // fallback below
+  }
+  const port = process.env.PORT || '5173';
+  return `http://127.0.0.1:${port}/api/fcc`;
+}
+
 export class ClaudeCodeHarness implements CodingHarness {
   readonly id = 'claude-code' as const;
 
   /**
-   * Key from Settings first, environment second — the same order every other
-   * provider uses. Reading only the environment meant the key could not be set
-   * from the UI at all, and nothing in the app said where to put it.
+   * Direct Anthropic API Key (if provided by user).
    */
-  private apiKey(): string {
+  private directAnthropicKey(): string {
     try {
       const stored = DatabaseService.getSetting('anthropic_api_key')?.trim();
       if (stored) return stored;
@@ -33,38 +56,61 @@ export class ClaudeCodeHarness implements CodingHarness {
   }
 
   async status(): Promise<CodingHarnessStatus> {
-    if (!this.apiKey()) {
-      return {
-        id: this.id,
-        label: 'Claude Code',
-        available: false,
-        reason: 'Add an Anthropic API key in Settings → AI Connection to use Claude Code',
-      };
+    const directKey = this.directAnthropicKey();
+    if (directKey) {
+      return { id: this.id, label: 'Claude Code (Direct Anthropic API)', available: true };
     }
-    return { id: this.id, label: 'Claude Code', available: true };
+
+    // Default: Powered by Free Claude Code integration
+    return {
+      id: this.id,
+      label: 'Claude Code (via Free Claude Code)',
+      available: true,
+    };
   }
 
   async *run(input: CodingRunInput): AsyncIterable<CodingEvent> {
-    const apiKey = this.apiKey();
-    if (!apiKey) {
-      throw new Error('Add an Anthropic API key in Settings → AI Connection to use Claude Code');
-    }
-
+    const directKey = this.directAnthropicKey();
     const abortController = new AbortController();
     const abort = () => abortController.abort();
     input.signal.addEventListener('abort', abort, { once: true });
+
+    let envConfig: Record<string, string>;
+
+    if (directKey) {
+      // Direct Anthropic API
+      envConfig = {
+        ...process.env as Record<string, string>,
+        ANTHROPIC_API_KEY: directKey,
+      };
+    } else {
+      // Free Claude Code Integration Proxy
+      const fccUrl =
+        DatabaseService.getSetting('fcc_server_url') ||
+        process.env.FCC_SERVER_URL ||
+        getLocalBackendUrl();
+
+      const model =
+        input.model ||
+        DatabaseService.getSetting('coding_model') ||
+        'openrouter:0x-alpha/model';
+
+      envConfig = {
+        ...process.env as Record<string, string>,
+        ANTHROPIC_BASE_URL: fccUrl,
+        ANTHROPIC_API_KEY: 'fcc-vanaila-proxy',
+        ANTHROPIC_MODEL: model,
+      };
+    }
+
     const result = query({
       prompt: input.prompt,
       options: {
         cwd: input.cwd,
-        // env REPLACES the subprocess environment rather than merging, so
-        // process.env is spread to keep PATH and friends intact.
-        env: { ...process.env, ANTHROPIC_API_KEY: apiKey },
+        env: envConfig,
         resume: input.sessionId ?? undefined,
-        maxTurns: 12,
+        maxTurns: 16,
         permissionMode: input.mode === 'plan' ? 'plan' : 'default',
-        // Read-only exploration stays fast; edits and commands are always
-        // sent through the application's existing explicit approval dialog.
         allowedTools: ['Read', 'Glob', 'Grep'],
         abortController,
         canUseTool: async (tool, toolInput) => {

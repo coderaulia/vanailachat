@@ -613,3 +613,62 @@
   accent-color: var(--bg-accent);
   cursor: pointer;
 }
+
+/* Free Claude Code (FCC) Integration Section */
+.settings-field--fcc {
+  margin-top: 10px;
+  padding: 14px;
+  background: var(--bg-surface-strong);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+}
+
+.settings-fcc-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-fcc-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-accent-soft);
+  color: var(--bg-accent-strong);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm, 4px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-fcc-badge a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.settings-subfields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-subfield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-sublabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-subhint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 2px 0 0 0;
+}
+

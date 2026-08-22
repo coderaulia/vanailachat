@@ -72,7 +72,13 @@ Provider credentials can be configured in two ways:
 1. **In the UI (Recommended)**: Open **Settings** (⚙️) → **AI Connection**, choose your provider, enter your secret key, and click **Test Connection** or dismiss the modal. Credentials are saved locally and permanently to the SQLite database (`data/vanaila.sqlite`).
 2. **In `.env` / `.env.local`**: Copy `.env.example` to `.env` and fill in your keys (e.g. `OPENROUTER_API_KEY=sk-or-v1-...`). The backend loads `.env` and `.env.local` automatically at startup.
 
-The Coding control opens a Claude Code workspace. Choose a local project directory, ask for a plan or implementation, and approve every edit or command before it runs.
+### Coding Workspace & Free Claude Code (FCC) Integration
+
+The Coding control opens a Claude Code workspace directly in the browser:
+- Powered by the open-source **[Free Claude Code (FCC)](https://github.com/alishahryar1/free-claude-code)** integration (by [@alishahryar1](https://github.com/alishahryar1), MIT License).
+- Runs out of the box using your active connected providers (**Ollama**, **OpenRouter**, **9Router**, **Custom**, or **OpenAI**) without requiring an Anthropic API key.
+- Choose a local project directory, send plans or implementation prompts, and approve file edits and shell commands before they run.
+- Optionally provide a direct `ANTHROPIC_API_KEY` in Settings or connect to an external `fcc-server` if preferred.
 
 ## Main features
 
@@ -143,6 +149,10 @@ pnpm build
 Open-source contributors are welcome. To join the development of VanailaChat, email [care@vanaila.com](mailto:care@vanaila.com) with a brief introduction and the area you would like to help with.
 
 Please keep pull requests focused, include tests when behavior changes, and never include secrets or local database files.
+
+## Acknowledgements & Credits
+
+- **[Free Claude Code (FCC)](https://github.com/alishahryar1/free-claude-code)** by [@alishahryar1](https://github.com/alishahryar1) (MIT License) — powers the provider-agnostic Anthropic Messages adapter for Claude Code in VanailaChat.
 
 ## License
 

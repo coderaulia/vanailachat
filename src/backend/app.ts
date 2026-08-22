@@ -35,6 +35,7 @@ import { abRouter } from './routes/ab.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { codingRouter } from './routes/coding.js';
 import { filesystemRouter } from './routes/filesystem.js';
+import { freeClaudeCodeRouter } from './routes/freeClaudeCodeRoute.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   executeTool: ToolService.executeTool.bind(ToolService),
@@ -305,6 +306,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
   app.route('/api/attachments', attachmentsRouter());
   app.route('/api/coding', codingRouter(dependencies));
+  app.route('/api/fcc', freeClaudeCodeRouter(dependencies));
   // Directory listing for the in-app folder picker (names only, no contents).
   app.use('/api/fs/*', rateLimiter({ maxRequests: 120, windowMs: 60_000 }));
   app.route('/api/fs', filesystemRouter());

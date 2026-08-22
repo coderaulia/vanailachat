@@ -12,6 +12,7 @@ export interface CodingRunInput {
   cwd: string;
   sessionId?: string | null;
   mode: 'plan' | 'implement';
+  model?: string;
   signal: AbortSignal;
   onApproval?: (approval: CodingApproval) => void;
 }
