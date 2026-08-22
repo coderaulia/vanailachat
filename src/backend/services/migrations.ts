@@ -337,5 +337,27 @@ export const migrations: Migration[] = [
         );
       `);
     }
+  },
+  {
+    version: 15,
+    name: 'migrate_openrouter_settings_isolation',
+    up: (db) => {
+      // If openai_api_key was storing an openrouter key (sk-or-), migrate it to openrouter_api_key
+      const openAiKeyRow = db.prepare("SELECT value FROM settings WHERE key = 'openai_api_key'").get() as { value: string } | undefined;
+      const openRouterKeyRow = db.prepare("SELECT value FROM settings WHERE key = 'openrouter_api_key'").get() as { value: string } | undefined;
+
+      if (openAiKeyRow?.value?.startsWith('sk-or-')) {
+        if (!openRouterKeyRow?.value) {
+          db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('openrouter_api_key', ?)").run(openAiKeyRow.value);
+        }
+        db.prepare("DELETE FROM settings WHERE key = 'openai_api_key'").run();
+      }
+
+      // If openai_base_url was set to openrouter.ai, remove it so OpenAI defaults cleanly
+      const openAiBaseRow = db.prepare("SELECT value FROM settings WHERE key = 'openai_base_url'").get() as { value: string } | undefined;
+      if (openAiBaseRow?.value?.includes('openrouter.ai')) {
+        db.prepare("DELETE FROM settings WHERE key = 'openai_base_url'").run();
+      }
+    }
   }
 ];

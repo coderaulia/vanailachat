@@ -159,4 +159,19 @@ describe('LLM Providers database settings and model resolution', () => {
       capabilities: ['chat', 'vision', 'tools'],
     });
   });
+
+  it('OpenAIProvider returns empty list when no OpenAI API key is set', async () => {
+    DatabaseService.upsertSetting('openai_api_key', '');
+    const provider = new OpenAIProvider();
+    const models = await provider.listModels();
+    expect(models).toEqual([]);
+  });
+
+  it('OpenAIProvider ignores OpenRouter keys and endpoints', async () => {
+    DatabaseService.upsertSetting('openai_api_key', 'sk-or-v1-test-openrouter-key');
+    DatabaseService.upsertSetting('openai_base_url', 'https://openrouter.ai/api/v1');
+    const provider = new OpenAIProvider();
+    const models = await provider.listModels();
+    expect(models).toEqual([]);
+  });
 });

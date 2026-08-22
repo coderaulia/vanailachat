@@ -28,9 +28,14 @@ export class OpenAIProvider implements LLMProvider {
   private getApiKey(): string {
     if (this.configuredApiKey !== undefined) return this.configuredApiKey.trim();
     try {
-      return (DatabaseService.getSetting('openai_api_key') ?? process.env.OPENAI_API_KEY ?? '').trim();
+      const stored = DatabaseService.getSetting('openai_api_key');
+      if (stored?.trim() && !stored.startsWith('sk-or-')) return stored.trim();
+      const envKey = (process.env.OPENAI_API_KEY ?? '').trim();
+      if (envKey && !envKey.startsWith('sk-or-')) return envKey;
+      return '';
     } catch {
-      return (process.env.OPENAI_API_KEY ?? '').trim();
+      const envKey = (process.env.OPENAI_API_KEY ?? '').trim();
+      return envKey.startsWith('sk-or-') ? '' : envKey;
     }
   }
 
@@ -38,7 +43,11 @@ export class OpenAIProvider implements LLMProvider {
     if (this.configuredBaseUrl !== undefined) return this.configuredBaseUrl.trim().replace(/\/+$/, '');
     try {
       const url = DatabaseService.getSetting('openai_base_url') ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
-      return url.trim().replace(/\/+$/, '');
+      const clean = url.trim().replace(/\/+$/, '');
+      if (clean.includes('openrouter.ai')) {
+        return 'https://api.openai.com/v1';
+      }
+      return clean;
     } catch {
       return (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
     }
@@ -52,7 +61,7 @@ export class OpenAIProvider implements LLMProvider {
   async getInstalledModelMetadata(): Promise<import('./ollama.js').InstalledModelMetadata[]> {
     const apiKey = this.getApiKey();
     const baseUrl = this.getBaseUrl();
-    if (!baseUrl) return [];
+    if (!baseUrl || !apiKey) return [];
     try {
       const headers: Record<string, string> = {
         'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
