@@ -152,13 +152,17 @@ describe('tool execution', () => {
   });
 
   it('blocks read_file symlink pointing outside project root', async () => {
-    // Create target file outside project
-    const outsideFile = path.join(process.cwd(), '..', '.tmp-symlink-target.txt');
+    const sandboxDir = path.join(process.cwd(), '.tmp-symlink-sandbox');
+    await fs.mkdir(sandboxDir, { recursive: true });
+    temporaryDirectories.push(sandboxDir);
+
+    // Create target file outside the sandbox projectRoot
+    const outsideFile = path.join(process.cwd(), '.tmp-symlink-target.txt');
     await fs.writeFile(outsideFile, 'secret-content', 'utf8');
     temporaryFiles.push(outsideFile);
 
-    // Create symlink inside project pointing to outside file
-    const linkPath = path.join(process.cwd(), '.tmp-evil-symlink.txt');
+    // Create symlink inside sandbox projectRoot pointing to outside file
+    const linkPath = path.join(sandboxDir, '.tmp-evil-symlink.txt');
     try {
       await fs.symlink(outsideFile, linkPath);
     } catch {
@@ -167,7 +171,7 @@ describe('tool execution', () => {
     }
     temporaryFiles.push(linkPath);
 
-    const result = await ToolService.executeTool('read_file', { path: '.tmp-evil-symlink.txt' }, null);
+    const result = await ToolService.executeTool('read_file', { path: '.tmp-evil-symlink.txt' }, sandboxDir);
     expect(result).toContain('Access denied');
     expect(result).not.toContain('secret-content');
   });

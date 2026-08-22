@@ -11,7 +11,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { ApprovalService, describeToolCall } from './approvals.js';
+import { ApprovalService, describeToolCall, normalizeApprovalDetails } from './approvals.js';
 import { DatabaseService } from './database.js';
 import type { CodingEvent, CodingHarness, CodingHarnessStatus, CodingRunInput } from './codingHarness.js';
 
@@ -80,7 +80,7 @@ export class ClaudeCodeHarness implements CodingHarness {
     if (directKey) {
       // Direct Anthropic API
       envConfig = {
-        ...process.env as Record<string, string>,
+        ...(process.env as Record<string, string>),
         ANTHROPIC_API_KEY: directKey,
       };
     } else {
@@ -96,12 +96,34 @@ export class ClaudeCodeHarness implements CodingHarness {
         'openrouter:0x-alpha/model';
 
       envConfig = {
-        ...process.env as Record<string, string>,
+        ...(process.env as Record<string, string>),
         ANTHROPIC_BASE_URL: fccUrl,
         ANTHROPIC_API_KEY: 'fcc-vanaila-proxy',
         ANTHROPIC_MODEL: model,
       };
     }
+
+    const eventQueue: CodingEvent[] = [];
+    let resolveQueue: (() => void) | null = null;
+    let isDone = false;
+    let queryError: unknown = null;
+
+    const pushEvent = (evt: CodingEvent) => {
+      eventQueue.push(evt);
+      if (resolveQueue) {
+        resolveQueue();
+        resolveQueue = null;
+      }
+    };
+
+    const isAutoApprove = () => {
+      if (input.autoApprove === true) return true;
+      try {
+        return DatabaseService.getSetting('require_tool_approval') === 'false';
+      } catch {
+        return false;
+      }
+    };
 
     const result = query({
       prompt: input.prompt,
@@ -113,43 +135,140 @@ export class ClaudeCodeHarness implements CodingHarness {
         permissionMode: input.mode === 'plan' ? 'plan' : 'default',
         abortController,
         canUseTool: async (tool, toolInput) => {
+          const norm = normalizeApprovalDetails(tool, toolInput);
+          const toolId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
           // Fast read-only tools don't require user approval dialogs
           if (tool === 'Read' || tool === 'Glob' || tool === 'Grep' || tool === 'View') {
+            pushEvent({
+              type: 'tool',
+              id: toolId,
+              name: tool,
+              status: 'done',
+              category: 'file_read',
+              file: norm.path,
+              detail: norm.path ? `Read ${norm.path}` : `Inspected ${tool}`,
+              input: toolInput as Record<string, unknown>,
+            });
             return { behavior: 'allow', updatedInput: toolInput };
           }
+
+          if (isAutoApprove()) {
+            pushEvent({
+              type: 'tool',
+              id: toolId,
+              name: tool,
+              status: 'done',
+              category: norm.category,
+              file: norm.path,
+              command: norm.command,
+              detail: describeToolCall(tool, toolInput),
+              input: toolInput as Record<string, unknown>,
+            });
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
+
           const id = `claude_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
           input.onApproval?.({
             id,
             tool,
             summary: describeToolCall(tool, toolInput),
-            details: toolInput,
+            details: norm,
           });
+
+          pushEvent({
+            type: 'tool',
+            id: toolId,
+            name: tool,
+            status: 'start',
+            category: norm.category,
+            file: norm.path,
+            command: norm.command,
+            detail: `Waiting for approval: ${describeToolCall(tool, toolInput)}`,
+            input: toolInput as Record<string, unknown>,
+          });
+
           const approved = await ApprovalService.request(id);
-          return approved
-            ? { behavior: 'allow', updatedInput: toolInput }
-            : { behavior: 'deny', message: 'Declined by user' };
+          if (approved) {
+            pushEvent({
+              type: 'tool',
+              id: toolId,
+              name: tool,
+              status: 'done',
+              category: norm.category,
+              file: norm.path,
+              command: norm.command,
+              detail: describeToolCall(tool, toolInput),
+              input: toolInput as Record<string, unknown>,
+            });
+            return { behavior: 'allow', updatedInput: toolInput };
+          } else {
+            pushEvent({
+              type: 'tool',
+              id: toolId,
+              name: tool,
+              status: 'error',
+              category: norm.category,
+              file: norm.path,
+              command: norm.command,
+              detail: 'Declined by user',
+              input: toolInput as Record<string, unknown>,
+            });
+            return { behavior: 'deny', message: 'Declined by user' };
+          }
         },
       },
     });
 
-    for await (const message of result) {
-      const record = message as unknown as Record<string, unknown>;
-      const sessionId = typeof record.session_id === 'string' ? record.session_id : null;
-      if (sessionId) yield { type: 'session', sessionId };
-      if (record.type === 'assistant') {
-        const assistant = record.message as Record<string, unknown> | undefined;
-        const text = textFromContent(assistant?.content ?? record.content ?? record.text);
-        if (text) yield { type: 'text', text };
-      } else if (record.type === 'text' && typeof record.text === 'string' && record.text) {
-        yield { type: 'text', text: record.text };
-      } else if (record.type === 'result' && typeof record.result === 'string' && record.result) {
-        yield { type: 'text', text: record.result };
-      } else if (typeof record.content === 'string' && record.content) {
-        yield { type: 'text', text: record.content };
+    // Run query in background and push to eventQueue
+    (async () => {
+      try {
+        for await (const message of result) {
+          const record = message as unknown as Record<string, unknown>;
+          const sessionId = typeof record.session_id === 'string' ? record.session_id : null;
+          if (sessionId) pushEvent({ type: 'session', sessionId });
+
+          if (record.type === 'assistant') {
+            const assistant = record.message as Record<string, unknown> | undefined;
+            const text = textFromContent(assistant?.content ?? record.content ?? record.text);
+            if (text) pushEvent({ type: 'text', text });
+          } else if (record.type === 'text' && typeof record.text === 'string' && record.text) {
+            pushEvent({ type: 'text', text: record.text });
+          } else if (record.type === 'result' && typeof record.result === 'string' && record.result) {
+            pushEvent({ type: 'text', text: record.result });
+          } else if (typeof record.content === 'string' && record.content) {
+            pushEvent({ type: 'text', text: record.content });
+          }
+        }
+        pushEvent({ type: 'done' });
+      } catch (error) {
+        queryError = error;
+      } finally {
+        isDone = true;
+        input.signal.removeEventListener('abort', abort);
+        if (resolveQueue) {
+          resolveQueue();
+          resolveQueue = null;
+        }
       }
+    })();
+
+    while (true) {
+      while (eventQueue.length > 0) {
+        const evt = eventQueue.shift()!;
+        yield evt;
+        if (evt.type === 'done') return;
+      }
+
+      if (isDone) {
+        if (input.signal.aborted) throw new Error('Claude Code run cancelled');
+        if (queryError) throw queryError;
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        resolveQueue = resolve;
+      });
     }
-    input.signal.removeEventListener('abort', abort);
-    if (input.signal.aborted) throw new Error('Claude Code run cancelled');
-    yield { type: 'done' };
   }
 }

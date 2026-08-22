@@ -99,6 +99,54 @@ export function freeClaudeCodeRouter(dependencies: AppDependencies): Hono {
         );
       }
 
+      // Extract latest user message for memory recall/storage
+      const lastUserMsg = body.messages.slice().reverse().find((m) => m.role === 'user');
+      let userText = '';
+      if (lastUserMsg) {
+        userText = typeof lastUserMsg.content === 'string'
+          ? lastUserMsg.content
+          : Array.isArray(lastUserMsg.content)
+            ? lastUserMsg.content
+                .filter((b) => b.type === 'text' && typeof b.text === 'string')
+                .map((b) => b.text)
+                .join('\n')
+            : '';
+      }
+
+      if (userText.trim()) {
+        try {
+          const queryVec = await dependencies.embedOrNull(userText);
+          const memories = queryVec
+            ? dependencies.searchMemories(queryVec, 3, 0.3)
+            : dependencies.searchMemoriesByKeyword(userText, 3, 0.2);
+
+          if (memories.length > 0) {
+            const memoryBlock = memories
+              .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
+              .join('\n\n');
+            const systemStr = typeof body.system === 'string'
+              ? body.system
+              : Array.isArray(body.system)
+                ? body.system.map((s) => s.text ?? '').join('\n')
+                : '';
+            body.system = systemStr
+              ? `${systemStr}\n\n[Relevant Memories]\n${memoryBlock}`
+              : `[Relevant Memories]\n${memoryBlock}`;
+          }
+
+          if (userText.trim().length >= 20) {
+            dependencies.upsertMemory({
+              type: 'conversation',
+              content: userText.slice(0, 4000),
+              embedding: queryVec,
+              metadata: JSON.stringify({ role: 'user', source: 'fcc', model: body.model }),
+            });
+          }
+        } catch (memErr) {
+          console.warn('[FCC MEMORY] Failed to recall/save memory:', memErr);
+        }
+      }
+
       // Check if user configured an external fcc-server URL
       const externalFccUrl =
         dependencies.getSetting('fcc_server_url') || process.env.FCC_SERVER_URL;

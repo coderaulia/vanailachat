@@ -197,4 +197,51 @@ describe('Free Claude Code (FCC) Integration Service', () => {
     const modelsBody = (await modelsRes.json()) as { data: Array<{ id: string }> };
     expect(modelsBody.data.some((m) => m.id === 'openrouter:anthropic/claude-3.5-sonnet')).toBe(true);
   });
+
+  it('injects relevant memories and stores user message into memory store', async () => {
+    let capturedBody: any = null;
+    const registry = new ProviderRegistry();
+    registry.register({
+      id: 'openrouter',
+      label: 'OpenRouter',
+      listModels: async () => ['claude-3.5-sonnet'],
+      getModelDetails: async () => null,
+      isModelAvailable: async () => true,
+      chatStream: async (body) => {
+        capturedBody = body;
+        return new Response('{"choices":[{"delta":{"content":"ok"}}]}\n');
+      },
+      chat: async () => ({}),
+    });
+
+    const upsertedMemories: any[] = [];
+    const app = createApp({
+      providerRegistry: registry,
+      embedOrNull: async () => [0.1, 0.2, 0.3],
+      searchMemories: () => [
+        { id: 'mem_1', type: 'conversation', content: 'User prefers snake_case for python code', score: 0.92, createdAt: 123 },
+      ],
+      upsertMemory: (m) => { upsertedMemories.push(m); },
+    });
+
+    const res = await app.request('/api/fcc/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'openrouter:claude-3.5-sonnet',
+        messages: [{ role: 'user', content: 'Please write a python helper function to compute stats.' }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedBody).toBeTruthy();
+    // Verify memories were injected into system prompt
+    const systemMsg = capturedBody.messages.find((m: any) => m.role === 'system');
+    expect(systemMsg?.content).toContain('[Relevant Memories]');
+    expect(systemMsg?.content).toContain('User prefers snake_case for python code');
+
+    // Verify user turn was stored to persistent memory
+    expect(upsertedMemories.length).toBeGreaterThan(0);
+    expect(upsertedMemories[0].content).toContain('Please write a python helper');
+  });
 });

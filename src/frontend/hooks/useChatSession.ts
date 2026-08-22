@@ -39,6 +39,7 @@ export function useChatSession(deps: {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [projectRoot, setProjectRoot] = useState('');
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
+  const [isAutoApprove, setIsAutoApprove] = useState(false);
   const [contextWindow, setContextWindow] = useState<ContextWindow>(() => ({
     current: 0,
     total: getContextWindowForModel(deps.selectedModel, deps.modelMetadata?.[deps.selectedModel]),
@@ -52,6 +53,36 @@ export function useChatSession(deps: {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
+
+  useEffect(() => {
+    fetch('/api/settings/require_tool_approval')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data && typeof (data as { value?: string }).value === 'string') {
+          setIsAutoApprove((data as { value: string }).value === 'false');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleAutoApprove = async () => {
+    const next = !isAutoApprove;
+    setIsAutoApprove(next);
+    try {
+      await fetch('/api/settings/require_tool_approval', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: next ? 'false' : 'true' }),
+      });
+      deps.setStatusText(
+        next
+          ? 'Auto-approve enabled: Tools will execute automatically'
+          : 'Auto-approve disabled: Tools will require confirmation',
+      );
+    } catch {
+      deps.setStatusText('Failed to save auto-approve setting');
+    }
+  };
 
   useEffect(() => {
     const total = getContextWindowForModel(
@@ -101,11 +132,21 @@ export function useChatSession(deps: {
    * Answer a parked tool call. Cleared optimistically so the prompt cannot be
    * double-submitted while the request is in flight.
    */
-  const respondToApproval = async (approved: boolean) => {
+  const respondToApproval = async (approved: boolean, autoApproveRemaining?: boolean) => {
     const approval = pendingApproval;
     if (!approval) return;
 
     setPendingApproval(null);
+
+    if (autoApproveRemaining) {
+      setIsAutoApprove(true);
+      void fetch('/api/settings/require_tool_approval', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: 'false' }),
+      }).catch(() => {});
+    }
+
     try {
       await fetch('/api/chat/approve', {
         method: 'POST',
@@ -181,20 +222,23 @@ export function useChatSession(deps: {
     );
     setContextWindow({ current: chat.usage || 0, total });
 
-    void (async () => {
-      try {
-        const messages = await deps.loadMessages(id);
-        deps.updateHistories(prev => {
-          const current = prev[id];
-          if (!current) return prev;
-          return { ...prev, [id]: { ...current, conversation: messages } };
-        });
-        if (currentChatIdRef.current === id) setConversation(messages);
-      } catch (error) {
-        console.error(error);
-        deps.setStatusText('Failed to load messages');
-      }
-    })();
+    // Only reload from database if chat is not actively streaming in the background
+    if (!sendingChatIds[id]) {
+      void (async () => {
+        try {
+          const messages = await deps.loadMessages(id);
+          deps.updateHistories(prev => {
+            const current = prev[id];
+            if (!current) return prev;
+            return { ...prev, [id]: { ...current, conversation: messages } };
+          });
+          if (currentChatIdRef.current === id) setConversation(messages);
+        } catch (error) {
+          console.error(error);
+          deps.setStatusText('Failed to load messages');
+        }
+      })();
+    }
   };
 
   /** Formats the browser cannot read as text — the backend unpacks these. */
@@ -381,5 +425,7 @@ export function useChatSession(deps: {
     handleResearch,
     contextPercentage,
     isCurrentChatSending,
+    isAutoApprove,
+    toggleAutoApprove,
   };
 }

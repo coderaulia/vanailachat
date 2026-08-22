@@ -55,38 +55,108 @@ export function codingRouter(dependencies: AppDependencies): Hono {
 
   app.post('/run', async (context) => {
     try {
-      const body = await context.req.json() as { chatId?: unknown; prompt?: unknown; mode?: unknown; model?: unknown };
+      const body = await context.req.json() as {
+        chatId?: unknown;
+        prompt?: unknown;
+        mode?: unknown;
+        model?: unknown;
+        autoApprove?: unknown;
+      };
       if (typeof body.chatId !== 'string' || typeof body.prompt !== 'string' || !body.prompt.trim()) {
         return context.json({ error: 'chatId and prompt are required' }, 400);
       }
       const prompt = body.prompt;
       const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : undefined;
+      const autoApprove = typeof body.autoApprove === 'boolean' ? body.autoApprove : undefined;
       const session = dependencies.getCodingSession(body.chatId);
       if (!session) return context.json({ error: 'Create a coding workspace first' }, 400);
       const harness = dependencies.codingHarnesses.get(session.harness);
       if (!harness) return context.json({ error: 'Coding harness is unavailable' }, 503);
       const mode = body.mode === 'plan' ? 'plan' : 'implement';
+
+      // ── Persistent Chat Memories for Coding Mode ────────────────────────────
+      let promptWithMemory = prompt;
+      const chatRecord = dependencies.getChat(body.chatId);
+      try {
+        const queryVec = await dependencies.embedOrNull(prompt);
+        const memories = queryVec
+          ? dependencies.searchMemories(queryVec, 3, 0.3)
+          : dependencies.searchMemoriesByKeyword(prompt, 3, 0.2);
+
+        if (memories.length > 0) {
+          const memoryBlock = memories
+            .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score})] ${m.content}`)
+            .join('\n\n');
+          promptWithMemory = `[Relevant Memories & Context]\n${memoryBlock}\n\n[User Request]\n${prompt}`;
+        }
+
+        if (prompt.trim().length >= 20) {
+          dependencies.upsertMemory({
+            type: 'conversation',
+            content: prompt.slice(0, 4000),
+            embedding: queryVec,
+            metadata: JSON.stringify({
+              role: 'user',
+              mode: 'coding',
+              chatId: body.chatId,
+              chatTitle: chatRecord?.title ?? null,
+            }),
+            sourceId: body.chatId,
+          });
+        }
+      } catch (error) {
+        console.error('[CODING MEMORY] Memory recall/store failed:', error);
+      }
+
       const controller = new AbortController();
+      let fullAssistantText = '';
+
       const stream = new ReadableStream({
         async start(streamController) {
           const encoder = new TextEncoder();
           const emit = (event: unknown) => streamController.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
           try {
             for await (const event of harness.run({
-              prompt,
+              prompt: promptWithMemory,
               cwd: session.workspacePath,
               sessionId: session.harnessSessionId,
               mode,
               model,
+              autoApprove,
               signal: controller.signal,
               onApproval: (approval) => emit({ approval_request: approval }),
             })) {
               if (event.type === 'session') {
                 dependencies.upsertCodingSession({ ...session, harnessSessionId: event.sessionId, status: 'running' });
               }
+              if (event.type === 'text' && event.text) {
+                fullAssistantText += event.text;
+              }
               emit({ coding_event: event });
             }
             dependencies.upsertCodingSession({ ...session, status: 'ready' });
+
+            // Persist assistant summary memory for coding mode
+            if (fullAssistantText.trim().length >= 40) {
+              try {
+                const ansVec = await dependencies.embedOrNull(fullAssistantText.slice(0, 2000));
+                dependencies.upsertMemory({
+                  type: 'conversation',
+                  content: fullAssistantText.slice(0, 4000),
+                  embedding: ansVec,
+                  metadata: JSON.stringify({
+                    role: 'assistant',
+                    mode: 'coding',
+                    chatId: body.chatId,
+                    chatTitle: chatRecord?.title ?? null,
+                  }),
+                  sourceId: body.chatId,
+                });
+              } catch (err) {
+                console.warn('[CODING MEMORY] Assistant memory store failed:', err);
+              }
+            }
+
             streamController.close();
           } catch (error) {
             dependencies.upsertCodingSession({ ...session, status: 'error' });

@@ -16,6 +16,8 @@ export function ChatHeader({
     isCurrentChatSending,
     selectedModel,
     statusText,
+    isAutoApprove,
+    toggleAutoApprove,
     toggleSidebar: onToggleSidebar,
     toggleTheme: onToggleTheme,
   } = useChat();
@@ -56,6 +58,17 @@ export function ChatHeader({
               </span>
             </div>
           </div>
+
+          <button
+            className={`auto-approve-toggle ${isAutoApprove ? 'is-active' : ''}`}
+            type="button"
+            title={isAutoApprove ? 'Auto-Approve Enabled: Click to require confirmation' : 'Auto-Approve Disabled: Click to enable auto-approve for tools'}
+            aria-pressed={isAutoApprove}
+            onClick={() => void toggleAutoApprove()}
+          >
+            <span className="auto-approve-toggle__icon">⚡</span>
+            <span className="auto-approve-toggle__label">Auto-Approve: {isAutoApprove ? 'ON' : 'OFF'}</span>
+          </button>
 
           <button
             className={`icon-btn ${showTokens ? 'is-active' : ''}`}

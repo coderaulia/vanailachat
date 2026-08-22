@@ -1,58 +1,201 @@
 /* Sits directly above the composer, where the user's attention already is. */
 .approval-prompt {
   display: grid;
-  gap: 10px;
-  margin: 0 auto 10px;
+  gap: 12px;
+  margin: 0 auto 12px;
   width: min(840px, 100% - 32px);
-  padding: 14px 16px;
-  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  padding: 16px 18px;
+  border: 1px solid rgba(var(--accent-rgb, 201, 100, 66), 0.45);
   border-radius: 16px;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(10px);
+  background: var(--bg-surface, #1e1e1e);
+  color: var(--text-primary, #e2e8f0);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  animation: approvalSlideUp 0.2s ease-out;
+}
+
+@keyframes approvalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 [data-theme="dark"] .approval-prompt {
-  background: rgba(30, 30, 30, 0.85);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  background: rgba(28, 30, 36, 0.94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  border-color: rgba(201, 100, 66, 0.5);
 }
 
 .approval-prompt__header {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.approval-prompt__header-left {
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .approval-prompt__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius-full, 999px);
-  background: var(--bg-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--bg-accent) 35%, transparent);
-  color: var(--bg-accent-strong);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.approval-prompt__badge.is-command {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.approval-prompt__badge.is-write {
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #60a5fa;
+}
+
+.approval-prompt__badge.is-edit {
+  background: rgba(168, 85, 247, 0.16);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+
+.approval-prompt__badge.is-tool {
+  background: rgba(201, 100, 66, 0.16);
+  border: 1px solid rgba(201, 100, 66, 0.35);
+  color: #f97316;
+}
+
+.approval-prompt__tool-name {
+  font-size: 12px;
+  font-family: var(--mono, ui-monospace, monospace);
+  color: var(--text-secondary, #94a3b8);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .approval-prompt__summary {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-primary, #f1f5f9);
   word-break: break-word;
+  line-height: 1.4;
+}
+
+.approval-prompt__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #94a3b8);
+  margin-bottom: 4px;
+}
+
+.approval-prompt__command-box {
+  display: grid;
+  gap: 4px;
+}
+
+.approval-prompt__command {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(15, 23, 42, 0.65);
+  color: #fbbf24;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.approval-prompt__file-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+}
+
+.approval-prompt__file-icon {
+  font-size: 14px;
+}
+
+.approval-prompt__file-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.approval-prompt__file-path {
+  font-size: 12px;
+  font-family: var(--mono, ui-monospace, monospace);
+  color: var(--text-primary, #f8fafc);
+  word-break: break-all;
+}
+
+.approval-prompt__diff-container,
+.approval-prompt__content-container {
+  display: grid;
+  gap: 6px;
+}
+
+.approval-prompt__diff {
+  display: grid;
+  gap: 8px;
+}
+
+.approval-prompt__diff-part {
+  display: grid;
+  gap: 3px;
+}
+
+.approval-prompt__diff-tag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.approval-prompt__diff-tag.is-removed {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.approval-prompt__diff-tag.is-added {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
 }
 
 .approval-prompt__body {
-  max-height: 220px;
+  max-height: 200px;
   margin: 0;
   padding: 10px 12px;
   overflow: auto;
-  border-radius: 10px;
-  border: 1px solid var(--border-soft);
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
+  border-radius: 8px;
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.1));
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--text-primary, #f1f5f9);
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 12px;
   line-height: 1.45;
@@ -60,50 +203,87 @@
   word-break: break-word;
 }
 
-.approval-prompt__diff {
-  display: grid;
-  gap: 6px;
-}
-
 .approval-prompt__body.is-removed {
-  border-color: rgba(220, 60, 60, 0.35);
-  background: rgba(220, 60, 60, 0.08);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
 }
 
 .approval-prompt__body.is-added {
-  border-color: rgba(60, 170, 100, 0.35);
-  background: rgba(60, 170, 100, 0.08);
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+  color: #86efac;
+}
+
+.approval-prompt__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+}
+
+.approval-prompt__tip {
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
 }
 
 .approval-prompt__actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
 .approval-prompt__btn {
   height: 32px;
   padding: 0 14px;
   border-radius: var(--radius-full, 999px);
-  border: 1px solid var(--border-soft);
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.15));
+  background: var(--bg-surface-strong, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary, #e2e8f0);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .approval-prompt__btn:hover {
-  background: var(--bg-surface);
-  border-color: var(--border-medium);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-medium, rgba(255, 255, 255, 0.25));
+}
+
+.approval-prompt__btn.is-decline {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.approval-prompt__btn.is-decline:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.approval-prompt__btn.is-allow-all {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.approval-prompt__btn.is-allow-all:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.6);
 }
 
 .approval-prompt__btn.is-primary {
   border-color: transparent;
   background: var(--bg-accent, #c96442);
-  color: var(--text-on-accent, #fff);
-  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.25);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(201, 100, 66, 0.3);
 }
 
 .approval-prompt__btn.is-primary:hover {

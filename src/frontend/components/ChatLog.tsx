@@ -2,7 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
-import type { Message } from '../types/chat';
+import type { Message, ToolActivity } from '../types/chat';
 import { useChat } from '../context/ChatContext';
 import { estimateCost, formatCost } from '../config/modelPricing';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
@@ -21,6 +21,87 @@ interface MessageItemProps {
   onEdit: (id: string, content: string) => void;
   isBusy: boolean;
   model: string | null;
+}
+
+function ToolActivityPanel({ activities }: { activities: ToolActivity[] }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  if (!activities || activities.length === 0) return null;
+
+  const filesCount = new Set(activities.filter(a => a.file).map(a => a.file)).size;
+  const commandCount = activities.filter(a => a.category === 'command' || a.command).length;
+  const isRunning = activities.some(a => a.status === 'running' || a.status === 'start');
+
+  const summaryParts: string[] = [];
+  if (filesCount > 0) summaryParts.push(`${filesCount} file${filesCount > 1 ? 's' : ''} modified`);
+  if (commandCount > 0) summaryParts.push(`${commandCount} command${commandCount > 1 ? 's' : ''} executed`);
+  if (summaryParts.length === 0) summaryParts.push(`${activities.length} operation${activities.length > 1 ? 's' : ''}`);
+
+  const summaryText = summaryParts.join(', ');
+
+  const getIcon = (act: ToolActivity) => {
+    if (act.category === 'command' || act.command) return '⚡';
+    if (act.category === 'file_write') return '📄';
+    if (act.category === 'file_edit') return '📝';
+    if (act.category === 'file_read') return '🔍';
+    if (act.category === 'document') return '📑';
+    return '🛠️';
+  };
+
+  return (
+    <div className={`tool-activity-panel ${isRunning ? 'is-running' : ''}`}>
+      <button
+        type="button"
+        className="tool-activity-panel__header"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+      >
+        <div className="tool-activity-panel__title">
+          <span className="tool-activity-panel__badge">
+            {isRunning ? <span className="tool-activity-panel__spinner" /> : '🛠️'}
+            <span>Live Process</span>
+          </span>
+          <span className="tool-activity-panel__summary">{summaryText}</span>
+        </div>
+        <span className="tool-activity-panel__toggle">{isOpen ? '▲ Collapse' : '▼ Expand'}</span>
+      </button>
+
+      {isOpen && (
+        <div className="tool-activity-panel__list">
+          {activities.map((act, idx) => (
+            <div key={act.id || idx} className={`tool-activity-item is-${act.status}`}>
+              <span className="tool-activity-item__icon">{getIcon(act)}</span>
+              <div className="tool-activity-item__info">
+                <span className="tool-activity-item__name">
+                  {act.file ? (
+                    <>
+                      <span className="tool-activity-item__action">
+                        {act.category === 'file_write' ? 'Created' : 'Modified'}
+                      </span>{' '}
+                      <code className="tool-activity-item__code">{act.file}</code>
+                    </>
+                  ) : act.command ? (
+                    <>
+                      <span className="tool-activity-item__action">Command</span>{' '}
+                      <code className="tool-activity-item__code">{act.command}</code>
+                    </>
+                  ) : (
+                    act.detail || act.name || act.tool
+                  )}
+                </span>
+                {act.detail && !act.file && !act.command && (
+                  <span className="tool-activity-item__detail">{act.detail}</span>
+                )}
+              </div>
+              <span className={`tool-activity-item__status is-${act.status}`}>
+                {act.status === 'running' || act.status === 'start' ? 'Running…' : act.status === 'error' ? 'Failed' : 'Done'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate, onRegenerate, onEdit, isBusy, model }: MessageItemProps) {
@@ -168,7 +249,12 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
             </div>
           </div>
         ) : (
-          <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
+          <>
+            {message.role === 'assistant' && message.toolActivities && message.toolActivities.length > 0 && (
+              <ToolActivityPanel activities={message.toolActivities} />
+            )}
+            <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
+          </>
         )}
         {showTokens && message.role === 'assistant' ? (
           <div className="message__tokens">

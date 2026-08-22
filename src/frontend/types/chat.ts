@@ -1,5 +1,17 @@
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface ToolActivity {
+  id: string;
+  tool: string;
+  name?: string;
+  category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'document' | 'tool';
+  status: 'start' | 'running' | 'done' | 'error';
+  file?: string;
+  command?: string;
+  detail?: string;
+  timestamp: number;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -7,6 +19,7 @@ export interface Message {
   promptTokens?: number | null;
   completionTokens?: number | null;
   timestamp: number;
+  toolActivities?: ToolActivity[];
 }
 
 export interface Chat {
@@ -89,6 +102,14 @@ export interface StreamEvent {
     bytes: number;
     mimeType: string;
   };
+  tool_event?: boolean;
+  tool?: string;
+  status?: string;
+  category?: string;
+  file?: string;
+  command?: string;
+  detail?: string;
+  id?: string;
 }
 
 /** A tool call waiting on the user before it runs. */
@@ -96,7 +117,16 @@ export interface PendingApproval {
   id: string;
   tool: string;
   summary: string;
-  details: Record<string, unknown>;
+  chatId?: string;
+  details: {
+    category?: 'command' | 'file_write' | 'file_edit' | 'document' | 'tool';
+    command?: string;
+    path?: string;
+    content?: string;
+    old_string?: string;
+    new_string?: string;
+    [key: string]: unknown;
+  };
 }
 
 

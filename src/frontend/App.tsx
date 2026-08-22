@@ -60,8 +60,14 @@ const AppShell = () => {
     'ctrl+n': () => { handleNewChat(); setViewMode('chat'); },
     'ctrl+/': () => toggleSidebar(),
     'alt+s': () => setIsSearchEnabled((prev: boolean) => !prev),
-    'escape': () => { if (isCurrentChatSending) handleAbort(); },
-  }), [handleNewChat, toggleSidebar, setIsSearchEnabled, isCurrentChatSending, handleAbort, setViewMode]);
+    'escape': () => {
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (isCurrentChatSending) {
+        handleAbort();
+      }
+    },
+  }), [handleNewChat, toggleSidebar, setIsSearchEnabled, isSettingsOpen, isCurrentChatSending, handleAbort, setViewMode]);
 
   useKeyboardShortcuts(shortcutsMap);
 

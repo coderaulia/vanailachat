@@ -137,4 +137,24 @@ describe('coding role routes through Claude Code', () => {
     expect(calls.some(u => u.includes('/api/coding/run'))).toBe(false);
     expect(calls.some(u => u.includes('/api/chat'))).toBe(true);
   });
+
+  it('tracks live tool activities and saves them on the assistant message', async () => {
+    stubFetch([
+      '{"coding_event":{"type":"text","text":"Modifying files..."}}',
+      '{"coding_event":{"type":"tool","id":"t1","name":"Edit","category":"file_edit","file":"src/server.ts","status":"done"}}',
+      '{"coding_event":{"type":"tool","id":"t2","name":"Bash","category":"command","command":"npm test","status":"done"}}',
+      '{"coding_event":{"type":"text","text":" All tests passed."}}',
+    ]);
+    const saveMessage = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useSendMessage(makeDeps({ saveMessage })));
+
+    await result.current.handleSend();
+
+    const saved = saveMessage.mock.calls.map(([, message]) => message as Message);
+    const assistant = saved.find(m => m.role === 'assistant');
+    expect(assistant?.toolActivities).toBeDefined();
+    expect(assistant?.toolActivities?.length).toBe(2);
+    expect(assistant?.toolActivities?.[0].file).toBe('src/server.ts');
+    expect(assistant?.toolActivities?.[1].command).toBe('npm test');
+  });
 });

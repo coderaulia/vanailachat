@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { createApp } from '../app.js';
 import { providerSupportsTools } from '../routes/chat.js';
 import { OllamaService } from '../services/ollama.js';
-import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
+import { ApprovalService, describeToolCall, isMutatingTool, normalizeApprovalDetails } from '../services/approvals.js';
 
 /** Upstream that asks for a tool call on the first turn, then answers. */
 function toolCallingProvider(tool: string, args: Record<string, unknown>) {
@@ -87,6 +87,27 @@ describe('approval helpers', () => {
   it('summarises a call for the prompt', () => {
     expect(describeToolCall('write_file', { path: 'a.ts', content: 'xy' })).toBe('Write a.ts (2 bytes)');
     expect(describeToolCall('run_command', { command: 'git', args: ['diff'] })).toBe('Run git diff');
+  });
+
+  it('normalizes approval details for Claude Code and Agent tools', () => {
+    const bashNorm = normalizeApprovalDetails('Bash', { command: 'npm test' });
+    expect(bashNorm.category).toBe('command');
+    expect(bashNorm.command).toBe('npm test');
+
+    const writeNorm = normalizeApprovalDetails('Write', { file_path: 'src/index.ts', content: 'console.log("hello");' });
+    expect(writeNorm.category).toBe('file_write');
+    expect(writeNorm.path).toBe('src/index.ts');
+    expect(writeNorm.content).toBe('console.log("hello");');
+
+    const editNorm = normalizeApprovalDetails('Edit', {
+      file_path: 'src/config.ts',
+      old_string: 'const port = 3000;',
+      new_string: 'const port = 8080;',
+    });
+    expect(editNorm.category).toBe('file_edit');
+    expect(editNorm.path).toBe('src/config.ts');
+    expect(editNorm.old_string).toBe('const port = 3000;');
+    expect(editNorm.new_string).toBe('const port = 8080;');
   });
 });
 

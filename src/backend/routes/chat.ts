@@ -4,7 +4,7 @@ import { normalizeMessageContent, sanitizeError } from '../helpers/index.js';
 import { getPersonaSystemPrompt, getPersonaToolAllowlist } from '../services/personas.js';
 import type { LLMProvider } from '../services/provider.js';
 import type { ChatRecord } from '../services/database.js';
-import { ApprovalService, describeToolCall, isMutatingTool } from '../services/approvals.js';
+import { ApprovalService, describeToolCall, isMutatingTool, normalizeApprovalDetails } from '../services/approvals.js';
 import {
   isUnverifiedGeneratedFileClaim,
   parseGeneratedDocumentResult,
@@ -428,13 +428,24 @@ async function runAgentLoop(
     }
   };
 
-  const enqueueToolEvent = (name: string, status: 'start' | 'done' | 'error', detail?: string) => {
+  const enqueueToolEvent = (
+    name: string,
+    status: 'start' | 'done' | 'error',
+    detail?: string,
+    toolArgs?: unknown,
+    toolCallId?: string,
+  ) => {
+    const norm = normalizeApprovalDetails(name, toolArgs);
     enqueue({
       tool_event: true,
+      id: toolCallId,
       iteration,
       tool: name,
       status,
-      ...(detail ? { detail: detail.slice(0, 200) } : {}),
+      category: norm.category,
+      file: norm.path,
+      command: norm.command,
+      ...(detail ? { detail: detail.slice(0, 300) } : {}),
     });
   };
 
@@ -564,7 +575,7 @@ async function runAgentLoop(
             id: approvalId,
             tool: toolName,
             summary: describeToolCall(toolName, toolArgs),
-            details: (toolArgs ?? {}) as Record<string, unknown>,
+            details: normalizeApprovalDetails(toolName, toolArgs),
           },
         });
 
@@ -579,12 +590,12 @@ async function runAgentLoop(
             content: `The user declined this ${toolName} call. Do not retry it; ask what to do differently.`,
             tool_call_id: toolCallId,
           });
-          enqueueToolEvent(toolName, 'error', 'Declined by user');
+          enqueueToolEvent(toolName, 'error', 'Declined by user', toolArgs, toolCallId);
           continue;
         }
       }
 
-      enqueueToolEvent(toolName, 'start');
+      enqueueToolEvent(toolName, 'start', undefined, toolArgs, toolCallId);
       try {
         const result = await deps.executeTool(toolName, toolArgs, projectRoot);
         currentMessages.push({ role: 'tool', content: result, tool_call_id: toolCallId });
@@ -593,7 +604,7 @@ async function runAgentLoop(
           generatedFiles.push({ name: generatedFile.name, url: generatedFile.url });
           enqueue({ generated_file: generatedFile });
         }
-        enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '');
+        enqueueToolEvent(toolName, 'done', typeof result === 'string' ? result.slice(0, 200) : '', toolArgs, toolCallId);
       } catch (toolErr) {
         const errMsg = toolErr instanceof Error ? toolErr.message : 'Unknown error';
         currentMessages.push({
@@ -601,7 +612,7 @@ async function runAgentLoop(
           content: `Error: ${errMsg}`,
           tool_call_id: toolCallId,
         });
-        enqueueToolEvent(toolName, 'error', errMsg);
+        enqueueToolEvent(toolName, 'error', errMsg, toolArgs, toolCallId);
       }
     }
 

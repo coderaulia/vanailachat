@@ -748,12 +748,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         checked={requireApproval}
                         onChange={(e) => toggleApproval(e.target.checked)}
                       />
-                      <span>Ask before the AI writes files or runs commands</span>
+                      <span>Ask before the AI writes files or runs commands (Require Confirmation)</span>
                     </label>
                     <p className="settings-hint">
-                      Applies to write_file, edit_file and run_command. Reading files, listing
-                      directories and web search are never gated. Turning this off lets an agent
-                      turn change files on disk with no prompt.
+                      When enabled, mutating actions (file edits, writes, and terminal commands) will show an approval dialog with diffs and commands. When disabled (Auto-Approve mode), coding tools and Claude Code execute mutating operations automatically without stopping.
                     </p>
                   </div>
 

@@ -89,6 +89,7 @@ async function generateChatTitle(
 
 export function useSendMessage(deps: SendMessageDeps) {
   const lastSentPromptRef = useRef<string>('');
+  const abortControllersMapRef = useRef<Map<string, AbortController>>(new Map());
 
   /**
    * Options let regenerate/edit reuse the whole send path.
@@ -127,19 +128,23 @@ export function useSendMessage(deps: SendMessageDeps) {
     }
     lastSentPromptRef.current = effectivePrompt;
 
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-      activeRequestIdRef.current = null;
-      setSendingChatIds({});
+    const activeChatId = currentChatId;
+    const startedAt = Date.now();
+    const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).slice(2, 11)}`;
+
+    // Abort previous in-flight request FOR THIS SPECIFIC CHAT only
+    const existingController = abortControllersMapRef.current.get(chatId);
+    if (existingController) {
+      existingController.abort();
+      abortControllersMapRef.current.delete(chatId);
     }
 
     const abortController = new AbortController();
-    abortRef.current = abortController;
+    abortControllersMapRef.current.set(chatId, abortController);
+    if (abortRef) abortRef.current = abortController;
+
     const requestId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     activeRequestIdRef.current = requestId;
-
-    const activeChatId = currentChatId;
 
     // Build message content
     const textPart: { type: 'text'; text: string } = { type: 'text', text: effectivePrompt };
@@ -155,8 +160,6 @@ export function useSendMessage(deps: SendMessageDeps) {
     const finalPrompt = fileContext ? `${fileContext}\n\n${effectivePrompt}` : effectivePrompt;
     if (fileContext) textPart.text = finalPrompt;
 
-    const startedAt = Date.now();
-    const chatId = activeChatId || `chat_${startedAt}_${Math.random().toString(36).slice(2, 11)}`;
     const existingChat = chatHistories[chatId];
     const activeProjectId = existingChat?.projectId || selectedProjectId || projects[0]?.id || 'default';
     const createdAt = existingChat?.createdAt || startedAt;
@@ -172,6 +175,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       role: 'assistant',
       content: '',
       timestamp: startedAt + 1,
+      toolActivities: [],
     };
 
     const optimisticConversation = [...conversation, userMessage, assistantMessage];
@@ -213,6 +217,7 @@ export function useSendMessage(deps: SendMessageDeps) {
     let requestFailed = false;
     let requestAborted = false;
     let fullContent = '';
+    const currentToolActivities: Array<import('../types/chat').ToolActivity> = [];
     let finalUsage = existingChat?.usage || 0;
     let promptTokens: number | undefined;
     let completionTokens: number | undefined;
@@ -289,13 +294,61 @@ export function useSendMessage(deps: SendMessageDeps) {
       const decoder = new TextDecoder();
       let streamBuffer = '';
 
+      const syncUIAndHistory = () => {
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const activitiesCopy = [...currentToolActivities];
+
+          // 1. Update live conversation if this is the active chat
+          if (currentChatIdRef.current === chatId) {
+            setConversation(prev => {
+              if (prev.length === 0) return prev;
+              const updated = [...prev];
+              const last = updated.length - 1;
+              if (updated[last]?.role === 'assistant') {
+                updated[last] = {
+                  ...updated[last],
+                  content: fullContent,
+                  toolActivities: activitiesCopy,
+                };
+              }
+              return updated;
+            });
+          }
+
+          // 2. Sync to chatHistories so background chats stay completely updated
+          updateHistories(prev => {
+            const chat = prev[chatId];
+            if (!chat) return prev;
+            const updatedConv = [...chat.conversation];
+            const last = updatedConv.length - 1;
+            if (updatedConv[last]?.role === 'assistant') {
+              updatedConv[last] = {
+                ...updatedConv[last],
+                content: fullContent,
+                toolActivities: activitiesCopy,
+              };
+            }
+            return {
+              ...prev,
+              [chatId]: {
+                ...chat,
+                conversation: updatedConv,
+                updatedAt: Date.now(),
+              },
+            };
+          });
+        });
+      };
+
       const applyEvent = (data: ReturnType<typeof parseStreamLine>) => {
         if (!data) return;
 
         // A tool call is parked server-side until the user decides.
         const approval = (data as unknown as { approval_request?: PendingApproval }).approval_request;
         if (approval) {
-          setPendingApproval(approval);
+          setPendingApproval({ ...approval, chatId });
           setStatusText(`Waiting for approval: ${approval.summary}`);
           return;
         }
@@ -311,31 +364,48 @@ export function useSendMessage(deps: SendMessageDeps) {
         // each tool use is announced separately, so the transcript shows what
         // it did rather than going silent between edits.
         const coding = (data as unknown as {
-          coding_event?: { type?: string; text?: string; name?: string };
+          coding_event?: {
+            type?: string;
+            text?: string;
+            id?: string;
+            name?: string;
+            status?: 'start' | 'done' | 'error';
+            category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'tool';
+            file?: string;
+            command?: string;
+            detail?: string;
+            input?: Record<string, unknown>;
+          };
         }).coding_event;
         if (coding) {
           if (coding.type === 'text' && coding.text) {
             fullContent += coding.text;
             assistantContentForSave = fullContent;
           } else if (coding.type === 'tool' && coding.name) {
-            setStatusText(`Claude Code: ${coding.name}`);
+            const actId = coding.id || `coding_tool_${currentToolActivities.length}`;
+            const existingIdx = currentToolActivities.findIndex(a => a.id === actId);
+            const activity: import('../types/chat').ToolActivity = {
+              id: actId,
+              tool: coding.name,
+              name: coding.name,
+              category: coding.category || 'tool',
+              status: coding.status || 'done',
+              file: coding.file,
+              command: coding.command,
+              detail: coding.detail || coding.name,
+              timestamp: Date.now(),
+            };
+            if (existingIdx >= 0) {
+              currentToolActivities[existingIdx] = { ...currentToolActivities[existingIdx], ...activity };
+            } else {
+              currentToolActivities.push(activity);
+            }
+
+            const activeStatus = coding.file ? `Claude Code: ${coding.name} ${coding.file}` : coding.command ? `Claude Code: ${coding.command}` : `Claude Code: ${coding.name}`;
+            setStatusText(activeStatus);
           }
 
-          if (rafId === null) {
-            rafId = requestAnimationFrame(() => {
-              rafId = null;
-              if (currentChatIdRef.current === chatId) {
-                setConversation(prev => {
-                  if (prev.length === 0) return prev;
-                  const updated = [...prev];
-                  const last = updated.length - 1;
-                  if (updated[last]?.role === 'assistant')
-                    updated[last] = { ...updated[last], content: fullContent };
-                  return updated;
-                });
-              }
-            });
-          }
+          syncUIAndHistory();
           return;
         }
 
@@ -343,16 +413,44 @@ export function useSendMessage(deps: SendMessageDeps) {
         // because the stream has already started by then.
         const codingError = (data as unknown as { error?: string }).error;
         if (codingError) {
-          fullContent += `
-
-**Claude Code error:** ${codingError}`;
+          fullContent += `\n\n**Claude Code error:** ${codingError}`;
           assistantContentForSave = fullContent;
           setStatusText(`Claude Code: ${codingError}`);
+          syncUIAndHistory();
           return;
         }
-        // Tool event — update status only
+
+        // Tool event — update status and record toolActivity
         if ((data as unknown as { tool_event?: boolean }).tool_event) {
-          const td = data as unknown as { tool?: string };
+          const td = data as unknown as {
+            tool?: string;
+            id?: string;
+            status?: 'start' | 'done' | 'error';
+            category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'document' | 'tool';
+            file?: string;
+            command?: string;
+            detail?: string;
+          };
+          const toolName = td.tool || 'tool';
+          const actId = td.id || `tool_${currentToolActivities.length}`;
+          const existingIdx = currentToolActivities.findIndex(a => a.id === actId);
+          const activity: import('../types/chat').ToolActivity = {
+            id: actId,
+            tool: toolName,
+            name: toolName,
+            category: td.category || 'tool',
+            status: td.status || 'done',
+            file: td.file,
+            command: td.command,
+            detail: td.detail,
+            timestamp: Date.now(),
+          };
+          if (existingIdx >= 0) {
+            currentToolActivities[existingIdx] = { ...currentToolActivities[existingIdx], ...activity };
+          } else {
+            currentToolActivities.push(activity);
+          }
+
           const msgs: Record<string, string> = {
             create_document: 'Creating document...',
             read_file: 'Reading file…',
@@ -364,7 +462,9 @@ export function useSendMessage(deps: SendMessageDeps) {
             write_file: 'Writing file…',
             edit_file: 'Editing file…',
           };
-          setStatusText(td.tool ? (msgs[td.tool] ?? 'Thinking…') : 'Thinking…');
+          const statusDesc = td.file ? `${msgs[toolName] ?? toolName} (${td.file})` : td.command ? `${msgs[toolName] ?? toolName}: ${td.command}` : msgs[toolName] ?? 'Thinking…';
+          setStatusText(statusDesc);
+          syncUIAndHistory();
           return;
         }
 
@@ -398,20 +498,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         }
 
         if (!contentChunk && !data.done && !generatedFileAdded) return;
-        if (rafId !== null) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          if (currentChatIdRef.current === chatId) {
-            setConversation(prev => {
-              if (prev.length === 0) return prev;
-              const updated = [...prev];
-              const last = updated.length - 1;
-              if (updated[last]?.role === 'assistant')
-                updated[last] = { ...updated[last], content: fullContent };
-              return updated;
-            });
-          }
-        });
+        syncUIAndHistory();
       };
 
       while (true) {
@@ -482,6 +569,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         timestamp: assistantMessage.timestamp,
         promptTokens: promptTokens ?? null,
         completionTokens: completionTokens ?? null,
+        toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
       };
 
       const updateFinal = (conv: Message[]) => {
@@ -494,6 +582,7 @@ export function useSendMessage(deps: SendMessageDeps) {
             content: assistantContentForSave,
             promptTokens: assistantToPersist.promptTokens,
             completionTokens: assistantToPersist.completionTokens,
+            toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
           };
         }
         return updated;
@@ -529,15 +618,17 @@ export function useSendMessage(deps: SendMessageDeps) {
         setStatusText('Failed to persist messages');
       }
 
+      abortControllersMapRef.current.delete(chatId);
+      setSendingChatIds(prev => {
+        if (!prev[chatId]) return prev;
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      });
+
       if (isActiveRequest) {
         activeRequestIdRef.current = null;
-        abortRef.current = null;
-        setSendingChatIds(prev => {
-          if (!prev[chatId]) return prev;
-          const next = { ...prev };
-          delete next[chatId];
-          return next;
-        });
+        if (abortRef) abortRef.current = null;
         if (currentChatIdRef.current === chatId && !requestFailed) setStatusText('Ready');
       }
     }

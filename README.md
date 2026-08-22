@@ -18,41 +18,54 @@ It is built with React, TypeScript, Hono, Vite, and SQLite.
 
 ## Requirements
 
-- Node.js 20 or later
-- [pnpm](https://pnpm.io/) (v10 or later)
-- [Ollama](https://ollama.com/) for local models and semantic embeddings (optional for cloud-only use)
+- Node.js 20 or later *(auto-installed on first launch if missing)*
+- [pnpm](https://pnpm.io/) *(auto-configured on first launch)*
+- [Ollama](https://ollama.com/) for local models and semantic embeddings *(optional for cloud-only use)*
 
-## Getting started
+## Quick Start (Automated 1-Click Setup & Launch)
+
+After cloning the repository, you can launch VanailaChat with **zero manual configuration**. The launcher automatically verifies Node.js, installs `pnpm` and dependencies, initializes `.env`, starts the services, and opens your browser at `http://localhost:5173`.
+
+### 🐧 Linux (Debian, Ubuntu, Fedora, Arch, openSUSE) / macOS
+
+```bash
+git clone https://github.com/coderaulia/vanailachat.git
+cd vanailachat
+./start.sh
+```
+
+*(Optional: Run `./start.sh --desktop` to create a Desktop and Application Menu shortcut).*
+
+---
+
+### 🪟 Windows
+
+1. Open the cloned `vanailachat` folder in File Explorer.
+2. Double-click **`start.bat`** *(or run `./start.ps1` in PowerShell)*.
+
+*(Optional: Run `start.bat --shortcut` or `./start.ps1 -s` to create a desktop shortcut icon).*
+
+---
+
+## Manual Setup (from Terminal)
+
+If you prefer to run standard npm/pnpm commands manually:
 
 ```bash
 git clone https://github.com/coderaulia/vanailachat.git
 cd vanailachat
 pnpm install
-```
-
-For local models, install Ollama and pull a model:
-
-```bash
-ollama pull llama3.2
-# Optional: enables semantic memory
-ollama pull nomic-embed-text
-```
-
-Copy the environment template if you want to configure providers outside the app:
-
-```bash
 cp .env.example .env
-```
-
-*(On Windows Command Prompt, use `copy .env.example .env`).* You can also add provider keys directly in the application settings.
-
-Start the app:
-
-```bash
 pnpm dev
 ```
 
-Open the frontend at `http://localhost:5173`. The backend chooses an available local port and records it in `.port`; Vite connects to it automatically.
+Open `http://localhost:5173` in your browser.
+
+For local Ollama models (optional):
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text   # Enables semantic long-term memory
+```
 
 ## Providers
 

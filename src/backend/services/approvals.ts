@@ -26,10 +26,14 @@ interface PendingApproval {
 }
 
 /** Tools that change state and therefore need a decision before running. */
-const MUTATING_TOOLS = new Set(['write_file', 'edit_file', 'run_command']);
+const MUTATING_TOOLS = new Set([
+  'write_file', 'edit_file', 'run_command',
+  'Bash', 'bash', 'Write', 'write', 'Edit', 'edit',
+  'FileWrite', 'FileEdit', 'Replace', 'NotebookEditCell',
+]);
 
 export function isMutatingTool(name: string): boolean {
-  return MUTATING_TOOLS.has(name);
+  return MUTATING_TOOLS.has(name) || MUTATING_TOOLS.has(name.toLowerCase());
 }
 
 const pending = new Map<string, PendingApproval>();
@@ -89,23 +93,114 @@ export class ApprovalService {
   }
 }
 
-/** One-line description of a pending call, for the approval prompt. */
-export function describeToolCall(tool: string, args: unknown): string {
+export interface NormalizedApprovalDetails {
+  category: 'command' | 'file_write' | 'file_edit' | 'document' | 'tool';
+  command?: string;
+  path?: string;
+  content?: string;
+  old_string?: string;
+  new_string?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Normalizes tool arguments across Claude Code SDK and custom agent tools
+ * so the frontend UI gets uniform access to file paths, diffs, and commands.
+ */
+export function normalizeApprovalDetails(tool: string, args: unknown): NormalizedApprovalDetails {
   const record = (args ?? {}) as Record<string, unknown>;
+  const lowerTool = tool.toLowerCase();
 
-  if (tool === 'write_file') {
-    const content = typeof record.content === 'string' ? record.content : '';
-    return `Write ${String(record.path ?? 'unknown file')} (${content.length} bytes)`;
+  // 1. Command Execution
+  if (lowerTool === 'bash' || lowerTool === 'run_command' || lowerTool === 'terminal' || lowerTool === 'exec') {
+    const cmdArgs = Array.isArray(record.args) ? ` ${record.args.join(' ')}` : '';
+    const cmd = typeof record.command === 'string'
+      ? `${record.command}${cmdArgs}`.trim()
+      : typeof record.cmd === 'string'
+        ? `${record.cmd}${cmdArgs}`.trim()
+        : '';
+    return {
+      ...record,
+      category: 'command',
+      command: cmd,
+    };
   }
 
-  if (tool === 'edit_file') {
-    return `Edit ${String(record.path ?? 'unknown file')}`;
+  // 2. File Write / Create
+  if (
+    lowerTool === 'write_file' ||
+    lowerTool === 'write' ||
+    lowerTool === 'filewrite' ||
+    lowerTool === 'create_file'
+  ) {
+    const filePath = String(record.path ?? record.file_path ?? record.target_file ?? record.filePath ?? 'unknown file');
+    const content = typeof record.content === 'string' ? record.content : typeof record.text === 'string' ? record.text : '';
+    return {
+      ...record,
+      category: 'file_write',
+      path: filePath,
+      content,
+    };
   }
 
-  if (tool === 'run_command') {
-    const args_ = Array.isArray(record.args) ? record.args.join(' ') : '';
-    return `Run ${String(record.command ?? '')} ${args_}`.trim();
+  // 3. File Edit / Replace
+  if (
+    lowerTool === 'edit_file' ||
+    lowerTool === 'edit' ||
+    lowerTool === 'fileedit' ||
+    lowerTool === 'replace' ||
+    lowerTool === 'notebookeditcell'
+  ) {
+    const filePath = String(record.path ?? record.file_path ?? record.target_file ?? record.filePath ?? 'unknown file');
+    const oldStr = typeof record.old_string === 'string' ? record.old_string : typeof record.oldString === 'string' ? record.oldString : '';
+    const newStr = typeof record.new_string === 'string' ? record.new_string : typeof record.newString === 'string' ? record.newString : '';
+    const content = typeof record.content === 'string' ? record.content : undefined;
+    return {
+      ...record,
+      category: 'file_edit',
+      path: filePath,
+      old_string: oldStr,
+      new_string: newStr,
+      ...(content ? { content } : {}),
+    };
   }
 
-  return `Run ${tool}`;
+  if (lowerTool === 'create_document') {
+    const filename = String(record.filename ?? record.name ?? 'document.docx');
+    return {
+      ...record,
+      category: 'document',
+      path: filename,
+      content: typeof record.content === 'string' ? record.content : '',
+    };
+  }
+
+  return {
+    ...record,
+    category: 'tool',
+  };
+}
+
+/** Human-readable description of a pending call for the approval prompt. */
+export function describeToolCall(tool: string, args: unknown): string {
+  const norm = normalizeApprovalDetails(tool, args);
+
+  if (norm.category === 'command') {
+    return norm.command ? `Run ${norm.command}` : 'Run terminal command';
+  }
+
+  if (norm.category === 'file_write') {
+    const sizeStr = norm.content ? ` (${norm.content.length} bytes)` : '';
+    return `Write ${norm.path ?? 'file'}${sizeStr}`;
+  }
+
+  if (norm.category === 'file_edit') {
+    return `Edit ${norm.path ?? 'file'}`;
+  }
+
+  if (norm.category === 'document') {
+    return `Create document: ${norm.path ?? 'document'}`;
+  }
+
+  return `Run tool: ${tool}`;
 }

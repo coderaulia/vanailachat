@@ -13,6 +13,7 @@ export interface CodingRunInput {
   sessionId?: string | null;
   mode: 'plan' | 'implement';
   model?: string;
+  autoApprove?: boolean;
   signal: AbortSignal;
   onApproval?: (approval: CodingApproval) => void;
 }
@@ -26,7 +27,17 @@ export interface CodingApproval {
 
 export type CodingEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool'; name: string; input: Record<string, unknown> }
+  | {
+      type: 'tool';
+      id?: string;
+      name: string;
+      status?: 'start' | 'done' | 'error';
+      category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'tool';
+      file?: string;
+      command?: string;
+      detail?: string;
+      input?: Record<string, unknown>;
+    }
   | { type: 'session'; sessionId: string }
   | { type: 'done' };
 

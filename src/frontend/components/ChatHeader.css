@@ -69,3 +69,42 @@
   border-radius: var(--radius-full);
   border: 1px solid var(--border-soft);
 }
+
+.auto-approve-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface-strong);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.auto-approve-toggle:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.auto-approve-toggle.is-active {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+}
+
+.auto-approve-toggle__icon {
+  font-size: 12px;
+}
+
+.auto-approve-toggle__label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
