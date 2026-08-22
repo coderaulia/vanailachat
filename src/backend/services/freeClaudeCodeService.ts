@@ -237,18 +237,30 @@ export class FreeClaudeCodeService {
 
               // Extract text delta
               let textDelta = '';
+              const messageObj = chunk.message as { content?: string; tool_calls?: unknown[] } | undefined;
               const choices = chunk.choices as Array<{
-                delta?: { content?: string; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> };
+                delta?: {
+                  content?: string;
+                  text?: string;
+                  tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>;
+                };
                 message?: { content?: string; tool_calls?: unknown[] };
               }> | undefined;
 
               const delta = choices?.[0]?.delta;
+
               if (typeof delta?.content === 'string' && delta.content.length > 0) {
                 textDelta = delta.content;
+              } else if (typeof delta?.text === 'string' && delta.text.length > 0) {
+                textDelta = delta.text;
+              } else if (typeof messageObj?.content === 'string' && messageObj.content.length > 0) {
+                textDelta = messageObj.content;
               } else if (typeof chunk.response === 'string' && chunk.response.length > 0) {
                 textDelta = chunk.response; // Ollama format
               } else if (typeof chunk.content === 'string' && chunk.content.length > 0) {
                 textDelta = chunk.content;
+              } else if (typeof chunk.text === 'string' && chunk.text.length > 0) {
+                textDelta = chunk.text;
               }
 
               if (textDelta) {
@@ -312,6 +324,53 @@ export class FreeClaudeCodeService {
                       },
                     });
                   }
+                }
+              }
+
+              // Extract complete tool calls from messageObj.tool_calls (NDJSON format)
+              if (Array.isArray(messageObj?.tool_calls)) {
+                for (const tc of messageObj.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>) {
+                  if (textBlockStarted) {
+                    emitEvent('content_block_stop', {
+                      type: 'content_block_stop',
+                      index: textBlockIndex,
+                    });
+                    textBlockStarted = false;
+                  }
+
+                  const blockIdx = currentBlockIndex++;
+                  const toolId = tc.id || generateId('toolu');
+                  const toolName = tc.function?.name || 'tool';
+                  const argsStr = typeof tc.function?.arguments === 'string'
+                    ? tc.function.arguments
+                    : JSON.stringify(tc.function?.arguments ?? {});
+
+                  emitEvent('content_block_start', {
+                    type: 'content_block_start',
+                    index: blockIdx,
+                    content_block: {
+                      type: 'tool_use',
+                      id: toolId,
+                      name: toolName,
+                      input: {},
+                    },
+                  });
+
+                  emitEvent('content_block_delta', {
+                    type: 'content_block_delta',
+                    index: blockIdx,
+                    delta: {
+                      type: 'input_json_delta',
+                      partial_json: argsStr,
+                    },
+                  });
+
+                  emitEvent('content_block_stop', {
+                    type: 'content_block_stop',
+                    index: blockIdx,
+                  });
+
+                  activeToolBlocks.set(blockIdx, { id: toolId, name: toolName });
                 }
               }
             }

@@ -138,6 +138,37 @@ describe('Free Claude Code (FCC) Integration Service', () => {
     expect(sseText).toContain('event: message_stop');
   });
 
+  it('converts NDJSON message chunks (Custom provider, OpenRouter, Ollama) into Anthropic SSE events', async () => {
+    const mockProviderStream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        controller.enqueue(
+          encoder.encode(
+            JSON.stringify({
+              model: 'deepseek-v4-pro',
+              message: { role: 'assistant', content: 'Analyzing the codebase...' },
+              done: false,
+            }) + '\n',
+          ),
+        );
+        controller.close();
+      },
+    });
+
+    const providerResponse = new Response(mockProviderStream);
+    const anthropicResponse = FreeClaudeCodeService.createAnthropicStream(
+      providerResponse,
+      'custom:deepseek-v4-pro',
+    );
+
+    const sseText = await anthropicResponse.text();
+    expect(sseText).toContain('event: message_start');
+    expect(sseText).toContain('event: content_block_start');
+    expect(sseText).toContain('event: content_block_delta');
+    expect(sseText).toContain('Analyzing the codebase...');
+    expect(sseText).toContain('event: message_stop');
+  });
+
   it('serves status and models via /api/fcc routes', async () => {
     const registry = new ProviderRegistry();
     registry.register({

@@ -138,8 +138,14 @@ export class ClaudeCodeHarness implements CodingHarness {
       if (sessionId) yield { type: 'session', sessionId };
       if (record.type === 'assistant') {
         const assistant = record.message as Record<string, unknown> | undefined;
-        const text = textFromContent(assistant?.content);
+        const text = textFromContent(assistant?.content ?? record.content ?? record.text);
         if (text) yield { type: 'text', text };
+      } else if (record.type === 'text' && typeof record.text === 'string' && record.text) {
+        yield { type: 'text', text: record.text };
+      } else if (record.type === 'result' && typeof record.result === 'string' && record.result) {
+        yield { type: 'text', text: record.result };
+      } else if (typeof record.content === 'string' && record.content) {
+        yield { type: 'text', text: record.content };
       }
     }
     input.signal.removeEventListener('abort', abort);
