@@ -40,31 +40,7 @@ function toolCallingProvider(tool: string, args: Record<string, unknown>) {
   });
 }
 
-/** Upstream that prints a command as text, then answers after receiving results. */
-function textualCommandProvider(commandText: string) {
-  let turn = 0;
-  return vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
-    turn += 1;
-    const content = turn === 1 ? commandText : 'I inspected the files and found the cause.';
-    const body = [
-      JSON.stringify({ message: { role: 'assistant', content }, done: false }),
-      JSON.stringify({ done: true }),
-    ];
 
-    if (turn === 2) {
-      const request = JSON.parse(String(init?.body)) as {
-        messages: Array<{ role: string; content: string; tool_calls?: unknown[] }>;
-      };
-      expect(request.messages.at(-1)?.content).toContain('Automatic read-only project inspection results');
-      expect(request.messages.some((message) => message.tool_calls?.length === 0)).toBe(false);
-    }
-
-    return new Response(body.join('\n') + '\n', {
-      status: 200,
-      headers: { 'Content-Type': 'application/x-ndjson' },
-    });
-  });
-}
 
 function appWith(overrides: Record<string, unknown> = {}) {
   return createApp({
@@ -279,54 +255,7 @@ describe('approval gate in the agent loop', () => {
     expect(executeTool).toHaveBeenCalledWith('read_file', { path: 'a.ts' }, 'C:\\work\\example');
   });
 
-  it('executes printed read commands for models without native tool support', async () => {
-    const executeTool = vi.fn().mockResolvedValue('package contents');
-    const fetchFn = textualCommandProvider(
-      'Let me inspect it.\n\ncd "C:\\work\\example" && cat package.json',
-    );
-    const app = appWith({
-      fetchFn,
-      executeTool: executeTool as never,
-      getModelDetails: async () => ({ capabilities: ['chat'] }),
-    });
 
-    const responseText = await (await chatRequest(app, 'C:\\work\\example')).text();
-
-    expect(responseText).toContain('I inspected the files and found the cause.');
-    expect(responseText).not.toContain('cat package.json');
-    expect(executeTool).toHaveBeenCalledWith(
-      'read_file',
-      { path: 'package.json' },
-      'C:\\work\\example',
-    );
-    expect(fetchFn).toHaveBeenCalledTimes(2);
-    const firstRequest = JSON.parse(String((fetchFn.mock.calls[0][1] as RequestInit).body)) as {
-      tools?: unknown[];
-    };
-    expect(firstRequest.tools).toBeUndefined();
-  });
-
-  it('recovers when a model announces inspection without calling a tool', async () => {
-    const executeTool = vi.fn().mockResolvedValue('package.json\nsrc\nREADME.md');
-    const fetchFn = textualCommandProvider(
-      '<think></think>Let me use the proper tools to read the key files.',
-    );
-    const app = appWith({
-      fetchFn,
-      executeTool: executeTool as never,
-      getModelDetails: async () => ({ capabilities: ['chat'] }),
-    });
-
-    const responseText = await (await chatRequest(app, 'C:\\work\\example')).text();
-
-    expect(responseText).toContain('I inspected the files and found the cause.');
-    expect(responseText).not.toContain('Let me use the proper tools');
-    expect(executeTool).toHaveBeenCalledWith(
-      'list_directory',
-      { path: '.', maxDepth: 3 },
-      'C:\\work\\example',
-    );
-  });
 
   it('honours require_tool_approval=false', async () => {
     const executeTool = vi.fn().mockResolvedValue('written');

@@ -79,15 +79,29 @@ export class EmbeddingService {
       }
     };
 
+    const openAiKey = setting('openai_api_key') || process.env.OPENAI_API_KEY || '';
+    const openAiBaseUrl = (setting('openai_base_url') || process.env.OPENAI_BASE_URL || (openAiKey ? 'https://api.openai.com/v1' : '')).replace(/\/+$/, '');
+
+    const openRouterKey = setting('openrouter_api_key') || (openAiBaseUrl.includes('openrouter') ? openAiKey : '') || process.env.OPENROUTER_API_KEY || '';
+    const openRouterBaseUrl = (setting('openrouter_base_url') || process.env.OPENROUTER_BASE_URL || (openRouterKey ? 'https://openrouter.ai/api/v1' : '')).replace(/\/+$/, '');
+
+    const customKey = setting('custom_openai_api_key') || process.env.CUSTOM_OPENAI_API_KEY || '';
+    const customBaseUrl = (setting('custom_openai_base_url') || process.env.CUSTOM_OPENAI_BASE_URL || '').replace(/\/+$/, '');
+
     const candidates = [
       {
-        baseUrl: process.env.OPENAI_BASE_URL || (process.env.OPENAI_API_KEY ? 'https://api.openai.com/v1' : ''),
-        apiKey: process.env.OPENAI_API_KEY ?? '',
+        baseUrl: openAiBaseUrl,
+        apiKey: openAiKey,
         model: setting('embedding_model') || 'text-embedding-3-small',
       },
       {
-        baseUrl: setting('custom_openai_base_url') || process.env.CUSTOM_OPENAI_BASE_URL || '',
-        apiKey: setting('custom_openai_api_key') || process.env.CUSTOM_OPENAI_API_KEY || '',
+        baseUrl: openRouterBaseUrl,
+        apiKey: openRouterKey,
+        model: setting('embedding_model') || 'text-embedding-3-small',
+      },
+      {
+        baseUrl: customBaseUrl,
+        apiKey: customKey,
         model: setting('embedding_model') || 'text-embedding-3-small',
       },
     ].filter((candidate) => candidate.baseUrl && candidate.apiKey);

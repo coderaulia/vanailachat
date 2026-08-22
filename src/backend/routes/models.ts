@@ -14,23 +14,31 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
       const providerModels = await dependencies.providerRegistry.listAllModels();
       
       // Combine and deduplicate
-      const modelMap = new Map<string, { name: string; provider: string }>();
+      const modelMap = new Map<string, { name: string; provider: string; metadata?: Record<string, unknown> }>();
       
       // Add Ollama models
       for (const model of modelsWithMetadata) {
-        modelMap.set(model.name, { name: model.name, provider: 'ollama' });
+        modelMap.set(model.name, {
+          name: model.name,
+          provider: 'ollama',
+          metadata: model as unknown as Record<string, unknown>,
+        });
       }
       
       // Add provider registry models (skip duplicates)
       for (const providerModel of providerModels) {
         if (!modelMap.has(providerModel.name)) {
-          modelMap.set(providerModel.name, { name: providerModel.name, provider: providerModel.provider });
+          modelMap.set(providerModel.name, {
+            name: providerModel.name,
+            provider: providerModel.provider,
+            metadata: (providerModel.metadata as Record<string, unknown>) ?? {},
+          });
         }
       }
       
       const models = Array.from(modelMap.values());
       const metadata = Object.fromEntries(
-        modelsWithMetadata.map((model) => [model.name, model])
+        models.map((model) => [model.name, model.metadata ?? {}])
       );
 
       return context.json({

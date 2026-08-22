@@ -147,23 +147,42 @@ export class ProviderRegistry {
    * Providers are queried concurrently — serially awaiting each one made this
    * endpoint cost the sum of every provider's latency.
    */
-  async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: unknown }>> {
+  async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: Record<string, unknown> }>> {
     // Ollama handled separately via getInstalledModelMetadata
     const entries = [...this.providers].filter(([id]) => id !== 'ollama');
 
     const settled = await Promise.allSettled(
-      entries.map(([, provider]) => this.listModelsCached(provider)),
+      entries.map(async ([, provider]) => {
+        if (typeof provider.getInstalledModelMetadata === 'function') {
+          return await provider.getInstalledModelMetadata();
+        }
+        const modelNames = await this.listModelsCached(provider);
+        return modelNames.map((name) => ({
+          name,
+          model: name,
+          contextWindow: null,
+          capabilities: ['chat'],
+        }));
+      }),
     );
 
     return settled.flatMap((outcome, index) => {
       // Provider unavailable — skip
       if (outcome.status !== 'fulfilled') return [];
       const id = entries[index][0];
-      return outcome.value.map((model) => ({
-        name: `${id}:${model}`,
-        provider: id,
-        metadata: {},
-      }));
+      return outcome.value.map((meta) => {
+        const rawName = meta.name;
+        const prefixedName = `${id}:${rawName}`;
+        return {
+          name: prefixedName,
+          provider: id,
+          metadata: {
+            ...meta,
+            name: prefixedName,
+            model: prefixedName,
+          },
+        };
+      });
     });
   }
 

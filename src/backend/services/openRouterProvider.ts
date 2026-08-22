@@ -1,4 +1,4 @@
-import type { LLMProvider } from './provider.js';
+import type { LLMProvider, ChatRequest } from './provider.js';
 import { openAIStreamToNDJSON } from './streamAdapter.js';
 import {
   hasToolCalls,
@@ -10,37 +10,48 @@ import {
 import { DatabaseService } from './database.js';
 
 /**
- * 9Router provider — OpenAI-compatible API proxy that routes to 40+ AI providers.
- * Endpoint: http://localhost:20128/v1 (configurable via settings DB).
- * Uses a dashboard-issued API key stored in the settings key-value store.
+ * OpenRouter provider — routes to 100+ models via OpenRouter's API.
+ * Uses openrouter_api_key (or legacy openrouter-configured openai_api_key) / OPENROUTER_API_KEY env.
  */
-export class NineRouterProvider implements LLMProvider {
-  readonly id = '9router';
-  readonly label = '9Router';
+export class OpenRouterProvider implements LLMProvider {
+  readonly id = 'openrouter';
+  readonly label = 'OpenRouter';
 
   constructor() {}
 
   private getApiKey(): string {
     try {
-      return (DatabaseService.getSetting('nine_router_api_key') ?? process.env.NINE_ROUTER_API_KEY ?? '').trim();
+      const directKey = DatabaseService.getSetting('openrouter_api_key');
+      if (directKey?.trim()) return directKey.trim();
+      const legacyBaseUrl = DatabaseService.getSetting('openai_base_url');
+      if (legacyBaseUrl?.includes('openrouter')) {
+        const legacyKey = DatabaseService.getSetting('openai_api_key');
+        if (legacyKey?.trim()) return legacyKey.trim();
+      }
+      return (process.env.OPENROUTER_API_KEY ?? '').trim();
     } catch {
-      return (process.env.NINE_ROUTER_API_KEY ?? '').trim();
+      return (process.env.OPENROUTER_API_KEY ?? '').trim();
     }
   }
 
   private getBaseUrl(): string {
     try {
-      const url = DatabaseService.getSetting('nine_router_host') ?? process.env.NINE_ROUTER_BASE_URL ?? 'http://localhost:20128/v1';
+      const url = DatabaseService.getSetting('openrouter_base_url') ?? process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
       return url.trim().replace(/\/+$/, '');
     } catch {
-      return (process.env.NINE_ROUTER_BASE_URL ?? 'http://localhost:20128/v1').trim().replace(/\/+$/, '');
+      return (process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1').trim().replace(/\/+$/, '');
     }
   }
 
   async listModels(): Promise<string[]> {
+    const metadata = await this.getInstalledModelMetadata();
+    return metadata.map((m) => m.name);
+  }
+
+  async getInstalledModelMetadata(): Promise<import('./ollama.js').InstalledModelMetadata[]> {
     const apiKey = this.getApiKey();
     const baseUrl = this.getBaseUrl();
-    if (!apiKey || !baseUrl) return [];
+    if (!baseUrl || !apiKey) return [];
     try {
       const response = await fetch(`${baseUrl}/models`, {
         headers: {
@@ -50,8 +61,46 @@ export class NineRouterProvider implements LLMProvider {
         },
       });
       if (!response.ok) return [];
-      const data = (await response.json()) as { data?: Array<{ id: string }> };
-      return data.data?.map((m) => m.id) ?? [];
+      const data = (await response.json()) as {
+        data?: Array<{
+          id: string;
+          name?: string;
+          context_length?: number;
+          top_provider?: { context_length?: number; max_completion_tokens?: number };
+          architecture?: { modality?: string; instruct_type?: string };
+          pricing?: Record<string, unknown>;
+        }>;
+      };
+
+      return (data.data ?? []).map((m) => {
+        const contextWindow =
+          typeof m.context_length === 'number' && m.context_length > 0
+            ? m.context_length
+            : typeof m.top_provider?.context_length === 'number' && m.top_provider.context_length > 0
+            ? m.top_provider.context_length
+            : null;
+
+        const isVision =
+          typeof m.architecture?.modality === 'string' &&
+          m.architecture.modality.toLowerCase().includes('image');
+
+        return {
+          name: m.id,
+          model: m.id,
+          contextWindow,
+          capabilities: isVision ? ['chat', 'vision', 'tools'] : ['chat', 'tools'],
+          architecture: m.architecture?.instruct_type ?? null,
+          parameters: null,
+          family: null,
+          families: null,
+          format: null,
+          parameterSize: null,
+          quantizationLevel: null,
+          modifiedAt: null,
+          size: null,
+          digest: null,
+        };
+      });
     } catch {
       return [];
     }
@@ -83,10 +132,7 @@ export class NineRouterProvider implements LLMProvider {
     return models.includes(modelName);
   }
 
-  async chatStream(
-    request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
-    signal?: AbortSignal,
-  ): Promise<Response> {
+  async chatStream(request: ChatRequest, signal?: AbortSignal): Promise<Response> {
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -104,17 +150,14 @@ export class NineRouterProvider implements LLMProvider {
       baseUrl: this.getBaseUrl(),
       apiKey: this.getApiKey(),
       body,
-      providerLabel: '9Router',
+      providerLabel: 'OpenRouter',
       signal,
     });
 
     return openAIStreamToNDJSON(sseResponse, request.model);
   }
 
-  async chat(
-    request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
-    signal?: AbortSignal,
-  ): Promise<Record<string, unknown>> {
+  async chat(request: ChatRequest, signal?: AbortSignal): Promise<Record<string, unknown>> {
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -131,7 +174,7 @@ export class NineRouterProvider implements LLMProvider {
       baseUrl: this.getBaseUrl(),
       apiKey: this.getApiKey(),
       body,
-      providerLabel: '9Router',
+      providerLabel: 'OpenRouter',
       signal,
     });
 

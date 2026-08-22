@@ -150,3 +150,68 @@ export const getModelInfo = (
     icon: getIcon(metadata, provider),
   };
 };
+
+/**
+ * Fallback pattern lookup table for known models across Ollama, OpenRouter, and cloud providers
+ * when contextWindow is not explicitly supplied in metadata.
+ */
+const KNOWN_MODEL_CONTEXT_WINDOWS: Array<{ pattern: RegExp; contextWindow: number }> = [
+  // 1M+ context models (Ox Alpha, 0x, Gemini, etc.)
+  { pattern: /(?:ox|0x)[-_]?alpha/i, contextWindow: 1_000_000 },
+  { pattern: /gemini-(?:1\.5|2\.0|2\.5)/i, contextWindow: 1_000_000 },
+  // 200k context models (Claude 3.x, o1, o3)
+  { pattern: /claude-(?:3|3\.5|3-5|3\.7|3-7)/i, contextWindow: 200_000 },
+  { pattern: /\b(?:o1|o3|o1-mini|o1-preview|o3-mini)\b/i, contextWindow: 200_000 },
+  // 128k context models (GPT-4o, DeepSeek, Mistral Large, Qwen 2.5, Llama 3.1/3.2/3.3)
+  { pattern: /gpt-4o/i, contextWindow: 128_000 },
+  { pattern: /gpt-4-turbo/i, contextWindow: 128_000 },
+  { pattern: /gpt-4\.5/i, contextWindow: 128_000 },
+  { pattern: /deepseek/i, contextWindow: 128_000 },
+  { pattern: /mistral-large|codestral/i, contextWindow: 128_000 },
+  { pattern: /qwen2\.5|qwen-2\.5/i, contextWindow: 131_072 },
+  { pattern: /llama-?3\.[123]|llama3\.[123]/i, contextWindow: 131_072 },
+  // 32k context models
+  { pattern: /qwen/i, contextWindow: 32_768 },
+  { pattern: /mistral|mixtral/i, contextWindow: 32_768 },
+  // 8k context models
+  { pattern: /llama-?3\b|llama3\b/i, contextWindow: 8_192 },
+  { pattern: /gpt-4\b/i, contextWindow: 8_192 },
+];
+
+/**
+ * Returns the effective context window (in tokens) for a given model.
+ * Prioritizes actual metadata provided by Ollama/OpenRouter/OpenAI before falling back
+ * to model name heuristics and default 32768.
+ */
+export function getContextWindowForModel(
+  modelName?: string | null,
+  metadata?: ModelMetadata,
+): number {
+  if (typeof metadata?.contextWindow === 'number' && metadata.contextWindow > 0) {
+    return metadata.contextWindow;
+  }
+  if (!modelName) return 32_768;
+
+  for (const entry of KNOWN_MODEL_CONTEXT_WINDOWS) {
+    if (entry.pattern.test(modelName)) {
+      return entry.contextWindow;
+    }
+  }
+
+  return 32_768;
+}
+
+/**
+ * Compact formatter for large token numbers (e.g., 1000000 -> "1M", 128000 -> "128K", 32768 -> "32768").
+ */
+export function formatTokensCompact(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const m = tokens / 1_000_000;
+    return `${tokens % 1_000_000 === 0 ? m : m.toFixed(1)}M`;
+  }
+  if (tokens >= 10_000 && tokens % 1_000 === 0) {
+    return `${tokens / 1_000}K`;
+  }
+  return tokens.toLocaleString();
+}
+

@@ -7,42 +7,126 @@ import {
   usageToOllamaFields,
   type OpenAIUsage,
 } from './openAICompat.js';
+import { DatabaseService } from './database.js';
 
 /**
- * OpenAI-compatible provider (covers OpenAI, OpenRouter, Azure, etc.)
- * Expects OPENAI_API_KEY and OPENAI_BASE_URL env vars.
+ * OpenAI-compatible provider (covers OpenAI, Azure, etc.)
+ * Uses database settings with fallback to OPENAI_API_KEY and OPENAI_BASE_URL env vars.
  */
 export class OpenAIProvider implements LLMProvider {
   readonly id = 'openai';
-  readonly label = 'OpenAI / OpenRouter';
+  readonly label = 'OpenAI';
 
-  private apiKey: string;
-  private baseUrl: string;
+  private configuredApiKey?: string;
+  private configuredBaseUrl?: string;
 
   constructor(apiKey?: string, baseUrl?: string) {
-    this.apiKey = apiKey ?? process.env.OPENAI_API_KEY ?? '';
-    this.baseUrl = baseUrl ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+    this.configuredApiKey = apiKey;
+    this.configuredBaseUrl = baseUrl;
+  }
+
+  private getApiKey(): string {
+    if (this.configuredApiKey !== undefined) return this.configuredApiKey.trim();
+    try {
+      return (DatabaseService.getSetting('openai_api_key') ?? process.env.OPENAI_API_KEY ?? '').trim();
+    } catch {
+      return (process.env.OPENAI_API_KEY ?? '').trim();
+    }
+  }
+
+  private getBaseUrl(): string {
+    if (this.configuredBaseUrl !== undefined) return this.configuredBaseUrl.trim().replace(/\/+$/, '');
+    try {
+      const url = DatabaseService.getSetting('openai_base_url') ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+      return url.trim().replace(/\/+$/, '');
+    } catch {
+      return (process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').trim().replace(/\/+$/, '');
+    }
   }
 
   async listModels(): Promise<string[]> {
-    if (!this.apiKey) return [];
+    const metadata = await this.getInstalledModelMetadata();
+    return metadata.map((m) => m.name);
+  }
+
+  async getInstalledModelMetadata(): Promise<import('./ollama.js').InstalledModelMetadata[]> {
+    const apiKey = this.getApiKey();
+    const baseUrl = this.getBaseUrl();
+    if (!baseUrl) return [];
     try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${this.apiKey}` },
-      });
+      const headers: Record<string, string> = {
+        'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+        'X-Title': 'VanailaChat',
+      };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+      const response = await fetch(`${baseUrl}/models`, { headers });
       if (!response.ok) return [];
-      const data = (await response.json()) as { data?: Array<{ id: string }> };
-      return data.data?.map((m) => m.id) ?? [];
+      const data = (await response.json()) as {
+        data?: Array<{
+          id: string;
+          context_length?: number;
+          max_model_len?: number;
+        }>;
+      };
+
+      return (data.data ?? []).map((m) => {
+        let contextWindow: number | null =
+          typeof m.context_length === 'number' && m.context_length > 0
+            ? m.context_length
+            : typeof m.max_model_len === 'number' && m.max_model_len > 0
+            ? m.max_model_len
+            : null;
+
+        if (!contextWindow) {
+          const id = m.id.toLowerCase();
+          if (id.includes('o1') || id.includes('o3')) {
+            contextWindow = 200_000;
+          } else if (id.includes('gpt-4o') || id.includes('gpt-4-turbo') || id.includes('gpt-4.5')) {
+            contextWindow = 128_000;
+          } else if (id.includes('gpt-4')) {
+            contextWindow = 8_192;
+          } else if (id.includes('gpt-3.5')) {
+            contextWindow = 16_384;
+          }
+        }
+
+        return {
+          name: m.id,
+          model: m.id,
+          contextWindow,
+          capabilities: ['chat', 'tools'],
+          architecture: null,
+          parameters: null,
+          family: null,
+          families: null,
+          format: null,
+          parameterSize: null,
+          quantizationLevel: null,
+          modifiedAt: null,
+          size: null,
+          digest: null,
+        };
+      });
     } catch {
       return [];
     }
   }
 
   async getModelDetails(modelName: string): Promise<Record<string, unknown> | null> {
+    const baseUrl = this.getBaseUrl();
+    const apiKey = this.getApiKey();
+    if (!baseUrl) return null;
     try {
-      const response = await fetch(`${this.baseUrl}/models/${modelName}`, {
-        headers: { Authorization: `Bearer ${this.apiKey}` },
-      });
+      const headers: Record<string, string> = {
+        'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+        'X-Title': 'VanailaChat',
+      };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+      const response = await fetch(`${baseUrl}/models/${modelName}`, { headers });
       if (!response.ok) return null;
       return (await response.json()) as Record<string, unknown>;
     } catch {
@@ -51,7 +135,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async isModelAvailable(modelName: string): Promise<boolean> {
-    if (!this.apiKey) return false;
+    if (!this.getBaseUrl()) return false;
     const models = await this.listModels();
     return models.includes(modelName);
   }
@@ -71,8 +155,8 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     const sseResponse = await postChatCompletions({
-      baseUrl: this.baseUrl,
-      apiKey: this.apiKey,
+      baseUrl: this.getBaseUrl(),
+      apiKey: this.getApiKey(),
       body,
       providerLabel: 'OpenAI',
       signal,
@@ -95,8 +179,8 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     const response = await postChatCompletions({
-      baseUrl: this.baseUrl,
-      apiKey: this.apiKey,
+      baseUrl: this.getBaseUrl(),
+      apiKey: this.getApiKey(),
       body,
       providerLabel: 'OpenAI',
       signal,

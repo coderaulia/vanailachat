@@ -336,7 +336,7 @@ export function resolveTools(
 /** OpenAI-compatible gateways commonly omit capability metadata entirely. */
 export function providerSupportsTools(providerId: string, capabilities: string[]): boolean {
   if (capabilities.includes('tools')) return true;
-  return ['openai', 'custom', '9router'].includes(providerId);
+  return ['openai', 'openrouter', 'custom', '9router'].includes(providerId);
 }
 
 type AnyMessage = {

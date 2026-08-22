@@ -5,6 +5,8 @@ interface AllSettings {
   ollama_host?: string;
   openai_api_key?: string;
   openai_base_url?: string;
+  openrouter_api_key?: string;
+  openrouter_base_url?: string;
   nine_router_host?: string;
   nine_router_api_key?: string;
   custom_openai_base_url?: string;
@@ -143,14 +145,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       .then((data: { settings?: AllSettings }) => {
         const s = data.settings ?? {};
         if (s.ollama_host) setOllamaHost(s.ollama_host);
-        if (s.nine_router_api_key) {
+        if (s.openrouter_api_key) {
+          setLlmMode('openrouter');
+          setOpenrouterKey(s.openrouter_api_key);
+        } else if (s.nine_router_api_key) {
           setLlmMode('9router');
           setNineRouterKey(s.nine_router_api_key);
-        } else if (s.custom_openai_api_key) {
+        } else if (s.custom_openai_api_key || s.custom_openai_base_url) {
           setLlmMode('custom');
-          setCustomKey(s.custom_openai_api_key);
+          if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
         } else if (s.openai_api_key) {
-          // Detect mode from base_url
           if (s.openai_base_url?.includes('openrouter')) {
             setLlmMode('openrouter');
             setOpenrouterKey(s.openai_api_key);
@@ -161,8 +165,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         } else {
           setLlmMode('ollama');
         }
+        if (s.openrouter_api_key) setOpenrouterKey(s.openrouter_api_key);
+        if (s.openai_api_key && !s.openai_base_url?.includes('openrouter')) setOpenaiKey(s.openai_api_key);
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
+        if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
+        if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
         if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
@@ -290,7 +298,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const saveOpenaiKey = useCallback(
     () => persist([
-      ['openai_api_key', openaiKey],
+      ['openai_api_key', openaiKey.trim()],
       ['openai_base_url', 'https://api.openai.com/v1'],
     ]),
     [persist, openaiKey],
@@ -298,7 +306,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const saveOpenrouterKey = useCallback(
     () => persist([
-      ['openai_api_key', openrouterKey],
+      ['openrouter_api_key', openrouterKey.trim()],
+      ['openrouter_base_url', 'https://openrouter.ai/api/v1'],
+      ['openai_api_key', openrouterKey.trim()],
       ['openai_base_url', 'https://openrouter.ai/api/v1'],
     ]),
     [persist, openrouterKey],
@@ -306,16 +316,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const saveNineRouterConfig = useCallback(
     () => persist([
-      ['nine_router_host', nineRouterHost],
-      ['nine_router_api_key', nineRouterKey],
+      ['nine_router_host', nineRouterHost.trim()],
+      ['nine_router_api_key', nineRouterKey.trim()],
     ]),
     [persist, nineRouterHost, nineRouterKey],
   );
 
   const saveCustomConfig = useCallback(
     () => persist([
-      ['custom_openai_base_url', customBaseUrl],
-      ['custom_openai_api_key', customKey],
+      ['custom_openai_base_url', customBaseUrl.trim()],
+      ['custom_openai_api_key', customKey.trim()],
     ]),
     [persist, customBaseUrl, customKey],
   );
@@ -392,8 +402,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const testConnection = async () => {
     setTestStatus('testing');
     try {
+      if (llmMode === 'ollama') await saveOllamaHost();
+      else if (llmMode === 'openai') await saveOpenaiKey();
+      else if (llmMode === 'openrouter') await saveOpenrouterKey();
+      else if (llmMode === '9router') await saveNineRouterConfig();
+      else if (llmMode === 'custom') await saveCustomConfig();
+
       const res = await fetch('/api/models');
-      setTestStatus(res.ok ? 'ok' : 'fail');
+      if (res.ok) {
+        const data = (await res.json()) as { models?: string[] };
+        const count = Array.isArray(data.models) ? data.models.length : 0;
+        setTestStatus(count > 0 ? 'ok' : 'fail');
+      } else {
+        setTestStatus('fail');
+      }
     } catch {
       setTestStatus('fail');
     }

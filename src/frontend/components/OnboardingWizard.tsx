@@ -60,19 +60,21 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
     // Save data for each step before advancing
     if (current.id === 'llm') {
       if (llmMode === 'ollama') {
-        await saveSetting('ollama_host', ollamaHost);
+        await saveSetting('ollama_host', ollamaHost.trim());
       } else if (llmMode === 'openai') {
-        await saveSetting('openai_api_key', openaiKey);
+        await saveSetting('openai_api_key', openaiKey.trim());
         await saveSetting('openai_base_url', 'https://api.openai.com/v1');
       } else if (llmMode === 'openrouter') {
-        await saveSetting('openai_api_key', openrouterKey);
+        await saveSetting('openrouter_api_key', openrouterKey.trim());
+        await saveSetting('openrouter_base_url', 'https://openrouter.ai/api/v1');
+        await saveSetting('openai_api_key', openrouterKey.trim());
         await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
       } else if (llmMode === '9router') {
-        await saveSetting('nine_router_host', nineRouterHost);
-        await saveSetting('nine_router_api_key', nineRouterKey);
+        await saveSetting('nine_router_host', nineRouterHost.trim());
+        await saveSetting('nine_router_api_key', nineRouterKey.trim());
       } else if (llmMode === 'custom') {
-        await saveSetting('custom_openai_base_url', customBaseUrl);
-        await saveSetting('custom_openai_api_key', customKey);
+        await saveSetting('custom_openai_base_url', customBaseUrl.trim());
+        await saveSetting('custom_openai_api_key', customKey.trim());
       }
     }
 

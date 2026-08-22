@@ -2,13 +2,16 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, PendingApproval } from '../types/chat';
 import type { ModelRole } from '../config/modelRoles';
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_CONTEXT_WINDOW } from '../config/constants';
+import { DEFAULT_SYSTEM_PROMPT } from '../config/constants';
 import { toModelRole } from '../utils/chatUtils';
+import type { ModelMetadataMap } from '../config/modelMetadata';
+import { getContextWindowForModel } from '../config/modelMetadata';
 import { useSendMessage } from './useSendMessage';
 import { useResearch } from './useResearch';
 
 export function useChatSession(deps: {
   selectedModel: string;
+  modelMetadata?: ModelMetadataMap;
   selectedRole: ModelRole;
   selectedProjectId: string | null;
   projects: ApiProject[];
@@ -36,7 +39,10 @@ export function useChatSession(deps: {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [projectRoot, setProjectRoot] = useState('');
   const [isSearchEnabled, setIsSearchEnabled] = useState(false);
-  const [contextWindow, setContextWindow] = useState<ContextWindow>(DEFAULT_CONTEXT_WINDOW);
+  const [contextWindow, setContextWindow] = useState<ContextWindow>(() => ({
+    current: 0,
+    total: getContextWindowForModel(deps.selectedModel, deps.modelMetadata?.[deps.selectedModel]),
+  }));
   const [sendingChatIds, setSendingChatIds] = useState<Record<string, boolean>>({});
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
 
@@ -46,6 +52,17 @@ export function useChatSession(deps: {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
+
+  useEffect(() => {
+    const total = getContextWindowForModel(
+      deps.selectedModel,
+      deps.modelMetadata?.[deps.selectedModel],
+    );
+    setContextWindow((prev) => ({
+      ...prev,
+      total,
+    }));
+  }, [deps.selectedModel, deps.modelMetadata]);
 
   // ── sub-hooks ──────────────────────────────────────────────────────────────
 
@@ -135,7 +152,11 @@ export function useChatSession(deps: {
     deps.setAttachedFiles([]);
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     setProjectRoot('');
-    setContextWindow(DEFAULT_CONTEXT_WINDOW);
+    const total = getContextWindowForModel(
+      deps.selectedModel,
+      deps.modelMetadata?.[deps.selectedModel],
+    );
+    setContextWindow({ current: 0, total });
   };
 
   const handleSelectChat = (id: string) => {
@@ -153,7 +174,12 @@ export function useChatSession(deps: {
     if (chat.role) deps.setSelectedRole(toModelRole(chat.role));
     setSystemPrompt(chat.systemPrompt || DEFAULT_SYSTEM_PROMPT);
     setProjectRoot(chat.projectRoot || '');
-    setContextWindow(prev => ({ ...prev, current: chat.usage || 0 }));
+    const modelToUse = chat.model || deps.selectedModel;
+    const total = getContextWindowForModel(
+      modelToUse,
+      deps.modelMetadata?.[modelToUse],
+    );
+    setContextWindow({ current: chat.usage || 0, total });
 
     void (async () => {
       try {
@@ -306,7 +332,7 @@ export function useChatSession(deps: {
   // ── derived ────────────────────────────────────────────────────────────────
 
   const contextPercentage = useMemo(
-    () => Math.min(100, (contextWindow.current / contextWindow.total) * 100),
+    () => Math.min(100, (contextWindow.current / (contextWindow.total || 32768)) * 100),
     [contextWindow],
   );
   const isCurrentChatSending = useMemo(

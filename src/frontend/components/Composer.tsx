@@ -5,6 +5,7 @@ import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import { ABTestModal } from './ABTestModal';
 import { FolderPicker } from './FolderPicker';
+import { formatTokensCompact } from '../config/modelMetadata';
 import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
@@ -225,9 +226,9 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
               {contextWindow && (
                 <div className="composer-context">
                   <label>Context</label>
-                  <div className="context-status">
+                  <div className="context-status" title={`${contextWindow.current.toLocaleString()} / ${contextWindow.total.toLocaleString()} tokens`}>
                     <span className="context-status__text">
-                      {contextWindow.current} / {contextWindow.total}
+                      {contextWindow.current.toLocaleString()} / {formatTokensCompact(contextWindow.total)}
                     </span>
                     <span className="context-status__meter">
                       <span className="context-status__meter-fill" style={{ width: `${contextPercentage ?? 0}%` }}></span>

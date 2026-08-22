@@ -19,7 +19,7 @@ It is built with React, TypeScript, Hono, Vite, and SQLite.
 ## Requirements
 
 - Node.js 20 or later
-- npm
+- [pnpm](https://pnpm.io/) (v10 or later)
 - [Ollama](https://ollama.com/) for local models and semantic embeddings (optional for cloud-only use)
 
 ## Getting started
@@ -27,7 +27,7 @@ It is built with React, TypeScript, Hono, Vite, and SQLite.
 ```bash
 git clone https://github.com/coderaulia/vanailachat.git
 cd vanailachat
-npm install
+pnpm install
 ```
 
 For local models, install Ollama and pull a model:
@@ -41,15 +41,15 @@ ollama pull nomic-embed-text
 Copy the environment template if you want to configure providers outside the app:
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
-On macOS or Linux, use `cp .env.example .env` instead. You can also add provider keys in the application settings.
+*(On Windows Command Prompt, use `copy .env.example .env`).* You can also add provider keys directly in the application settings.
 
 Start the app:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 Open the frontend at `http://localhost:5173`. The backend chooses an available local port and records it in `.port`; Vite connects to it automatically.
@@ -102,21 +102,21 @@ Choose focused personas for general work, coding, creative work, research, writi
 ## Scripts
 
 ```bash
-npm run dev           # Start backend and frontend
-npm run dev:backend   # Start the backend only
-npm run dev:frontend  # Start the frontend only
-npm run build         # Build backend and frontend
-npm run test          # Run the test suite
-npm run type-check    # Validate TypeScript
-npm run lint          # Run ESLint
-npm run backup        # Create a SQLite database backup
-npm run preview       # Preview a production frontend build
+pnpm dev           # Start backend and frontend
+pnpm dev:backend   # Start the backend only
+pnpm dev:frontend  # Start the frontend only
+pnpm build         # Build backend and frontend
+pnpm test          # Run the test suite
+pnpm type-check    # Validate TypeScript
+pnpm lint          # Run ESLint
+pnpm backup        # Create a SQLite database backup
+pnpm preview       # Preview a production frontend build
 ```
 
 ## Data and security
 
 - Application data is stored locally in SQLite at `data/vanaila.sqlite` by default. Set `DATABASE_PATH` to override it.
-- Database backups are written to `backups/` by `npm run backup`.
+- Database backups are written to `backups/` by `pnpm backup`.
 - The backend is intended for local use and binds to loopback. It does not provide multi-user authentication.
 - API access is restricted to loopback origins, state-changing cross-site requests are rejected, and security headers are enabled.
 - URL-reading tools block private and metadata network targets to reduce SSRF risk.
@@ -126,10 +126,10 @@ npm run preview       # Preview a production frontend build
 Continuous integration runs linting, type checks, tests, and production builds on Windows and Ubuntu. Before opening a pull request, run:
 
 ```bash
-npm run lint
-npm run type-check
-npm test
-npm run build
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm build
 ```
 
 ## Contributing

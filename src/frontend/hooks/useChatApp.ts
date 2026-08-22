@@ -42,6 +42,7 @@ export function useChatApp() {
 
   const chatSession = useChatSession({
     selectedModel,
+    modelMetadata: modelManager.modelMetadata,
     selectedRole,
     selectedProjectId,
     projects,

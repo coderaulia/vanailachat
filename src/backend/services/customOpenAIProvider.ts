@@ -23,31 +23,79 @@ export class CustomOpenAIProvider implements LLMProvider {
 
   private getApiKey(): string {
     try {
-      return DatabaseService.getSetting('custom_openai_api_key') ?? process.env.CUSTOM_OPENAI_API_KEY ?? '';
+      return (DatabaseService.getSetting('custom_openai_api_key') ?? process.env.CUSTOM_OPENAI_API_KEY ?? '').trim();
     } catch {
-      return process.env.CUSTOM_OPENAI_API_KEY ?? '';
+      return (process.env.CUSTOM_OPENAI_API_KEY ?? '').trim();
     }
   }
 
   private getBaseUrl(): string {
     try {
-      return DatabaseService.getSetting('custom_openai_base_url') ?? process.env.CUSTOM_OPENAI_BASE_URL ?? '';
+      const url = DatabaseService.getSetting('custom_openai_base_url') ?? process.env.CUSTOM_OPENAI_BASE_URL ?? '';
+      return url.trim().replace(/\/+$/, '');
     } catch {
-      return process.env.CUSTOM_OPENAI_BASE_URL ?? '';
+      return (process.env.CUSTOM_OPENAI_BASE_URL ?? '').trim().replace(/\/+$/, '');
     }
   }
 
   async listModels(): Promise<string[]> {
+    const metadata = await this.getInstalledModelMetadata();
+    return metadata.map((m) => m.name);
+  }
+
+  async getInstalledModelMetadata(): Promise<import('./ollama.js').InstalledModelMetadata[]> {
     const apiKey = this.getApiKey();
     const baseUrl = this.getBaseUrl();
-    if (!apiKey || !baseUrl) return [];
+    if (!baseUrl) return [];
     try {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
+      const headers: Record<string, string> = {
+        'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+        'X-Title': 'VanailaChat',
+      };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+      const response = await fetch(`${baseUrl}/models`, { headers });
       if (!response.ok) return [];
-      const data = (await response.json()) as { data?: Array<{ id: string }> };
-      return data.data?.map((m) => m.id) ?? [];
+      const data = (await response.json()) as {
+        data?: Array<{
+          id: string;
+          context_length?: number;
+          max_model_len?: number;
+          context_window?: number;
+          max_context_length?: number;
+        }>;
+      };
+
+      return (data.data ?? []).map((m) => {
+        const contextWindow =
+          typeof m.context_length === 'number' && m.context_length > 0
+            ? m.context_length
+            : typeof m.max_model_len === 'number' && m.max_model_len > 0
+            ? m.max_model_len
+            : typeof m.context_window === 'number' && m.context_window > 0
+            ? m.context_window
+            : typeof m.max_context_length === 'number' && m.max_context_length > 0
+            ? m.max_context_length
+            : null;
+
+        return {
+          name: m.id,
+          model: m.id,
+          contextWindow,
+          capabilities: ['chat', 'tools'],
+          architecture: null,
+          parameters: null,
+          family: null,
+          families: null,
+          format: null,
+          parameterSize: null,
+          quantizationLevel: null,
+          modifiedAt: null,
+          size: null,
+          digest: null,
+        };
+      });
     } catch {
       return [];
     }
@@ -55,11 +103,17 @@ export class CustomOpenAIProvider implements LLMProvider {
 
   async getModelDetails(modelName: string): Promise<Record<string, unknown> | null> {
     const baseUrl = this.getBaseUrl();
+    const apiKey = this.getApiKey();
     if (!baseUrl) return null;
     try {
-      const response = await fetch(`${baseUrl}/models/${modelName}`, {
-        headers: { Authorization: `Bearer ${this.getApiKey()}` },
-      });
+      const headers: Record<string, string> = {
+        'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+        'X-Title': 'VanailaChat',
+      };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+      const response = await fetch(`${baseUrl}/models/${modelName}`, { headers });
       if (!response.ok) return null;
       return (await response.json()) as Record<string, unknown>;
     } catch {
@@ -68,7 +122,7 @@ export class CustomOpenAIProvider implements LLMProvider {
   }
 
   async isModelAvailable(modelName: string): Promise<boolean> {
-    if (!this.getApiKey() || !this.getBaseUrl()) return false;
+    if (!this.getBaseUrl()) return false;
     const models = await this.listModels();
     return models.includes(modelName);
   }

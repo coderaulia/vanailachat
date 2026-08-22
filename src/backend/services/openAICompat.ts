@@ -101,13 +101,23 @@ export async function postChatCompletions(options: {
     ? { ...body, stream_options: { include_usage: true } }
     : body;
 
+  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '');
+  const trimmedKey = (apiKey || '').trim();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+    'X-Title': 'VanailaChat',
+  };
+
+  if (trimmedKey) {
+    headers['Authorization'] = `Bearer ${trimmedKey}`;
+  }
+
   const send = (payload: Record<string, unknown>) =>
-    fetch(`${baseUrl}/chat/completions`, {
+    fetch(`${normalizedBaseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       signal,
       body: JSON.stringify(payload),
     });

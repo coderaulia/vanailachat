@@ -7,6 +7,7 @@ import { EmbeddingService } from './services/embedding.js';
 import { OllamaService } from './services/ollama.js';
 import { OllamaProvider } from './services/ollamaProvider.js';
 import { OpenAIProvider } from './services/openaiProvider.js';
+import { OpenRouterProvider } from './services/openRouterProvider.js';
 import { NineRouterProvider } from './services/nineRouterProvider.js';
 import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
@@ -171,6 +172,11 @@ function buildProviderRegistry(
     registry.register(new OpenAIProvider());
   } catch {
     // Ignore — missing API key at startup is fine
+  }
+  try {
+    registry.register(new OpenRouterProvider());
+  } catch {
+    // Ignore
   }
   try {
     registry.register(new NineRouterProvider());
