@@ -369,7 +369,21 @@ export class FreeClaudeCodeService {
     providerRegistry: ProviderRegistry,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const requestedModel = params.model;
+    let requestedModel = params.model;
+
+    // If model has no prefix and starts with claude-, resolve to connected provider model
+    if (!requestedModel.includes(':')) {
+      const allProviders = providerRegistry.list();
+      const openRouter = allProviders.find((p) => p.id === 'openrouter');
+      const nineRouter = allProviders.find((p) => p.id === 'nine_router' || p.id === '9router');
+
+      if (openRouter) {
+        requestedModel = `openrouter:anthropic/${requestedModel}`;
+      } else if (nineRouter) {
+        requestedModel = `9router:${requestedModel}`;
+      }
+    }
+
     const { provider, modelName } = providerRegistry.resolveModel(requestedModel);
 
     const openaiMessages = this.translateAnthropicMessages(params.system, params.messages);

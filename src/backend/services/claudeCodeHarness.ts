@@ -111,9 +111,12 @@ export class ClaudeCodeHarness implements CodingHarness {
         resume: input.sessionId ?? undefined,
         maxTurns: 16,
         permissionMode: input.mode === 'plan' ? 'plan' : 'default',
-        allowedTools: ['Read', 'Glob', 'Grep'],
         abortController,
         canUseTool: async (tool, toolInput) => {
+          // Fast read-only tools don't require user approval dialogs
+          if (tool === 'Read' || tool === 'Glob' || tool === 'Grep' || tool === 'View') {
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
           const id = `claude_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
           input.onApproval?.({
             id,

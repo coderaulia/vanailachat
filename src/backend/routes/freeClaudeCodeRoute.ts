@@ -29,6 +29,39 @@ export function freeClaudeCodeRouter(dependencies: AppDependencies): Hono {
     });
   });
 
+  // Liveness and health probes for Claude Code / Anthropic SDK
+  const handleProbe = (context: import('hono').Context) => {
+    return context.json({ status: 'ok', service: 'free-claude-code', version: '1.0.0' }, 200);
+  };
+
+  app.on(['GET', 'HEAD'], '/', handleProbe);
+  app.on(['GET', 'HEAD'], '/health', handleProbe);
+  app.on(['GET', 'HEAD'], '/hello', handleProbe);
+  app.on(['GET', 'HEAD'], '/api/hello', handleProbe);
+
+  // Claude telemetry & event logging stubs
+  const handleEventLogging = (context: import('hono').Context) => context.json({ status: 'ok' }, 200);
+  app.post('/api/event_logging/batch', handleEventLogging);
+  app.post('/event_logging/batch', handleEventLogging);
+  app.post('/api/event_logging', handleEventLogging);
+  app.post('/event_logging', handleEventLogging);
+
+  // Account / organization stubs
+  const handleAccount = (context: import('hono').Context) =>
+    context.json({
+      account: {
+        id: 'fcc-local-account',
+        name: 'Free Claude Code User',
+        email: 'local@vanaila.internal',
+        subscription_type: 'max',
+      },
+    }, 200);
+
+  app.get('/api/account', handleAccount);
+  app.get('/account', handleAccount);
+  app.get('/api/organizations', (context) => context.json({ data: [{ id: 'fcc-org', name: 'Local Workspace' }] }));
+  app.get('/organizations', (context) => context.json({ data: [{ id: 'fcc-org', name: 'Local Workspace' }] }));
+
   // Anthropic list models endpoint
   const handleListModels = async (context: import('hono').Context) => {
     try {

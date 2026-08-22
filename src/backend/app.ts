@@ -247,7 +247,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   // the response, not sending the request.
   app.use('*', originGuard());
 
-  app.get('/api/health', (context) => context.json({ status: 'ok' }));
+  app.on(['GET', 'HEAD'], '/api/health', (context) => context.json({ status: 'ok' }));
+  app.on(['GET', 'HEAD'], '/api/hello', (context) => context.json({ status: 'ok' }));
 
   app.route('/api/projects', projectsRouter(dependencies));
   app.route('/api/chats', chatsRouter(dependencies));
