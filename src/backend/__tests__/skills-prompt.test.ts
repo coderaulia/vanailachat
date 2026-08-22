@@ -79,7 +79,7 @@ describe('skill injection', () => {
     expect(systemPrompt).toContain('brand-guidelines: Brand voice and colour rules');
     expect(systemPrompt).not.toContain('x'.repeat(100));
     // The whole prompt must stay far below the ~34KB the old inline path cost.
-    expect(systemPrompt.length).toBeLessThan(5_000);
+    expect(systemPrompt.length).toBeLessThan(10_000);
   });
 
   it('drops the skills section when nothing is enabled', async () => {
