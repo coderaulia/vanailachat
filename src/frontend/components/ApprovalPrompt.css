@@ -5,10 +5,17 @@
   margin: 0 auto 10px;
   width: min(840px, 100% - 32px);
   padding: 14px 16px;
-  border: 1px solid rgba(201, 111, 59, 0.45);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
   border-radius: 16px;
-  background: var(--bg-glass, rgba(255, 255, 255, 0.04));
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
   backdrop-filter: blur(10px);
+}
+
+[data-theme="dark"] .approval-prompt {
+  background: rgba(30, 30, 30, 0.85);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 }
 
 .approval-prompt__header {
@@ -22,8 +29,9 @@
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: var(--radius-full, 999px);
-  background: rgba(201, 111, 59, 0.18);
-  border: 1px solid rgba(201, 111, 59, 0.35);
+  background: var(--bg-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--bg-accent) 35%, transparent);
+  color: var(--bg-accent-strong);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -32,6 +40,7 @@
 .approval-prompt__summary {
   font-size: 13px;
   font-weight: 600;
+  color: var(--text-primary);
   word-break: break-word;
 }
 
@@ -42,8 +51,9 @@
   overflow: auto;
   border-radius: 10px;
   border: 1px solid var(--border-soft);
-  background: rgba(0, 0, 0, 0.18);
-  font-family: var(--font-mono, ui-monospace, monospace);
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
+  font-family: var(--mono, ui-monospace, monospace);
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -57,12 +67,12 @@
 
 .approval-prompt__body.is-removed {
   border-color: rgba(220, 60, 60, 0.35);
-  background: rgba(220, 60, 60, 0.1);
+  background: rgba(220, 60, 60, 0.08);
 }
 
 .approval-prompt__body.is-added {
   border-color: rgba(60, 170, 100, 0.35);
-  background: rgba(60, 170, 100, 0.1);
+  background: rgba(60, 170, 100, 0.08);
 }
 
 .approval-prompt__actions {
@@ -76,19 +86,26 @@
   padding: 0 14px;
   border-radius: var(--radius-full, 999px);
   border: 1px solid var(--border-soft);
-  background: transparent;
-  color: inherit;
+  background: var(--bg-surface-strong);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .approval-prompt__btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-surface);
+  border-color: var(--border-medium);
 }
 
 .approval-prompt__btn.is-primary {
   border-color: transparent;
   background: var(--bg-accent, #c96442);
-  color: #fff;
+  color: var(--text-on-accent, #fff);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.25);
+}
+
+.approval-prompt__btn.is-primary:hover {
+  background: var(--bg-accent-strong, #b85d2d);
 }

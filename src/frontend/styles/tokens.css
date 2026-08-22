@@ -14,19 +14,20 @@
   --bg-accent-strong: #b85d2d;
   --bg-accent-soft: #fef3c7;
   --bg-muted: #f0ebe2;
-  --bg-glass: rgba(255, 255, 255, 0.7);
+  --bg-glass: rgba(255, 255, 255, 0.82);
+  --bg-elevated: #ffffff;
 
   --text-main: #1a1a1a;
   --text-primary: #171717;
-  --text-secondary: #6b7280;
-  --text-muted: #6b7280;
+  --text-secondary: #57534e;
+  --text-muted: #78716c;
   --text-inverse: #f7f1e8;
   --text-muted-inverse: rgba(247, 241, 232, 0.72);
   --text-on-accent: #ffffff;
 
-  --border-soft: rgba(0, 0, 0, 0.06);
-  --border-medium: rgba(0, 0, 0, 0.1);
-  --border-strong: rgba(23, 23, 23, 0.14);
+  --border-soft: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(23, 23, 23, 0.2);
   --border-inverse: rgba(255, 255, 255, 0.12);
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -65,6 +66,7 @@
   --bg-accent-soft: rgba(201, 111, 59, 0.16);
   --bg-muted: #2a2a2a;
   --bg-glass: rgba(30, 30, 30, 0.74);
+  --bg-elevated: #1c1c1c;
   --text-main: #e8e8e8;
   --text-primary: #e8e8e8;
   --text-secondary: #9a9a9a;
