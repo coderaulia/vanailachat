@@ -31,7 +31,7 @@ echo "--------------------------------------------------------"
 
 # ── 1. Desktop shortcut creation argument check ────────────────────────────────
 if [[ "$1" == "--desktop" || "$1" == "-d" ]]; then
-  echo -e "${BLUE}ℹ Creating Linux Desktop shortcut...${RESET}"
+  echo -e "${BLUE}ℹ Creating Desktop shortcut...${RESET}"
   DESKTOP_DIR="${XDG_DESKTOP_DIR:-$HOME/Desktop}"
   APPS_DIR="$HOME/.local/share/applications"
 
@@ -48,16 +48,26 @@ Terminal=true
 Categories=Development;Office;Utility;
 StartupNotify=true"
 
+  # Linux Application Menu & Desktop
   if mkdir -p "$APPS_DIR" 2>/dev/null; then
     echo "$DESKTOP_ENTRY" > "$APPS_DIR/vanailachat.desktop" 2>/dev/null || true
     chmod +x "$APPS_DIR/vanailachat.desktop" 2>/dev/null || true
-    echo -e "${GREEN}✓ Application menu shortcut created at: $APPS_DIR/vanailachat.desktop${RESET}"
+    echo -e "${GREEN}✓ Linux Application menu shortcut created at: $APPS_DIR/vanailachat.desktop${RESET}"
   fi
 
   if [ -d "$DESKTOP_DIR" ] && [ -w "$DESKTOP_DIR" ]; then
-    echo "$DESKTOP_ENTRY" > "$DESKTOP_DIR/vanailachat.desktop" 2>/dev/null || true
-    chmod +x "$DESKTOP_DIR/vanailachat.desktop" 2>/dev/null || true
-    echo -e "${GREEN}✓ Desktop shortcut created at: $DESKTOP_DIR/vanailachat.desktop${RESET}"
+    if [ "$(uname)" = "Darwin" ]; then
+      # macOS double-clickable .command launcher
+      MAC_LAUNCHER="$DESKTOP_DIR/VanailaChat.command"
+      echo "#!/bin/bash" > "$MAC_LAUNCHER"
+      echo "cd \"$APP_DIR\" && ./start.sh" >> "$MAC_LAUNCHER"
+      chmod +x "$MAC_LAUNCHER"
+      echo -e "${GREEN}✓ macOS Desktop launcher created at: $MAC_LAUNCHER${RESET}"
+    else
+      echo "$DESKTOP_ENTRY" > "$DESKTOP_DIR/vanailachat.desktop" 2>/dev/null || true
+      chmod +x "$DESKTOP_DIR/vanailachat.desktop" 2>/dev/null || true
+      echo -e "${GREEN}✓ Linux Desktop shortcut created at: $DESKTOP_DIR/vanailachat.desktop${RESET}"
+    fi
   fi
   echo ""
   exit 0
