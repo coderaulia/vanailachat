@@ -28,3 +28,7 @@ backups/
 
 # Dev server logs
 *.log
+
+# Claude Code / Agent data
+.claude
+.claude/

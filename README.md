@@ -23,6 +23,10 @@
 
 *An open-source, privacy-first AI platform that empowers everyone — from beginners to senior developers — to run, chat, research, write code, and build with AI locally or through cloud APIs.*
 
+<br/>
+
+<img src="./docs/preview.jpg" alt="VanailaChat App Preview" width="100%" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
+
 </div>
 
 ---
