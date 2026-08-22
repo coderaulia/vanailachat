@@ -8,22 +8,25 @@
 }
 
 [data-theme="dark"] .message {
-  background: rgba(30, 30, 30, 0.76);
+  background: var(--bg-surface);
+  border-color: var(--border-soft);
 }
 
 [data-theme="dark"] .code-block__header,
 [data-theme="dark"] .btn-secondary:hover:not(:disabled) {
   background: var(--bg-muted);
+  border-color: var(--border-soft);
 }
 
 [data-theme="dark"] .copy-code-btn {
-  background: #2a2a2a;
+  background: var(--bg-surface-strong);
   color: var(--text-primary);
   border-color: var(--border-soft);
 }
 
 [data-theme="dark"] .copy-code-btn:hover {
-  background: #333;
+  background: var(--bg-muted);
+  border-color: var(--border-medium);
 }
 
 .history-empty,
@@ -324,6 +327,18 @@
   padding-left: 14px;
   border-left: 3px solid rgba(var(--accent-rgb), 0.4);
   color: var(--text-secondary);
+}
+
+.message__prose a {
+  color: var(--bg-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.message__prose a:hover {
+  color: var(--bg-accent-strong);
+  opacity: 0.9;
 }
 
 .message__prose code {
