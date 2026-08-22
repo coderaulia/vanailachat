@@ -37,7 +37,7 @@ export interface Chat {
   usage?: number;
 }
 
-export type AttachmentType = 'text' | 'image';
+export type AttachmentType = 'text' | 'image' | 'file';
 
 export interface Attachment {
   name: string;
@@ -80,6 +80,7 @@ export interface ApiProject {
   description: string | null;
   instructions: string | null;
   memory: string | null;
+  projectRoot?: string | null;
   pinned?: boolean;
   createdAt: number;
 }

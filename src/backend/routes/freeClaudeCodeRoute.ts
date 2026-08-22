@@ -134,6 +134,22 @@ export function freeClaudeCodeRouter(dependencies: AppDependencies): Hono {
               : `[Relevant Memories]\n${memoryBlock}`;
           }
 
+          // Inject active skills
+          const enabledSkills = dependencies.listEnabledSkills();
+          if (enabledSkills.length > 0) {
+            const inlineSkills = dependencies.getSetting('skills_inline') === 'true';
+            const skillsSection = inlineSkills
+              ? enabledSkills.map((s) => `[Skill: ${s.name}]\n${s.content}`).join('\n\n')
+              : `[Active Skills & Guidelines]\n` +
+                enabledSkills.map((s) => `- ${s.name}: ${s.description || s.content.slice(0, 120)}`).join('\n');
+            const currSystem = typeof body.system === 'string'
+              ? body.system
+              : Array.isArray(body.system)
+                ? body.system.map((s) => s.text ?? '').join('\n')
+                : '';
+            body.system = currSystem ? `${currSystem}\n\n${skillsSection}` : skillsSection;
+          }
+
           if (userText.trim().length >= 20) {
             dependencies.upsertMemory({
               type: 'conversation',

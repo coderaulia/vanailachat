@@ -5,12 +5,16 @@ interface ChatHeaderProps {
   showTokens: boolean;
   thinkingSeconds: number;
   onToggleShowTokens: () => void;
+  isCodebasePanelOpen?: boolean;
+  onToggleCodebasePanel?: () => void;
 }
 
 export function ChatHeader({
   showTokens,
   thinkingSeconds,
   onToggleShowTokens,
+  isCodebasePanelOpen,
+  onToggleCodebasePanel,
 }: ChatHeaderProps) {
   const {
     isCurrentChatSending,
@@ -82,6 +86,21 @@ export function ChatHeader({
               <path d="M8 14h5"></path>
             </svg>
           </button>
+
+          {onToggleCodebasePanel && (
+            <button
+              className={`icon-btn ${isCodebasePanelOpen ? 'is-active' : ''}`}
+              type="button"
+              aria-label="Toggle Codebase Activity Panel"
+              title="Toggle Codebase Activity & Changes Panel"
+              onClick={onToggleCodebasePanel}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </button>
+          )}
 
           <button className="icon-btn theme-toggle" type="button" aria-label="Toggle Dark Mode" onClick={onToggleTheme}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

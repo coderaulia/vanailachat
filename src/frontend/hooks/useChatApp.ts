@@ -63,6 +63,7 @@ export function useChatApp() {
     attachedFiles,
     setAttachedFiles,
     persona,
+    setProjects: persistence.setProjects,
   });
 
   const { handleNewChat, currentChatIdRef } = chatSession;

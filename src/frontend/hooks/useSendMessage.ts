@@ -229,15 +229,39 @@ export function useSendMessage(deps: SendMessageDeps) {
     // same NDJSON envelope, so everything downstream is shared.
     const workspacePath = (existingChat?.projectRoot ?? projectRoot).trim();
     const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
+    let resolvedProjectId = activeProjectId;
 
     try {
       if (useCodingHarness) {
+        // Auto-create / match Project for this workspace directory
+        const matchingProj = projects.find((p) => (p.projectRoot || '').trim() === workspacePath);
+        if (matchingProj) {
+          resolvedProjectId = matchingProj.id;
+        } else if (!activeProjectId || activeProjectId === 'default') {
+          const folderName = workspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
+          try {
+            const pRes = await fetch('/api/projects', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: folderName, projectRoot: workspacePath }),
+            });
+            if (pRes.ok) {
+              const pData = (await pRes.json()) as { project?: ApiProject };
+              if (pData.project) {
+                resolvedProjectId = pData.project.id;
+              }
+            }
+          } catch (e) {
+            console.warn('[WORKSPACE PROJECT] Failed to auto-create project:', e);
+          }
+        }
+
         // The session records which directory the harness may touch. It has to
         // exist before /run, and the chat row has to exist before the session
         // because coding_sessions.chat_id is a foreign key.
         await upsertChat({
           id: chatId,
-          projectId: activeProjectId,
+          projectId: resolvedProjectId,
           title,
           model: resolvedModel,
           projectRoot: workspacePath,
@@ -401,8 +425,14 @@ export function useSendMessage(deps: SendMessageDeps) {
               currentToolActivities.push(activity);
             }
 
-            const activeStatus = coding.file ? `Claude Code: ${coding.name} ${coding.file}` : coding.command ? `Claude Code: ${coding.command}` : `Claude Code: ${coding.name}`;
-            setStatusText(activeStatus);
+          } else if (coding.type === 'usage' && (coding as unknown as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage) {
+            const u = (coding as unknown as { usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage;
+            if (typeof u.prompt_tokens === 'number') promptTokens = u.prompt_tokens;
+            if (typeof u.completion_tokens === 'number') completionTokens = u.completion_tokens;
+            finalUsage = u.total_tokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0));
+            if (currentChatIdRef.current === chatId && finalUsage > 0) {
+              setContextWindow(prev => ({ ...prev, current: finalUsage }));
+            }
           }
 
           syncUIAndHistory();
@@ -512,6 +542,14 @@ export function useSendMessage(deps: SendMessageDeps) {
       streamBuffer += decoder.decode();
       if (streamBuffer.trim()) applyEvent(parseStreamLine(streamBuffer));
       assistantContentForSave = fullContent;
+
+      if (finalUsage === 0) {
+        const est = Math.max(1, Math.ceil(((messageContent?.length ?? 0) + fullContent.length) / 4));
+        finalUsage = est;
+        if (currentChatIdRef.current === chatId) {
+          setContextWindow(prev => ({ ...prev, current: finalUsage }));
+        }
+      }
 
     } catch (error) {
       const isAbort = (error instanceof DOMException || error instanceof Error) &&

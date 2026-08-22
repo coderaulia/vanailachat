@@ -23,21 +23,22 @@
 
 *An open-source, privacy-first AI platform that empowers everyone — from beginners to senior developers — to run, chat, research, write code, and build with AI locally or through cloud APIs.*
 
-<br/>
-
-<img src="./docs/preview.jpg" alt="VanailaChat App Preview" width="100%" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
-
 </div>
 
 ---
 
 ## 🌟 What is VanailaChat?
 
-**VanailaChat** brings the power of ChatGPT, Claude, and GitHub Copilot directly into your local machine and web browser with **complete privacy and control**:
+**VanailaChat** brings the power of ChatGPT, Claude, and GitHub Copilot directly into your local machine and web browser with **complete privacy, control, and developer tooling**:
 
 - 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Mistral, Qwen, Phi-4) with zero subscription fees.
 - ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI, OpenRouter, 9Router, DeepSeek, Anthropic, or any custom OpenAI-compatible server.
 - 💻 **Live Coding Workspace**: Edit and create project files with live diff reviews, run terminal commands, and use Auto-Approve mode powered by Claude Code & Free Claude Code (FCC).
+- ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
+- 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
+- 📁 **Automated Workspace Organization**: Selecting a workspace folder automatically groups chats into dedicated project workspaces to keep your chat history tidy.
+- 🧩 **Agent Skills Integration**: Seamlessly inject custom and active Agent Skills into coding sessions.
+- 📊 **Real-time Context Usage Tracking**: Accurate live token meters showing prompt and completion token usage across local and cloud models.
 - 🧠 **Persistent Long-Term Memory**: Automatically remembers your coding style, preferences, and project background across all chat sessions.
 - 📑 **Document Analysis & Generation**: Upload PDFs, DOCX, XLSX, and text files. Extract data locally and export formatted `.docx` Word documents.
 - 🔍 **Deep Web Research**: Search the live web, fetch articles, and generate cited summaries.
@@ -151,17 +152,21 @@ You can configure provider keys directly inside the UI in **Settings (⚙️) �
 ### 1. ⚡ Live Coding Workspace & Auto-Approve Mode
 - Select **Coding** mode in the chat composer to give the model access to your local workspace.
 - The model can read, write, edit files, and execute terminal commands.
-- **Rich Approval Dialog**: Inspect full commands, target files, and side-by-side diff previews before anything touches your disk.
+- **Rich Approval Dialog & Live Side Panel**: Inspect full commands, target files, and side-by-side diff previews before anything touches your disk.
 - **Auto-Approve Toggle**: Switch on `⚡ Auto-Approve` from the chat header or popup to let coding tasks run continuously without manual confirmation.
 
-### 2. 🧠 Persistent Long-Term Memory
+### 2. 🌿 Git Branch Protection & Safety Creation
+- Live working branch display in the workspace bar (`🌿 feat/new-feature (2 modified)`).
+- Warning indicator when operating directly on `main` or `master` with an instant **`+ Create Branch`** button to safely isolate AI edits.
+
+### 3. 📁 Workspace Auto-Project Organization
+- Selecting or typing a workspace folder automatically organizes your chats into a dedicated project named after the folder, keeping your general chat history clean and organized.
+
+### 4. 🧠 Persistent Long-Term Memory
 - Automatically indexes past conversations using vector embeddings (via `nomic-embed-text`) or keyword search.
 - When you ask a question or start a coding task, relevant historical context and your past preferences are automatically recalled.
 
-### 3. 📂 Projects & Context Isolation
-- Group your work into distinct Projects with customized instructions, dedicated workspace directories, and tailored system prompts.
-
-### 4. 📄 Local Document Reader & Word Generator
+### 5. 📄 Local Document Reader & Word Generator
 - Drag-and-drop PDF, DOCX, XLSX, and text files into the chat composer. Content is processed locally on your machine.
 - Generate downloadable formatted `.docx` Word documents directly from AI conversations.
 
@@ -174,7 +179,7 @@ pnpm dev           # Start both backend and frontend development servers
 pnpm dev:backend   # Start backend only
 pnpm dev:frontend  # Start frontend Vite server only
 pnpm build         # Build production bundle
-pnpm test          # Run full Vitest test suite (232+ tests)
+pnpm test          # Run full Vitest test suite (234 tests)
 pnpm type-check    # Run TypeScript validation
 pnpm lint          # Run ESLint validation
 pnpm backup        # Backup SQLite database to backups/
@@ -206,4 +211,3 @@ To get in touch or collaborate, connect via GitHub or email [care@vanaila.com](m
 **[⭐ Star this project on GitHub](https://github.com/coderaulia/vanailachat)** • **Made with ❤️ from Jakarta for Indonesian AI community! 🇮🇩**
 
 </div>
-

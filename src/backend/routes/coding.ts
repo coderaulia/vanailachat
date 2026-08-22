@@ -90,6 +90,17 @@ export function codingRouter(dependencies: AppDependencies): Hono {
           promptWithMemory = `[Relevant Memories & Context]\n${memoryBlock}\n\n[User Request]\n${prompt}`;
         }
 
+        // Inject active skills
+        const enabledSkills = dependencies.listEnabledSkills();
+        if (enabledSkills.length > 0) {
+          const inlineSkills = dependencies.getSetting('skills_inline') === 'true';
+          const skillsBlock = inlineSkills
+            ? enabledSkills.map((s) => `[Skill: ${s.name}]\n${s.content}`).join('\n\n')
+            : `[Active Skills & Guidelines]\n` +
+              enabledSkills.map((s) => `- ${s.name}: ${s.description || s.content.slice(0, 120)}`).join('\n');
+          promptWithMemory = `${skillsBlock}\n\n${promptWithMemory}`;
+        }
+
         if (prompt.trim().length >= 20) {
           dependencies.upsertMemory({
             type: 'conversation',
@@ -105,7 +116,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
           });
         }
       } catch (error) {
-        console.error('[CODING MEMORY] Memory recall/store failed:', error);
+        console.error('[CODING CONTEXT] Memory/skills recall failed:', error);
       }
 
       const controller = new AbortController();

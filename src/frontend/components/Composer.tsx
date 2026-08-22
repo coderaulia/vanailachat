@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MODEL_ROLE_LABELS } from '../config/modelRoles';
 import type { ModelRole } from '../config/modelRoles';
 import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
@@ -58,6 +58,58 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     handleRefreshModels: onRefreshModels,
     handleAbort: onAbort,
   } = useChat();
+
+  const [gitStatus, setGitStatus] = useState<{
+    isGit: boolean;
+    branch: string | null;
+    isClean: boolean;
+    uncommittedCount: number;
+    isMainOrMaster: boolean;
+  } | null>(null);
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [newBranchInput, setNewBranchInput] = useState('');
+
+  useEffect(() => {
+    if (selectedRole === 'coding' && projectRoot.trim()) {
+      fetch('/api/git/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectRoot: projectRoot.trim() }),
+      })
+        .then((res) => res.json())
+        .then((data: { isGit: boolean; branch: string | null; isClean: boolean; uncommittedCount: number; isMainOrMaster: boolean }) => {
+          if (data.isGit) {
+            setGitStatus(data);
+          } else {
+            setGitStatus(null);
+          }
+        })
+        .catch(() => setGitStatus(null));
+    } else {
+      setGitStatus(null);
+    }
+  }, [projectRoot, selectedRole]);
+
+  const handleCreateGitBranch = async (branchName?: string) => {
+    const defaultBranchName = (branchName || '').trim() || `feat/patch-${Date.now().toString(36)}`;
+    try {
+      const res = await fetch('/api/git/branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectRoot: projectRoot.trim(), branchName: defaultBranchName }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { success: boolean; branch: string };
+        if (data.success) {
+          setGitStatus((prev) => (prev ? { ...prev, branch: data.branch, isMainOrMaster: false } : null));
+          setIsCreatingBranch(false);
+          setNewBranchInput('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to create branch:', err);
+    }
+  };
 
   const onToggleSearch = () => setIsSearchEnabled((prev: boolean) => !prev);
 
@@ -154,6 +206,74 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                 </svg>
               </button>
+
+              {gitStatus?.isGit && (
+                <div className="git-status-bar" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
+                  <span
+                    className={`git-branch-pill ${gitStatus.isMainOrMaster ? 'is-warning' : 'is-safe'}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: gitStatus.isMainOrMaster ? 'rgba(210, 153, 34, 0.15)' : 'rgba(46, 160, 67, 0.15)',
+                      color: gitStatus.isMainOrMaster ? '#d29922' : '#3fb950',
+                      fontWeight: 600,
+                    }}
+                    title={gitStatus.isMainOrMaster ? 'Working directly on main/production branch' : `Current branch: ${gitStatus.branch}`}
+                  >
+                    🌿 {gitStatus.branch}
+                    {gitStatus.uncommittedCount > 0 && ` (${gitStatus.uncommittedCount} modified)`}
+                  </span>
+
+                  {gitStatus.isMainOrMaster && !isCreatingBranch && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '2px 8px', fontSize: '11px', height: '22px', border: '1px dashed #d29922', color: '#d29922' }}
+                      onClick={() => setIsCreatingBranch(true)}
+                      title="Create a safety feature branch before making changes"
+                    >
+                      + Create Branch
+                    </button>
+                  )}
+
+                  {isCreatingBranch && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="text"
+                        placeholder="feat/new-branch"
+                        value={newBranchInput}
+                        onChange={(e) => setNewBranchInput(e.target.value)}
+                        style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-soft)', background: 'var(--bg-surface)' }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleCreateGitBranch(newBranchInput);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: '2px 6px', fontSize: '10px', height: '22px' }}
+                        onClick={() => void handleCreateGitBranch(newBranchInput)}
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: '2px 6px', fontSize: '10px', height: '22px' }}
+                        onClick={() => setIsCreatingBranch(false)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : null}
 

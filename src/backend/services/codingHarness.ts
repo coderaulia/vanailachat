@@ -39,6 +39,14 @@ export type CodingEvent =
       input?: Record<string, unknown>;
     }
   | { type: 'session'; sessionId: string }
+  | {
+      type: 'usage';
+      usage: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+    }
   | { type: 'done' };
 
 /** A swappable local execution engine for coding work. */

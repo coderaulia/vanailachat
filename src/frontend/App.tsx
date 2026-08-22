@@ -3,6 +3,7 @@ import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
 import { ApprovalPrompt } from './components/ApprovalPrompt';
+import { CodebasePanel } from './components/CodebasePanel';
 import './App.css';
 import { Sidebar } from './components/Sidebar';
 import { useMarkdownRenderer } from './hooks/useMarkdownRenderer';
@@ -44,6 +45,10 @@ const AppShell = () => {
 
   const {
     currentChatId,
+    conversation,
+    pendingApproval,
+    respondToApproval,
+    projectRoot,
     isCurrentChatSending,
     isSidebarOpen,
     projects,
@@ -55,6 +60,20 @@ const AppShell = () => {
     handleAbort,
     setViewMode,
   } = useChat();
+
+  const [isCodebasePanelOpen, setIsCodebasePanelOpen] = useState(false);
+
+  // Auto-open codebase panel when tool approval is requested
+  useEffect(() => {
+    if (pendingApproval) {
+      setIsCodebasePanelOpen(true);
+    }
+  }, [pendingApproval]);
+
+  const activeActivities = useMemo(() => {
+    const lastAssistant = conversation.slice().reverse().find((m) => m.role === 'assistant');
+    return lastAssistant?.toolActivities || [];
+  }, [conversation]);
 
   const shortcutsMap = useMemo(() => ({
     'ctrl+n': () => { handleNewChat(); setViewMode('chat'); },
@@ -113,15 +132,32 @@ const AppShell = () => {
               showTokens={showTokens}
               thinkingSeconds={thinkingSeconds}
               onToggleShowTokens={() => setShowTokens((previous) => !previous)}
+              isCodebasePanelOpen={isCodebasePanelOpen}
+              onToggleCodebasePanel={() => setIsCodebasePanelOpen((prev) => !prev)}
             />
 
-            <ChatLog
-              showTokens={showTokens}
-              renderMarkdown={renderMarkdown}
-            />
+            <div className="chat-and-panel-wrapper">
+              <div className="chat-column">
+                <ChatLog
+                  showTokens={showTokens}
+                  renderMarkdown={renderMarkdown}
+                />
 
-            <ApprovalPrompt />
-            <Composer thinkingSeconds={thinkingSeconds} />
+                <ApprovalPrompt />
+                <Composer thinkingSeconds={thinkingSeconds} />
+              </div>
+
+              {isCodebasePanelOpen && (
+                <CodebasePanel
+                  isOpen={isCodebasePanelOpen}
+                  onClose={() => setIsCodebasePanelOpen(false)}
+                  activities={activeActivities}
+                  pendingApproval={pendingApproval}
+                  onRespondApproval={respondToApproval}
+                  workspacePath={projectRoot}
+                />
+              )}
+            </div>
           </>
         ) : (
           (() => {

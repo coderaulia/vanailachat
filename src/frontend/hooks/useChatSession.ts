@@ -32,6 +32,7 @@ export function useChatSession(deps: {
   attachedFiles: Attachment[];
   setAttachedFiles: (files: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
   persona?: string;
+  setProjects?: React.Dispatch<React.SetStateAction<ApiProject[]>>;
 }) {
   // ── shared state ───────────────────────────────────────────────────────────
   const [conversation, setConversation] = useState<Message[]>([]);
@@ -220,7 +221,8 @@ export function useChatSession(deps: {
       modelToUse,
       deps.modelMetadata?.[modelToUse],
     );
-    setContextWindow({ current: chat.usage || 0, total });
+    const initialUsage = chat.usage || chat.conversation.reduce((acc, m) => acc + Math.ceil((m.content?.length || 0) / 4), 0);
+    setContextWindow({ current: initialUsage, total });
 
     // Only reload from database if chat is not actively streaming in the background
     if (!sendingChatIds[id]) {
@@ -232,7 +234,11 @@ export function useChatSession(deps: {
             if (!current) return prev;
             return { ...prev, [id]: { ...current, conversation: messages } };
           });
-          if (currentChatIdRef.current === id) setConversation(messages);
+          if (currentChatIdRef.current === id) {
+            setConversation(messages);
+            const calculatedUsage = chat.usage || messages.reduce((acc, m) => acc + Math.ceil((m.content?.length || 0) / 4), 0);
+            setContextWindow(prev => ({ ...prev, current: calculatedUsage }));
+          }
         } catch (error) {
           console.error(error);
           deps.setStatusText('Failed to load messages');
@@ -248,51 +254,51 @@ export function useChatSession(deps: {
     const files = event.target.files;
     if (!files) return;
 
-    await Promise.all(Array.from(files).map(async file => {
+    const newAttachments: Attachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       if (file.type.startsWith('image/')) {
-        const content = await new Promise<string>(resolve => {
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target?.result as string);
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = () => resolve(reader.result as string);
           reader.readAsDataURL(file);
         });
-        deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'image' } as Attachment]);
-        return;
-      }
-
-      // Office and PDF files are ZIP/binary containers. Reading them as text
-      // yields mojibake, so they go to the backend extractor instead.
-      if (NEEDS_EXTRACTION.test(file.name)) {
+        newAttachments.push({ name: file.name, type: 'image', content: base64 });
+      } else if (NEEDS_EXTRACTION.test(file.name)) {
         try {
-          const form = new FormData();
-          form.append('file', file);
-          const response = await fetch('/api/attachments/extract', { method: 'POST', body: form });
-          const payload = await response.json() as { text?: string; error?: string };
-
-          if (!response.ok || typeof payload.text !== 'string') {
-            throw new Error(payload.error || 'Extraction failed');
+          deps.setStatusText(`Extracting text from ${file.name}…`);
+          const formData = new FormData();
+          formData.append('file', file);
+          const response = await fetch('/api/attachments/extract', {
+            method: 'POST',
+            body: formData,
+          });
+          if (!response.ok) {
+            const err = await response.text().catch(() => 'Extraction failed');
+            throw new Error(err);
           }
-
-          deps.setAttachedFiles(prev => [...prev, { name: file.name, content: payload.text!, type: 'text' } as Attachment]);
+          const data = (await response.json()) as { name?: string; text?: string };
+          newAttachments.push({
+            name: file.name,
+            type: 'file',
+            content: data.text ?? '',
+          });
+          deps.setStatusText('Extracted document text');
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Extraction failed';
-          deps.setStatusText(`Could not read ${file.name}: ${message}`);
+          console.error(error);
+          deps.setStatusText(`Could not extract text from ${file.name}`);
         }
-        return;
+      } else {
+        const text = await file.text();
+        newAttachments.push({ name: file.name, type: 'file', content: text });
       }
-
-      const content = await new Promise<string>(resolve => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target?.result as string);
-        reader.readAsText(file);
-      });
-      deps.setAttachedFiles(prev => [...prev, { name: file.name, content, type: 'text' } as Attachment]);
-    }));
-
+    }
+    deps.setAttachedFiles((prev) => [...prev, ...newAttachments]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeAttachment = (index: number) => {
-    deps.setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+    deps.setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleProjectRootChange = (value: string) => setProjectRoot(value);
@@ -343,10 +349,7 @@ export function useChatSession(deps: {
   };
 
   /**
-   * Apply a workspace folder chosen in the in-app picker.
-   *
-   * This used to shell out to a native dialog, which the server could not
-   * reliably display — the request hung and the button looked dead.
+   * Apply a workspace folder chosen in the in-app picker and auto-organize into a Project.
    */
   const handlePickProjectRoot = async (picked: string) => {
     const path = picked.trim();
@@ -355,18 +358,57 @@ export function useChatSession(deps: {
     setProjectRoot(path);
     deps.setStatusText(`Workspace: ${path}`);
 
+    // Auto-create / associate Project for this workspace directory
+    const existing = deps.projects.find((p) => (p.projectRoot || '').trim() === path);
+    let targetProjectId = deps.selectedProjectId;
+    if (existing) {
+      targetProjectId = existing.id;
+      deps.setSelectedProjectId(existing.id);
+    } else {
+      const folderName = path.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: folderName, projectRoot: path }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { project?: ApiProject };
+          if (data.project) {
+            targetProjectId = data.project.id;
+            deps.setProjects?.((prev) => [...prev, data.project!]);
+            deps.setSelectedProjectId(data.project.id);
+          }
+        }
+      } catch (e) {
+        console.warn('[WORKSPACE PROJECT] Failed to auto-create project:', e);
+      }
+    }
+
     const chatId = currentChatIdRef.current;
     if (!chatId) return;
 
     const updatedAt = Date.now();
-    deps.updateHistories(prev => {
+    deps.updateHistories((prev) => {
       const chat = prev[chatId];
       if (!chat) return prev;
-      return { ...prev, [chatId]: { ...chat, projectRoot: path, updatedAt } };
+      return {
+        ...prev,
+        [chatId]: {
+          ...chat,
+          projectRoot: path,
+          projectId: targetProjectId || chat.projectId,
+          updatedAt,
+        },
+      };
     });
 
     try {
-      await deps.patchChat(chatId, { projectRoot: path, updatedAt });
+      await deps.patchChat(chatId, {
+        projectRoot: path,
+        projectId: targetProjectId || undefined,
+        updatedAt,
+      });
     } catch (error) {
       console.error(error);
       deps.setStatusText('Could not save the workspace folder');

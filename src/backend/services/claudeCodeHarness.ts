@@ -222,24 +222,67 @@ export class ClaudeCodeHarness implements CodingHarness {
 
     // Run query in background and push to eventQueue
     (async () => {
+      let hasEmittedUsage = false;
+      let totalTextChars = 0;
       try {
         for await (const message of result) {
           const record = message as unknown as Record<string, unknown>;
           const sessionId = typeof record.session_id === 'string' ? record.session_id : null;
           if (sessionId) pushEvent({ type: 'session', sessionId });
 
+          // Extract token usage if provided by upstream
+          const rawUsage = (record.usage || (record.message as Record<string, unknown> | undefined)?.usage) as {
+            input_tokens?: number;
+            output_tokens?: number;
+            total_tokens?: number;
+            prompt_tokens?: number;
+            completion_tokens?: number;
+          } | undefined;
+
+          if (rawUsage) {
+            hasEmittedUsage = true;
+            pushEvent({
+              type: 'usage',
+              usage: {
+                prompt_tokens: rawUsage.prompt_tokens ?? rawUsage.input_tokens,
+                completion_tokens: rawUsage.completion_tokens ?? rawUsage.output_tokens,
+                total_tokens: rawUsage.total_tokens ?? ((rawUsage.input_tokens ?? 0) + (rawUsage.output_tokens ?? 0)),
+              },
+            });
+          }
+
           if (record.type === 'assistant') {
             const assistant = record.message as Record<string, unknown> | undefined;
             const text = textFromContent(assistant?.content ?? record.content ?? record.text);
-            if (text) pushEvent({ type: 'text', text });
+            if (text) {
+              totalTextChars += text.length;
+              pushEvent({ type: 'text', text });
+            }
           } else if (record.type === 'text' && typeof record.text === 'string' && record.text) {
+            totalTextChars += record.text.length;
             pushEvent({ type: 'text', text: record.text });
           } else if (record.type === 'result' && typeof record.result === 'string' && record.result) {
+            totalTextChars += record.result.length;
             pushEvent({ type: 'text', text: record.result });
           } else if (typeof record.content === 'string' && record.content) {
+            totalTextChars += record.content.length;
             pushEvent({ type: 'text', text: record.content });
           }
         }
+
+        if (!hasEmittedUsage) {
+          const estPrompt = Math.ceil(input.prompt.length / 4);
+          const estComp = Math.ceil(totalTextChars / 4);
+          pushEvent({
+            type: 'usage',
+            usage: {
+              prompt_tokens: estPrompt,
+              completion_tokens: estComp,
+              total_tokens: estPrompt + estComp,
+            },
+          });
+        }
+
         pushEvent({ type: 'done' });
       } catch (error) {
         queryError = error;
