@@ -299,6 +299,8 @@ export function useChatApp() {
     setStatusText: uiState.setStatusText,
     isDarkMode: uiState.isDarkMode,
     toggleTheme: uiState.toggleTheme,
+    colorScheme: uiState.colorScheme,
+    setColorScheme: uiState.setColorScheme,
     openSidebar: uiState.openSidebar,
     closeSidebar: uiState.closeSidebar,
     toggleSidebar: uiState.toggleSidebar,

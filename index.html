@@ -7,6 +7,15 @@
   <link rel="apple-touch-icon" href="/favicon.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VanailaChat - Local &amp; Cloud AI Chat</title>
+  <script>
+    (function() {
+      var theme = localStorage.getItem('vanaila-theme');
+      if (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
+      var scheme = localStorage.getItem('vanaila-color-scheme');
+      if (scheme && scheme !== 'vanaila-origin') document.documentElement.setAttribute('data-color-scheme', scheme);
+    })();
+  </script>
 </head>
 
 <body>

@@ -672,3 +672,70 @@
   margin: 2px 0 0 0;
 }
 
+/* ── Appearance: Color Scheme Grid ── */
+.settings-color-schemes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.settings-scheme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-soft);
+  background: var(--bg-surface-strong);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.settings-scheme-card:hover {
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-scheme-card.is-selected {
+  border-color: var(--bg-accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+
+.settings-scheme-swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.settings-scheme-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .settings-scheme-swatch {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.settings-scheme-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-scheme-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-scheme-active-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: rgba(var(--color-success-rgb), 0.12);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}

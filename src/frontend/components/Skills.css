@@ -48,7 +48,7 @@
 }
 
 .skills-tab-badge {
-  background: var(--bg-accent, #c96f3b);
+  background: var(--bg-accent);
   color: #fff;
   font-size: 0.6rem;
   font-weight: 800;
@@ -119,8 +119,8 @@
 }
 
 .skill-item.is-enabled {
-  border-color: rgba(201,111,59, 0.25);
-  background: rgba(201,111,59, 0.05);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 
 .skill-item--available {
@@ -219,7 +219,7 @@
   transition: background 0.2s;
 }
 
-.skill-toggle--on  { background: var(--bg-accent, #c96f3b); }
+.skill-toggle--on  { background: var(--bg-accent); }
 .skill-toggle--off { background: rgba(255,255,255,0.14); }
 
 .skill-toggle__knob {
@@ -243,8 +243,8 @@
   font-weight: 700;
   padding: 0.2rem 0.55rem;
   border-radius: 100px;
-  border: 1px solid rgba(201,111,59, 0.5);
-  color: rgba(201,111,59, 0.9);
+  border: 1px solid rgba(var(--accent-rgb), 0.5);
+  color: var(--bg-accent);
   background: transparent;
   cursor: pointer;
   white-space: nowrap;
@@ -258,9 +258,9 @@
 }
 
 .skill-install-btn:hover:not(:disabled) {
-  background: rgba(201,111,59, 0.15);
-  border-color: rgba(201,111,59, 0.8);
-  color: #e08048;
+  background: rgba(var(--accent-rgb), 0.25);
+  border-color: rgba(var(--accent-rgb), 0.8);
+  color: var(--bg-accent-strong);
 }
 
 .skill-install-btn:disabled {
@@ -357,7 +357,7 @@
 }
 
 .skills-custom-textarea:focus {
-  border-color: rgba(201,111,59, 0.4);
+  border-color: rgba(var(--accent-rgb), 0.6);
 }
 
 .skills-custom-textarea::placeholder {
@@ -414,7 +414,7 @@
   width: 12px;
   height: 12px;
   border: 2px solid rgba(255,255,255,0.1);
-  border-top-color: var(--bg-accent, #c96f3b);
+  border-top-color: var(--bg-accent);
   border-radius: 50%;
   animation: skills-spin 0.7s linear infinite;
   flex-shrink: 0;

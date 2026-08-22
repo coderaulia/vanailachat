@@ -169,13 +169,13 @@
 
 .folder-picker__btn.is-primary {
   border-color: transparent;
-  background: var(--bg-accent, #c96442);
+  background: var(--bg-accent);
   color: var(--text-on-accent, #fff);
   box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.25);
 }
 
 .folder-picker__btn.is-primary:hover:not(:disabled) {
-  background: var(--bg-accent-strong, #b85d2d);
+  background: var(--bg-accent-strong);
 }
 
 .folder-picker__btn:disabled {

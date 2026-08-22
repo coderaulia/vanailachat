@@ -127,8 +127,8 @@
 }
 
 .modified-file-item.active {
-  border-color: var(--accent);
-  background: rgba(201, 111, 59, 0.08);
+  border-color: var(--bg-accent);
+  background: var(--bg-accent-soft);
 }
 
 .modified-file-item__left {

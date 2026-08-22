@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { COLOR_SCHEME_STORAGE_KEY } from '../config/constants';
+import type { ColorScheme } from '../config/constants';
 import './SettingsModal.css';
 
 interface AllSettings {
@@ -32,7 +34,7 @@ interface MemoryEntry {
   createdAt: number;
 }
 
-type Tab = 'ai' | 'profile' | 'instructions' | 'behaviour' | 'memories' | 'training' | 'about';
+type Tab = 'ai' | 'profile' | 'instructions' | 'behaviour' | 'appearance' | 'memories' | 'training' | 'about';
 
 interface TrainingStats {
   pairs: number;
@@ -47,6 +49,15 @@ interface TrainingStats {
 type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router' | 'custom';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
+
+const COLOR_SCHEMES: { id: ColorScheme; label: string; swatches: string[] }[] = [
+  { id: 'vanaila-origin', label: 'Vanaila Origin', swatches: ['#244e78', '#487fae'] },
+  { id: 'catppuccin-teal', label: 'Catppuccin Teal', swatches: ['#179299', '#20b2ba'] },
+  { id: 'catppuccin-rose', label: 'Catppuccin Rose', swatches: ['#d88a8a', '#f0c6c6'] },
+  { id: 'catppuccin-blue', label: 'Catppuccin Blue', swatches: ['#5c7fdb', '#8caaee'] },
+  { id: 'catppuccin-green', label: 'Catppuccin Green', swatches: ['#6aa857', '#a6da95'] },
+  { id: 'catppuccin-peach', label: 'Catppuccin Peach', swatches: ['#e57d3c', '#fab387'] },
+];
 
 async function saveSetting(key: string, value: string) {
   const response = await fetch(`/api/settings/${key}`, {
@@ -129,6 +140,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [skillsInline, setSkillsInline] = useState(false);
   const [modelPricing, setModelPricing] = useState('');
   const [pricingError, setPricingError] = useState<string | null>(null);
+
+  // Appearance
+  const [activeColorScheme, setActiveColorScheme] = useState<ColorScheme>(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(COLOR_SCHEME_STORAGE_KEY) : null;
+    return (stored as ColorScheme) || 'vanaila-origin';
+  });
+
+  const applyColorScheme = (scheme: ColorScheme) => {
+    setActiveColorScheme(scheme);
+    window.localStorage.setItem(COLOR_SCHEME_STORAGE_KEY, scheme);
+    if (scheme === 'vanaila-origin') {
+      document.documentElement.removeAttribute('data-color-scheme');
+    } else {
+      document.documentElement.setAttribute('data-color-scheme', scheme);
+    }
+  };
 
   // Memories
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
@@ -451,6 +478,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     { id: 'profile',      label: 'Profile',         icon: '🪪' },
     { id: 'instructions', label: 'Instructions',    icon: '📋' },
     { id: 'behaviour',    label: 'Behaviour',       icon: '⚙️' },
+    { id: 'appearance',   label: 'Appearance',      icon: '🎨' },
     { id: 'memories',     label: 'Memories',        icon: '🧩' },
     { id: 'training',     label: 'Training',        icon: '🧪' },
     { id: 'about',        label: 'About',           icon: 'ℹ️' },
@@ -790,6 +818,45 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       models a built-in price list cannot know; without a rate the app shows token
                       counts only rather than guessing a cost.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Appearance ── */}
+              {activeTab === 'appearance' && (
+                <div className="settings-section">
+                  <div className="settings-field">
+                    <label className="settings-label">Color Scheme</label>
+                    <p className="settings-hint">
+                      Choose your preferred color theme. Applies across all buttons, highlights, accents, and UI elements.
+                    </p>
+                    <div className="settings-color-schemes-grid">
+                      {COLOR_SCHEMES.map((s) => {
+                        const isSelected = activeColorScheme === s.id;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`settings-scheme-card ${isSelected ? 'is-selected' : ''}`}
+                            onClick={() => applyColorScheme(s.id)}
+                          >
+                            <div className="settings-scheme-swatches">
+                              {s.swatches.map((color, idx) => (
+                                <span
+                                  key={idx}
+                                  className="settings-scheme-swatch"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
+                            </div>
+                            <div className="settings-scheme-info">
+                              <span className="settings-scheme-name">{s.label}</span>
+                              {isSelected && <span className="settings-scheme-active-tag">Active</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

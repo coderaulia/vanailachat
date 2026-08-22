@@ -37,6 +37,7 @@
 - ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
 - 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
 - 📁 **Automated Workspace Organization**: Selecting a workspace folder automatically groups chats into dedicated project workspaces to keep your chat history tidy.
+- 🎨 **Custom Color Schemes & Dark Mode**: Personalize the entire interface with built-in theme schemes including **Vanaila Origin** and **Catppuccin** palettes (Teal, Rose, Blue, Green, Peach) in both light and dark modes.
 - 🧩 **Agent Skills Integration**: Seamlessly inject custom and active Agent Skills into coding sessions.
 - 📊 **Real-time Context Usage Tracking**: Accurate live token meters showing prompt and completion token usage across local and cloud models.
 - 🧠 **Persistent Long-Term Memory**: Automatically remembers your coding style, preferences, and project background across all chat sessions.
@@ -169,6 +170,16 @@ You can configure provider keys directly inside the UI in **Settings (⚙️) �
 ### 5. 📄 Local Document Reader & Word Generator
 - Drag-and-drop PDF, DOCX, XLSX, and text files into the chat composer. Content is processed locally on your machine.
 - Generate downloadable formatted `.docx` Word documents directly from AI conversations.
+
+### 6. 🎨 Custom Appearance & Color Schemes
+- Choose from 6 curated color schemes in **Settings (⚙️) → Appearance**:
+  - **Vanaila Origin** (Default Slate Navy)
+  - **Catppuccin Teal** (`#179299`)
+  - **Catppuccin Rose** (`#f0c6c6`)
+  - **Catppuccin Blue** (`#8caaee`)
+  - **Catppuccin Green** (`#a6da95`)
+  - **Catppuccin Peach** (`#fab387`)
+- Color accents automatically adapt to all UI components, buttons, panels, chat bubbles, and the Skills drawer in both light and dark modes.
 
 ---
 

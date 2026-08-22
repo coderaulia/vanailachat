@@ -403,6 +403,15 @@ export function useSendMessage(deps: SendMessageDeps) {
         }).coding_event;
         if (coding) {
           if (coding.type === 'text' && coding.text) {
+            if (
+              fullContent &&
+              !fullContent.endsWith('\n') &&
+              !fullContent.endsWith(' ') &&
+              !coding.text.startsWith('\n') &&
+              !coding.text.startsWith(' ')
+            ) {
+              fullContent += '\n\n';
+            }
             fullContent += coding.text;
             assistantContentForSave = fullContent;
           } else if (coding.type === 'tool' && coding.name) {
@@ -443,7 +452,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         // because the stream has already started by then.
         const codingError = (data as unknown as { error?: string }).error;
         if (codingError) {
-          fullContent += `\n\n**Claude Code error:** ${codingError}`;
+          fullContent += `${fullContent ? '\n\n' : ''}> [!WARNING]\n> **Claude Code Notice**\n> ${codingError}`;
           assistantContentForSave = fullContent;
           setStatusText(`Claude Code: ${codingError}`);
           syncUIAndHistory();

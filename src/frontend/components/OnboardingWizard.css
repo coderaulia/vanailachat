@@ -55,14 +55,14 @@
 }
 
 .onboarding-dot.is-done {
-  background: var(--bg-accent, #c96f3b);
+  background: var(--bg-accent);
   opacity: 0.5;
 }
 
 .onboarding-dot.is-active {
   width: 20px;
   border-radius: 3px;
-  background: var(--bg-accent, #c96f3b);
+  background: var(--bg-accent);
   opacity: 1;
 }
 
@@ -194,8 +194,8 @@
 }
 
 .onboarding-input:focus {
-  border-color: var(--bg-accent, #c96f3b);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-accent, #c96f3b) 18%, transparent);
+  border-color: var(--bg-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-accent) 18%, transparent);
 }
 
 .onboarding-textarea {
@@ -215,8 +215,8 @@
 }
 
 .onboarding-textarea:focus {
-  border-color: var(--bg-accent, #c96f3b);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-accent, #c96f3b) 18%, transparent);
+  border-color: var(--bg-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-accent) 18%, transparent);
 }
 
 .onboarding-hint {
@@ -227,7 +227,7 @@
 }
 
 .onboarding-hint a {
-  color: var(--bg-accent, #c96f3b);
+  color: var(--bg-accent);
   text-decoration: none;
 }
 
