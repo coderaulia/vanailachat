@@ -127,13 +127,25 @@ export async function postChatCompletions(options: {
   if (!response.ok && response.status === 400 && streaming) {
     const errorText = await response.clone().text();
     const streamOptionsRejected = /stream[_ -]?options|include[_ -]?usage/i.test(errorText);
-    if (!streamOptionsRejected) {
-      throw new Error(`${providerLabel} API error: ${response.status} ${errorText}`);
+    if (streamOptionsRejected) {
+      console.warn(
+        `[${providerLabel}] stream_options rejected (400); retrying without usage reporting`,
+      );
+      response = await send(body);
     }
-    console.warn(
-      `[${providerLabel}] stream_options rejected (400); retrying without usage reporting`,
-    );
-    response = await send(body);
+  }
+
+  // Handle OpenRouter credit reservation limit (402 Payment Required: "can only afford X tokens")
+  if (!response.ok && (response.status === 402 || response.status === 400)) {
+    const errorText = await response.clone().text();
+    const affordMatch = /can only afford (\d+)/i.exec(errorText);
+    if (affordMatch) {
+      const affordable = Math.max(100, parseInt(affordMatch[1], 10) - 20);
+      console.warn(
+        `[${providerLabel}] Token credit reservation exceeded; retrying with max_tokens: ${affordable}`,
+      );
+      response = await send({ ...requestBody, max_tokens: affordable });
+    }
   }
 
   if (!response.ok) {

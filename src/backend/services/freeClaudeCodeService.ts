@@ -191,11 +191,69 @@ export class FreeClaudeCodeService {
           },
         });
 
-        let textBlockStarted = false;
-        let textBlockIndex = 0;
-        let currentBlockIndex = 0;
+        const openBlocks = new Map<number, { type: 'text' | 'tool_use'; id?: string; name?: string }>();
+        let nextBlockIndex = 0;
+        let currentTextBlockIndex: number | null = null;
         let outputTokens = 0;
-        const activeToolBlocks = new Map<number, { id: string; name: string }>();
+        const toolIndexToBlockIndex = new Map<number, number>();
+        let hasEverEmittedTool = false;
+
+        const startTextBlock = (): number => {
+          if (currentTextBlockIndex !== null) return currentTextBlockIndex;
+          const idx = nextBlockIndex++;
+          currentTextBlockIndex = idx;
+          openBlocks.set(idx, { type: 'text' });
+          emitEvent('content_block_start', {
+            type: 'content_block_start',
+            index: idx,
+            content_block: { type: 'text', text: '' },
+          });
+          return idx;
+        };
+
+        const stopTextBlock = () => {
+          if (currentTextBlockIndex === null) return;
+          const idx = currentTextBlockIndex;
+          if (openBlocks.has(idx)) {
+            emitEvent('content_block_stop', {
+              type: 'content_block_stop',
+              index: idx,
+            });
+            openBlocks.delete(idx);
+          }
+          currentTextBlockIndex = null;
+        };
+
+        const startToolBlock = (toolId: string, toolName: string): number => {
+          stopTextBlock();
+          hasEverEmittedTool = true;
+          const idx = nextBlockIndex++;
+          openBlocks.set(idx, { type: 'tool_use', id: toolId, name: toolName });
+          emitEvent('content_block_start', {
+            type: 'content_block_start',
+            index: idx,
+            content_block: {
+              type: 'tool_use',
+              id: toolId,
+              name: toolName,
+              input: {},
+            },
+          });
+          return idx;
+        };
+
+        const stopBlock = (blockIdx: number) => {
+          if (openBlocks.has(blockIdx)) {
+            emitEvent('content_block_stop', {
+              type: 'content_block_stop',
+              index: blockIdx,
+            });
+            openBlocks.delete(blockIdx);
+          }
+          if (currentTextBlockIndex === blockIdx) {
+            currentTextBlockIndex = null;
+          }
+        };
 
         try {
           if (!providerResponse.body) {
@@ -264,60 +322,32 @@ export class FreeClaudeCodeService {
               }
 
               if (textDelta) {
-                if (!textBlockStarted) {
-                  textBlockStarted = true;
-                  textBlockIndex = currentBlockIndex++;
-                  emitEvent('content_block_start', {
-                    type: 'content_block_start',
-                    index: textBlockIndex,
-                    content_block: { type: 'text', text: '' },
-                  });
-                }
+                const blockIdx = startTextBlock();
                 outputTokens += Math.ceil(textDelta.length / 4);
                 emitEvent('content_block_delta', {
                   type: 'content_block_delta',
-                  index: textBlockIndex,
+                  index: blockIdx,
                   delta: { type: 'text_delta', text: textDelta },
                 });
               }
 
-              // Extract tool call deltas
+              // Extract tool call deltas (OpenAI SSE format)
               const toolCalls = delta?.tool_calls;
               if (Array.isArray(toolCalls)) {
                 for (const tc of toolCalls) {
                   const tcIdx = tc.index ?? 0;
-                  if (!activeToolBlocks.has(tcIdx)) {
-                    // Close previous text block if open
-                    if (textBlockStarted) {
-                      emitEvent('content_block_stop', {
-                        type: 'content_block_stop',
-                        index: textBlockIndex,
-                      });
-                      textBlockStarted = false;
-                    }
-
-                    const blockIdx = currentBlockIndex++;
+                  if (!toolIndexToBlockIndex.has(tcIdx)) {
                     const toolId = tc.id || generateId('toolu');
                     const toolName = tc.function?.name || 'tool';
-                    activeToolBlocks.set(tcIdx, { id: toolId, name: toolName });
-
-                    emitEvent('content_block_start', {
-                      type: 'content_block_start',
-                      index: blockIdx,
-                      content_block: {
-                        type: 'tool_use',
-                        id: toolId,
-                        name: toolName,
-                        input: {},
-                      },
-                    });
+                    const toolBlockIdx = startToolBlock(toolId, toolName);
+                    toolIndexToBlockIndex.set(tcIdx, toolBlockIdx);
                   }
 
                   if (tc.function?.arguments) {
-                    const blockIdx = currentBlockIndex - 1;
+                    const toolBlockIdx = toolIndexToBlockIndex.get(tcIdx)!;
                     emitEvent('content_block_delta', {
                       type: 'content_block_delta',
-                      index: blockIdx,
+                      index: toolBlockIdx,
                       delta: {
                         type: 'input_json_delta',
                         partial_json: tc.function.arguments,
@@ -330,72 +360,37 @@ export class FreeClaudeCodeService {
               // Extract complete tool calls from messageObj.tool_calls (NDJSON format)
               if (Array.isArray(messageObj?.tool_calls)) {
                 for (const tc of messageObj.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>) {
-                  if (textBlockStarted) {
-                    emitEvent('content_block_stop', {
-                      type: 'content_block_stop',
-                      index: textBlockIndex,
-                    });
-                    textBlockStarted = false;
-                  }
-
-                  const blockIdx = currentBlockIndex++;
                   const toolId = tc.id || generateId('toolu');
                   const toolName = tc.function?.name || 'tool';
+                  const toolBlockIdx = startToolBlock(toolId, toolName);
                   const argsStr = typeof tc.function?.arguments === 'string'
                     ? tc.function.arguments
                     : JSON.stringify(tc.function?.arguments ?? {});
 
-                  emitEvent('content_block_start', {
-                    type: 'content_block_start',
-                    index: blockIdx,
-                    content_block: {
-                      type: 'tool_use',
-                      id: toolId,
-                      name: toolName,
-                      input: {},
-                    },
-                  });
-
                   emitEvent('content_block_delta', {
                     type: 'content_block_delta',
-                    index: blockIdx,
+                    index: toolBlockIdx,
                     delta: {
                       type: 'input_json_delta',
                       partial_json: argsStr,
                     },
                   });
 
-                  emitEvent('content_block_stop', {
-                    type: 'content_block_stop',
-                    index: blockIdx,
-                  });
-
-                  activeToolBlocks.set(blockIdx, { id: toolId, name: toolName });
+                  stopBlock(toolBlockIdx);
                 }
               }
             }
           }
 
-          // Close active blocks
-          if (textBlockStarted) {
-            emitEvent('content_block_stop', {
-              type: 'content_block_stop',
-              index: textBlockIndex,
-            });
+          // Close all open blocks safely
+          for (const [idx] of Array.from(openBlocks.entries())) {
+            stopBlock(idx);
           }
 
-          for (let i = 0; i < activeToolBlocks.size; i++) {
-            emitEvent('content_block_stop', {
-              type: 'content_block_stop',
-              index: textBlockIndex + 1 + i,
-            });
-          }
-
-          const hasToolCalls = activeToolBlocks.size > 0;
           emitEvent('message_delta', {
             type: 'message_delta',
             delta: {
-              stop_reason: hasToolCalls ? 'tool_use' : 'end_turn',
+              stop_reason: hasEverEmittedTool ? 'tool_use' : 'end_turn',
               stop_sequence: null,
             },
             usage: { output_tokens: Math.max(1, outputTokens) },
