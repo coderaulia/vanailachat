@@ -87,6 +87,11 @@ export class NineRouterProvider implements LLMProvider {
     request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
     signal?: AbortSignal,
   ): Promise<Response> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error('9Router API key not configured. Please add your API key in Settings → AI Connection (or set NINE_ROUTER_API_KEY in .env)');
+    }
+
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -102,7 +107,7 @@ export class NineRouterProvider implements LLMProvider {
 
     const sseResponse = await postChatCompletions({
       baseUrl: this.getBaseUrl(),
-      apiKey: this.getApiKey(),
+      apiKey,
       body,
       providerLabel: '9Router',
       signal,
@@ -115,6 +120,11 @@ export class NineRouterProvider implements LLMProvider {
     request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error('9Router API key not configured. Please add your API key in Settings → AI Connection (or set NINE_ROUTER_API_KEY in .env)');
+    }
+
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -129,7 +139,7 @@ export class NineRouterProvider implements LLMProvider {
 
     const response = await postChatCompletions({
       baseUrl: this.getBaseUrl(),
-      apiKey: this.getApiKey(),
+      apiKey,
       body,
       providerLabel: '9Router',
       signal,

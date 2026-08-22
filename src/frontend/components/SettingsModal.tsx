@@ -67,6 +67,7 @@ function useAutosave(value: string, action: () => void | Promise<void>, ready: b
   const actionRef = useRef(action);
   actionRef.current = action;
   const baseline = useRef<string | null>(null);
+  const pendingValueRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -77,11 +78,21 @@ function useAutosave(value: string, action: () => void | Promise<void>, ready: b
     }
     if (baseline.current === value) return;
 
+    pendingValueRef.current = value;
     const timer = setTimeout(() => {
       baseline.current = value;
+      pendingValueRef.current = null;
       void actionRef.current();
-    }, 700);
-    return () => clearTimeout(timer);
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      if (pendingValueRef.current !== null && pendingValueRef.current !== baseline.current) {
+        baseline.current = pendingValueRef.current;
+        pendingValueRef.current = null;
+        void actionRef.current();
+      }
+    };
   }, [value, ready]);
 }
 
@@ -308,8 +319,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     () => persist([
       ['openrouter_api_key', openrouterKey.trim()],
       ['openrouter_base_url', 'https://openrouter.ai/api/v1'],
-      ['openai_api_key', openrouterKey.trim()],
-      ['openai_base_url', 'https://openrouter.ai/api/v1'],
     ]),
     [persist, openrouterKey],
   );

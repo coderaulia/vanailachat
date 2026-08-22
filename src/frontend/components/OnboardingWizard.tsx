@@ -67,8 +67,6 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
       } else if (llmMode === 'openrouter') {
         await saveSetting('openrouter_api_key', openrouterKey.trim());
         await saveSetting('openrouter_base_url', 'https://openrouter.ai/api/v1');
-        await saveSetting('openai_api_key', openrouterKey.trim());
-        await saveSetting('openai_base_url', 'https://openrouter.ai/api/v1');
       } else if (llmMode === '9router') {
         await saveSetting('nine_router_host', nineRouterHost.trim());
         await saveSetting('nine_router_api_key', nineRouterKey.trim());

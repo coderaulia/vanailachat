@@ -5,8 +5,8 @@
 - **Frontend**: React 19 + Vite 6, `marked` + `highlight.js` + `dompurify` for message rendering. Dev proxy = custom Vite plugin reading `.port`.
 - **Database**: SQLite via `better-sqlite3` 12 (WAL, `foreign_keys=ON`), file `data/vanaila.sqlite`, path override `DATABASE_PATH`.
 - **ORM/query layer**: none — hand-written SQL + prepared statements in `DatabaseService`; hand-rolled migration runner (`services/migrations.ts`, versions 1–10, `schema_migrations` table, legacy-DB backfill to v4).
-- **Auth**: none. No sessions, JWT, cookies, or OAuth; server binds `127.0.0.1` only. Bearer tokens are **outbound only** to LLM providers (`OPENAI_API_KEY`, `NINE_ROUTER_API_KEY`, `CUSTOM_OPENAI_API_KEY`, or same keys stored in the SQLite `settings` table).
-- **LLM providers**: `ProviderRegistry` over Ollama (local, auto-starts daemon), OpenAI, NineRouter, custom OpenAI-compatible.
+- **Auth**: none. No sessions, JWT, cookies, or OAuth; server binds `127.0.0.1` only. Bearer tokens are **outbound only** to LLM providers (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `NINE_ROUTER_API_KEY`, `CUSTOM_OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or same keys stored in the SQLite `settings` table, auto-loaded from `.env` / `.env.local` if present).
+- **LLM providers**: `ProviderRegistry` over Ollama (local, auto-starts daemon), OpenRouter, OpenAI, NineRouter, custom OpenAI-compatible.
 - **Caching**: no Redis/external cache. In-process only — rate-limiter Map, skills `SKILL.md` content cached in SQLite, embeddings (nomic-embed-text, 768-dim) stored in SQLite for cosine search.
 - **Queue / background jobs**: none. Only in-process timers: rate-limiter sweep `setInterval` (`middleware/rateLimiter.ts`) and per-tool `setTimeout` timeouts. Fine-tuning is a manual offline step.
 - **Rate limiting**: in-memory sliding window — 20/min `/api/chat`, 60/min `/api/models` + `/api/memory`, 10/min `/api/research`, `/api/skills/install`, `/api/skills/custom`, `/api/ab`. `trustProxy` off (single anonymous bucket).

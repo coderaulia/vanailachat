@@ -59,12 +59,18 @@ Open the frontend at `http://localhost:5173`. The backend chooses an available l
 | Provider | Configuration |
 | --- | --- |
 | Ollama | No key required; local daemon is started when available. |
+| OpenRouter | `OPENROUTER_API_KEY` (and default `https://openrouter.ai/api/v1`). |
 | OpenAI | `OPENAI_API_KEY` and optional `OPENAI_BASE_URL`. |
 | 9Router | `NINE_ROUTER_API_KEY` and `NINE_ROUTER_BASE_URL`. |
 | Custom OpenAI-compatible API | `CUSTOM_OPENAI_API_KEY` and `CUSTOM_OPENAI_BASE_URL`. |
 | Claude Code workspace | `ANTHROPIC_API_KEY`; opened from the Coding control in the composer. |
 
-Provider credentials may be supplied through `.env` or saved in Settings. Do not commit `.env`.
+### Persisting API Keys & Settings
+
+Provider credentials can be configured in two ways:
+
+1. **In the UI (Recommended)**: Open **Settings** (⚙️) → **AI Connection**, choose your provider, enter your secret key, and click **Test Connection** or dismiss the modal. Credentials are saved locally and permanently to the SQLite database (`data/vanaila.sqlite`).
+2. **In `.env` / `.env.local`**: Copy `.env.example` to `.env` and fill in your keys (e.g. `OPENROUTER_API_KEY=sk-or-v1-...`). The backend loads `.env` and `.env.local` automatically at startup.
 
 The Coding control opens a Claude Code workspace. Choose a local project directory, ask for a plan or implementation, and approve every edit or command before it runs.
 

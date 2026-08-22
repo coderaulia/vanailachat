@@ -1,26 +1,37 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { DatabaseService } from '../services/database.js';
 import { OpenRouterProvider } from '../services/openRouterProvider.js';
 import { OpenAIProvider } from '../services/openaiProvider.js';
 import { CustomOpenAIProvider } from '../services/customOpenAIProvider.js';
 
+function freshDb(): string {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-prov-')), 'test.sqlite');
+}
+
+function resetSingleton() {
+  (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
+  (DatabaseService as unknown as { db: unknown }).db = null;
+}
+
 describe('LLM Providers database settings and model resolution', () => {
   const originalFetch = globalThis.fetch;
+  let dbPath: string;
 
   beforeEach(() => {
-    DatabaseService.initialize();
+    dbPath = freshDb();
+    resetSingleton();
+    DatabaseService.initialize(dbPath);
   });
 
   afterEach(() => {
+    resetSingleton();
     try {
-      DatabaseService.upsertSetting('openrouter_api_key', '');
-      DatabaseService.upsertSetting('openrouter_base_url', '');
-      DatabaseService.upsertSetting('openai_api_key', '');
-      DatabaseService.upsertSetting('openai_base_url', '');
-      DatabaseService.upsertSetting('custom_openai_api_key', '');
-      DatabaseService.upsertSetting('custom_openai_base_url', '');
+      if (fs.existsSync(dbPath)) fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
     } catch {
-      // best-effort cleanup
+      // best-effort
     }
     globalThis.fetch = originalFetch;
   });

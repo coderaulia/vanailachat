@@ -2,8 +2,23 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
+import { existsSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+// Automatically load local .env and .env.local files if present
+for (const envFileName of ['.env', '.env.local']) {
+  const envFilePath = resolve(process.cwd(), envFileName);
+  if (existsSync(envFilePath)) {
+    try {
+      if (typeof process.loadEnvFile === 'function') {
+        process.loadEnvFile(envFilePath);
+      }
+    } catch {
+      // best-effort env loading
+    }
+  }
+}
 
 // Use PORT env or random ephemeral port to avoid EADDRINUSE
 const BASE_PORT = Number(process.env.PORT) || (49152 + Math.floor(Math.random() * 16000));

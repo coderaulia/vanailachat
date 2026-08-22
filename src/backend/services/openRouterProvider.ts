@@ -133,6 +133,11 @@ export class OpenRouterProvider implements LLMProvider {
   }
 
   async chatStream(request: ChatRequest, signal?: AbortSignal): Promise<Response> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error('OpenRouter API key not configured. Please add your API key in Settings → AI Connection (or set OPENROUTER_API_KEY in .env)');
+    }
+
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -148,7 +153,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     const sseResponse = await postChatCompletions({
       baseUrl: this.getBaseUrl(),
-      apiKey: this.getApiKey(),
+      apiKey,
       body,
       providerLabel: 'OpenRouter',
       signal,
@@ -158,6 +163,11 @@ export class OpenRouterProvider implements LLMProvider {
   }
 
   async chat(request: ChatRequest, signal?: AbortSignal): Promise<Record<string, unknown>> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error('OpenRouter API key not configured. Please add your API key in Settings → AI Connection (or set OPENROUTER_API_KEY in .env)');
+    }
+
     const openaiMessages = request.messages.map(toOpenAICompatibleMessage);
 
     const body: Record<string, unknown> = {
@@ -172,7 +182,7 @@ export class OpenRouterProvider implements LLMProvider {
 
     const response = await postChatCompletions({
       baseUrl: this.getBaseUrl(),
-      apiKey: this.getApiKey(),
+      apiKey,
       body,
       providerLabel: 'OpenRouter',
       signal,
