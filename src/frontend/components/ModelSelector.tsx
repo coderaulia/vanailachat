@@ -21,12 +21,16 @@ export function ModelSelector({
   providers,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [providerFilter, setProviderFilter] = useState<string>('all');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProvider = providers?.find((p) => p.name === selectedModel)?.provider;
   const selectedInfo = getModelInfo(selectedModel, modelMetadata[selectedModel], selectedProvider);
 
-  const grouped = useMemo(() => {
+  // Group all available models by provider
+  const allGrouped = useMemo(() => {
     const groups = new Map<string, string[]>();
     for (const model of availableModels) {
       const provider = providers?.find((p) => p.name === model)?.provider ?? 'ollama';
@@ -36,13 +40,43 @@ export function ModelSelector({
     return groups;
   }, [availableModels, providers]);
 
-  const hasMultipleProviders = grouped.size > 1;
+  // Filter models by selected provider and search query
+  const filteredGrouped = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    const query = searchQuery.trim().toLowerCase();
+
+    for (const [provider, models] of allGrouped.entries()) {
+      if (providerFilter !== 'all' && provider !== providerFilter) continue;
+
+      const matchedModels = models.filter((model) => {
+        if (!query) return true;
+        const info = getModelInfo(model, modelMetadata[model], provider);
+        const providerName = PROVIDER_DISPLAY[provider]?.label?.toLowerCase() ?? provider;
+        return (
+          model.toLowerCase().includes(query) ||
+          info.displayName.toLowerCase().includes(query) ||
+          info.description.toLowerCase().includes(query) ||
+          providerName.includes(query) ||
+          info.capabilities.some((c) => c.toLowerCase().includes(query))
+        );
+      });
+
+      if (matchedModels.length > 0) {
+        groups.set(provider, matchedModels);
+      }
+    }
+    return groups;
+  }, [allGrouped, providerFilter, searchQuery, modelMetadata]);
+
+  const hasMultipleProviders = allGrouped.size > 1;
 
   const toggleDropdown = () => {
     const nextState = !isOpen;
     setIsOpen(nextState);
-    if (nextState && onRefresh) {
-      onRefresh();
+    if (nextState) {
+      setSearchQuery('');
+      if (onRefresh) onRefresh();
+      setTimeout(() => searchInputRef.current?.focus(), 50);
     }
   };
 
@@ -67,6 +101,11 @@ export function ModelSelector({
         <div className="model-selector__current">
           <span className="model-selector__name">{selectedInfo.displayName}</span>
           <span className="model-selector__badge-container">
+            {selectedProvider && (
+              <span className="model-selector__provider-tag">
+                {PROVIDER_DISPLAY[selectedProvider]?.label ?? selectedProvider}
+              </span>
+            )}
             {selectedInfo.capabilities.map((cap) => (
               <span key={cap} className="model-selector__badge">
                 {cap}
@@ -91,6 +130,58 @@ export function ModelSelector({
 
       {isOpen && (
         <div className="model-selector__dropdown">
+          {/* Header Search & Filter */}
+          <div className="model-selector__header">
+            <div className="model-selector__search-box">
+              <svg className="model-selector__search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="model-selector__search-input"
+                placeholder="Search models..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="model-selector__search-clear"
+                  onClick={() => setSearchQuery('')}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {hasMultipleProviders && (
+              <div className="model-selector__filter-tabs">
+                <button
+                  type="button"
+                  className={`model-selector__filter-tab ${providerFilter === 'all' ? 'is-active' : ''}`}
+                  onClick={() => setProviderFilter('all')}
+                >
+                  All ({availableModels.length})
+                </button>
+                {Array.from(allGrouped.entries()).map(([provider, models]) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    className={`model-selector__filter-tab ${providerFilter === provider ? 'is-active' : ''}`}
+                    onClick={() => setProviderFilter(provider)}
+                  >
+                    <span>{PROVIDER_DISPLAY[provider]?.icon ?? '🤖'}</span>
+                    <span>{PROVIDER_DISPLAY[provider]?.label ?? provider}</span>
+                    <span className="model-selector__tab-count">({models.length})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Model List */}
           <div className="model-selector__list">
             {availableModels.length === 0 && (
               <div className="model-selector__empty">
@@ -101,9 +192,15 @@ export function ModelSelector({
                 </p>
               </div>
             )}
-            {Array.from(grouped.entries()).map(([provider, models]) => (
+            {availableModels.length > 0 && filteredGrouped.size === 0 && (
+              <div className="model-selector__empty">
+                <p className="model-selector__empty-title">No matching models found</p>
+                <p className="model-selector__empty-hint">Try adjusting your search query or provider filter.</p>
+              </div>
+            )}
+            {Array.from(filteredGrouped.entries()).map(([provider, models]) => (
               <div key={provider} className="model-selector__group">
-                {hasMultipleProviders && (
+                {(hasMultipleProviders || providerFilter === 'all') && (
                   <div className="model-selector__group-header">
                     <span className="model-selector__group-icon">
                       {PROVIDER_DISPLAY[provider]?.icon ?? '🤖'}
@@ -111,6 +208,7 @@ export function ModelSelector({
                     <span className="model-selector__group-label">
                       {PROVIDER_DISPLAY[provider]?.label ?? provider}
                     </span>
+                    <span className="model-selector__group-count">({models.length})</span>
                   </div>
                 )}
                 {models.map((model) => {
