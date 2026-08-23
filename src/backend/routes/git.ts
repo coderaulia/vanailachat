@@ -54,7 +54,9 @@ export function createGitRoutes() {
       try {
         const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: projectRoot });
         branch = stdout.trim();
-      } catch {}
+      } catch {
+        // Not on a branch or git failure
+      }
 
       // Get status / porcelain
       let uncommittedCount = 0;
@@ -67,7 +69,9 @@ export function createGitRoutes() {
           const filePath = line.replace(/^[MADRCU?! ]+\s+/, '');
           if (filePath) modifiedFiles.push(filePath);
         }
-      } catch {}
+      } catch {
+        // Status command failed
+      }
 
       const isMainOrMaster = branch === 'main' || branch === 'master' || branch === 'production' || branch === 'prod';
       const isClean = uncommittedCount === 0;
@@ -106,7 +110,7 @@ export function createGitRoutes() {
 
       // Sanitize branch name
       const branchName = rawBranchName
-        .replace(/[^a-zA-Z0-9_\-\/.]/g, '-')
+        .replace(/[^a-zA-Z0-9_\-/.]/g, '-')
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 

@@ -199,7 +199,7 @@ describe('Free Claude Code (FCC) Integration Service', () => {
   });
 
   it('injects relevant memories and stores user message into memory store', async () => {
-    let capturedBody: any = null;
+    let capturedBody: { messages?: Array<{ role: string; content: string }> } | null = null;
     const registry = new ProviderRegistry();
     registry.register({
       id: 'openrouter',
@@ -208,20 +208,20 @@ describe('Free Claude Code (FCC) Integration Service', () => {
       getModelDetails: async () => null,
       isModelAvailable: async () => true,
       chatStream: async (body) => {
-        capturedBody = body;
+        capturedBody = body as { messages?: Array<{ role: string; content: string }> };
         return new Response('{"choices":[{"delta":{"content":"ok"}}]}\n');
       },
       chat: async () => ({}),
     });
 
-    const upsertedMemories: any[] = [];
+    const upsertedMemories: Array<{ content: string }> = [];
     const app = createApp({
       providerRegistry: registry,
       embedOrNull: async () => [0.1, 0.2, 0.3],
       searchMemories: () => [
         { id: 'mem_1', type: 'conversation', content: 'User prefers snake_case for python code', score: 0.92, createdAt: 123 },
       ],
-      upsertMemory: (m) => { upsertedMemories.push(m); },
+      upsertMemory: (m) => { upsertedMemories.push(m as { content: string }); },
     });
 
     const res = await app.request('/api/fcc/v1/messages', {
@@ -236,7 +236,7 @@ describe('Free Claude Code (FCC) Integration Service', () => {
     expect(res.status).toBe(200);
     expect(capturedBody).toBeTruthy();
     // Verify memories were injected into system prompt
-    const systemMsg = capturedBody.messages.find((m: any) => m.role === 'system');
+    const systemMsg = capturedBody?.messages?.find((m) => m.role === 'system');
     expect(systemMsg?.content).toContain('[Relevant Memories]');
     expect(systemMsg?.content).toContain('User prefers snake_case for python code');
 

@@ -32,7 +32,7 @@ export type CodingEvent =
       id?: string;
       name: string;
       status?: 'start' | 'done' | 'error';
-      category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'tool';
+      category?: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'document' | 'tool';
       file?: string;
       command?: string;
       detail?: string;

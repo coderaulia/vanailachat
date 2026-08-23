@@ -110,10 +110,9 @@ export class ClaudeCodeHarness implements CodingHarness {
 
     const pushEvent = (evt: CodingEvent) => {
       eventQueue.push(evt);
-      if (resolveQueue) {
-        resolveQueue();
-        resolveQueue = null;
-      }
+      const wake = resolveQueue;
+      resolveQueue = null;
+      wake?.();
     };
 
     const isAutoApprove = () => {
@@ -289,10 +288,9 @@ export class ClaudeCodeHarness implements CodingHarness {
       } finally {
         isDone = true;
         input.signal.removeEventListener('abort', abort);
-        if (resolveQueue) {
-          resolveQueue();
-          resolveQueue = null;
-        }
+        const wake = resolveQueue as (() => void) | null;
+        resolveQueue = null;
+        wake?.();
       }
     })();
 

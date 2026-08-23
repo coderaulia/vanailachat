@@ -17,7 +17,7 @@ export const CodebasePanel: React.FC<CodebasePanelProps> = ({
   activities,
   pendingApproval,
   onRespondApproval,
-  workspacePath,
+  workspacePath: _workspacePath,
 }) => {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
@@ -129,7 +129,7 @@ export const CodebasePanel: React.FC<CodebasePanelProps> = ({
             </div>
           ) : (
             <div className="modified-files-list">
-              {modifiedFiles.map(({ file, category, status }) => (
+              {modifiedFiles.map(({ file, category }) => (
                 <div
                   key={file}
                   className={`modified-file-item ${selectedFile === file ? 'active' : ''}`}

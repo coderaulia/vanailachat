@@ -76,7 +76,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
 
       // ── Persistent Chat Memories for Coding Mode ────────────────────────────
       let promptWithMemory = prompt;
-      const chatRecord = dependencies.getChat(body.chatId);
+      const chatRecord = dependencies.getChat(body.chatId) as { title?: string } | null | undefined;
       try {
         const queryVec = await dependencies.embedOrNull(prompt);
         const memories = queryVec
@@ -159,9 +159,9 @@ export function codingRouter(dependencies: AppDependencies): Hono {
                     role: 'assistant',
                     mode: 'coding',
                     chatId: body.chatId,
-                    chatTitle: chatRecord?.title ?? null,
+                    chatTitle: (chatRecord as { title?: string } | null | undefined)?.title ?? null,
                   }),
-                  sourceId: body.chatId,
+                  sourceId: body.chatId as string,
                 });
               } catch (err) {
                 console.warn('[CODING MEMORY] Assistant memory store failed:', err);
