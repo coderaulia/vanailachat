@@ -320,3 +320,44 @@ impl Database {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_migrations_and_crud() {
+        let db = Database::in_memory().expect("in-memory db initialization failed");
+
+        // 1. Projects
+        let proj = db.create_project("p1", "Test Project", Some("Desc"), None).expect("create project failed");
+        assert_eq!(proj.name, "Test Project");
+
+        let projs = db.list_projects().expect("list projects failed");
+        assert_eq!(projs.len(), 1);
+
+        // 2. Chats
+        let chat = db.upsert_chat("c1", "Test Chat", Some("p1"), None, None, Some("ollama:llama3"), Some("general")).expect("upsert chat failed");
+        assert_eq!(chat.title, "Test Chat");
+
+        let chats = db.list_chats(None, None).expect("list chats failed");
+        assert_eq!(chats.len(), 1);
+
+        // 3. Messages & FTS5
+        db.save_message("m1", "c1", "user", "Hello Vanaila Desktop!").expect("save message failed");
+        db.save_message("m2", "c1", "assistant", "Hello! How can I help you today?").expect("save assistant failed");
+
+        let msgs = db.list_messages("c1", None).expect("list messages failed");
+        assert_eq!(msgs.len(), 2);
+
+        let search_res = db.search_messages("Desktop", None).expect("FTS5 search failed");
+        assert_eq!(search_res.len(), 1);
+        assert_eq!(search_res[0].id, "m1");
+
+        // 4. Settings
+        db.set_setting("theme", "dark").expect("set setting failed");
+        let theme = db.get_setting("theme").expect("get setting failed");
+        assert_eq!(theme.as_deref(), Some("dark"));
+    }
+}
+
