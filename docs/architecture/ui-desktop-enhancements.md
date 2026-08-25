@@ -60,10 +60,13 @@ While the web version is constrained by browser window margins, the desktop app 
   - Collapsible sidebar with auto-drawer overlay.
   - Compact header pills and optimized composer action toolbar.
 
-### 3.2 Window Drag Regions & Seamless Header Bar
-For a native desktop aesthetic that matches GNOME / KDE client-side decorations:
-- The top navigation bar includes `data-tauri-drag-region`, allowing users to drag the application window directly from empty header areas.
-- Interactive controls (`button`, `input`, `.model-selector`) have explicit `-webkit-app-region: no-drag` to ensure click events remain responsive.
+### 3.2 macOS-Style Traffic Lights & Frosted Glass Title Bar
+For a native desktop aesthetic matching modern macOS and Libadwaita applications:
+- **Integrated Traffic Lights**: Rendered on the far left in desktop mode with red (close), yellow (minimize), and green (maximize/zoom) buttons with subtle glyph hover states (`✕`, `−`, `+`).
+- **Frosted Glass Styling**: Uses `backdrop-filter: blur(24px) saturate(180%)` with a slim `44px` height profile and subtle `1px solid rgba(255, 255, 255, 0.08)` highlight border.
+- **Window Drag Regions**: The top navigation bar includes `data-tauri-drag-region`, allowing users to seamlessly drag the window from any empty header area.
+- **Interactive Boundaries**: Buttons and pills have explicit `-webkit-app-region: no-drag` so all click and hover micro-interactions remain responsive.
+- **Pulsing Engine Status**: Real-time connected/idle indicator dot and thinking pulse badge.
 
 ---
 
