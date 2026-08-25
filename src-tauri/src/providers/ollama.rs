@@ -25,6 +25,7 @@ struct OllamaTagsResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OllamaTagModel {
     name: String,
     model: Option<String>,
@@ -32,6 +33,7 @@ struct OllamaTagModel {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OllamaModelDetails {
     family: Option<String>,
     parameter_size: Option<String>,

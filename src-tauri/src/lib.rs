@@ -5,6 +5,7 @@ pub mod error;
 pub mod providers;
 pub mod services;
 pub mod state;
+pub mod tools;
 
 use db::Database;
 use desktop::xdg::DesktopPaths;

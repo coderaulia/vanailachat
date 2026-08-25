@@ -37,12 +37,14 @@ struct OpenAiChoice {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OpenAiDelta {
     role: Option<String>,
     content: Option<String>,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OpenAiUsage {
     prompt_tokens: Option<u64>,
     completion_tokens: Option<u64>,
