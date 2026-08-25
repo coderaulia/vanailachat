@@ -3,4 +3,6 @@ pub mod chats;
 pub mod messages;
 pub mod models;
 pub mod projects;
+pub mod research;
 pub mod settings;
+pub mod skills;

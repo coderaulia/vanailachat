@@ -5361,6 +5361,7 @@ dependencies = [
  "env_logger",
  "eventsource-stream",
  "futures",
+ "hex",
  "log",
  "parking_lot",
  "regex",

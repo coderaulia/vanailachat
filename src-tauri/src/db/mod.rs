@@ -305,6 +305,36 @@ impl Database {
         Ok(results)
     }
 
+    pub fn upsert_skill(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+        content: &str,
+        source_url: Option<&str>,
+    ) -> AppResult<SkillRecord> {
+        let now = chrono::Utc::now().timestamp_millis();
+        self.conn.execute(
+            "INSERT INTO skills (id, name, description, content, source_url, enabled, installed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)
+             ON CONFLICT(name) DO UPDATE SET
+                description = excluded.description,
+                content = excluded.content,
+                source_url = excluded.source_url",
+            params![id, name, description, content, source_url, now],
+        )?;
+
+        Ok(SkillRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.map(|s| s.to_string()),
+            content: content.to_string(),
+            source_url: source_url.map(|s| s.to_string()),
+            enabled: true,
+            installed_at: now,
+        })
+    }
+
     pub fn set_feedback(&self, message_id: &str, rating: i32, edited_content: Option<&str>, implicit: bool) -> AppResult<()> {
         let now = chrono::Utc::now().timestamp_millis();
         self.conn.execute(
