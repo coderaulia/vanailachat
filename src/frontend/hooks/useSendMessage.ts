@@ -268,10 +268,23 @@ export function useSendMessage(deps: SendMessageDeps) {
           role: 'coding',
         } as Parameters<typeof upsertChat>[0]);
 
+        let chosenHarness = 'claude-code';
+        try {
+          const harnessRes = await fetch('/api/settings/coding_harness');
+          if (harnessRes.ok) {
+            const hData = (await harnessRes.json()) as { value?: string };
+            if (hData.value && (hData.value === 'deepseek-harness' || hData.value === 'claude-code')) {
+              chosenHarness = hData.value;
+            }
+          }
+        } catch {
+          // fallback to default 'claude-code'
+        }
+
         const sessionResponse = await fetch('/api/coding/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId, harness: 'claude-code', workspacePath }),
+          body: JSON.stringify({ chatId, harness: chosenHarness, workspacePath }),
         });
         if (!sessionResponse.ok) {
           const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;

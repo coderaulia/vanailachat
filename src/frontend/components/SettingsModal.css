@@ -643,9 +643,50 @@
   gap: 4px;
 }
 
+.settings-dsh-badge {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+}
+
 .settings-fcc-badge a {
   color: inherit;
   text-decoration: underline;
+}
+
+.settings-harness-selector {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.settings-harness-btn {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.settings-harness-btn:hover {
+  background: var(--bg-surface-hover, var(--bg-surface-strong));
+  color: var(--text-primary);
+  border-color: var(--border-strong, var(--border-soft));
+}
+
+.settings-harness-btn.is-active {
+  background: var(--bg-accent-soft);
+  color: var(--bg-accent-strong);
+  border-color: var(--bg-accent-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .settings-subfields {

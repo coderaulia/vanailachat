@@ -157,4 +157,30 @@ describe('coding role routes through Claude Code', () => {
     expect(assistant?.toolActivities?.[0].file).toBe('src/server.ts');
     expect(assistant?.toolActivities?.[1].command).toBe('npm test');
   });
+
+  it('passes deepseek-harness when configured in settings', async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const urlStr = String(url);
+      const parsedBody = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ url: urlStr, body: parsedBody });
+      if (urlStr.includes('/api/settings/coding_harness')) {
+        return { ok: true, json: async () => ({ value: 'deepseek-harness' }) };
+      }
+      if (urlStr.includes('/api/coding/sessions')) {
+        return { ok: true, json: async () => ({ session: {} }) };
+      }
+      if (urlStr.includes('/api/coding/run')) {
+        return { ok: true, body: ndjsonBody(['{"coding_event":{"type":"text","text":"DeepSeek done."}}']) };
+      }
+      return { ok: true, body: ndjsonBody(['{"done":true}']), json: async () => ({}) };
+    }));
+
+    const { result } = renderHook(() => useSendMessage(makeDeps()));
+    await result.current.handleSend();
+
+    const sessionCall = calls.find(c => c.url.includes('/api/coding/sessions'));
+    expect(sessionCall).toBeDefined();
+    expect(sessionCall?.body).toMatchObject({ harness: 'deepseek-harness' });
+  });
 });

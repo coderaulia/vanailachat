@@ -1,4 +1,4 @@
-export type CodingHarnessId = 'claude-code';
+export type CodingHarnessId = 'claude-code' | 'deepseek-harness';
 
 export interface CodingHarnessStatus {
   id: CodingHarnessId;

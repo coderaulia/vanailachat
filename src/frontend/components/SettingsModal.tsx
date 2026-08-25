@@ -15,6 +15,12 @@ interface AllSettings {
   custom_openai_api_key?: string;
   anthropic_api_key?: string;
   fcc_server_url?: string;
+  coding_harness?: string;
+  deepseek_api_key?: string;
+  deepseek_base_url?: string;
+  deepseek_model?: string;
+  dsh_path?: string;
+  dsh_profile?: string;
   user_name?: string;
   user_role?: string;
   base_instructions?: string;
@@ -128,9 +134,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
 
-  // Claude Code & Free Claude Code (FCC)
+  // Coding Workspace Engine
+  const [codingHarness, setCodingHarness] = useState<'claude-code' | 'deepseek-harness'>('claude-code');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [fccServerUrl, setFccServerUrl] = useState('');
+  const [deepseekApiKey, setDeepseekApiKey] = useState('');
+  const [deepseekBaseUrl, setDeepseekBaseUrl] = useState('');
+  const [deepseekModel, setDeepseekModel] = useState('');
+  const [dshPath, setDshPath] = useState('');
+  const [dshProfile, setDshProfile] = useState('');
 
   // Instructions
   const [baseInstructions, setBaseInstructions] = useState('');
@@ -211,8 +223,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
         if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
+        if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'claude-code') {
+          setCodingHarness(s.coding_harness);
+        }
         if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
         if (s.fcc_server_url) setFccServerUrl(s.fcc_server_url);
+        if (s.deepseek_api_key) setDeepseekApiKey(s.deepseek_api_key);
+        if (s.deepseek_base_url) setDeepseekBaseUrl(s.deepseek_base_url);
+        if (s.deepseek_model) setDeepseekModel(s.deepseek_model);
+        if (s.dsh_path) setDshPath(s.dsh_path);
+        if (s.dsh_profile) setDshProfile(s.dsh_profile);
         if (s.user_name) setUserName(s.user_name);
         if (s.user_role) setUserRole(s.user_role);
         if (s.base_instructions) setBaseInstructions(s.base_instructions);
@@ -379,6 +399,39 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, fccServerUrl],
   );
 
+  const selectCodingHarness = useCallback(
+    (harness: 'claude-code' | 'deepseek-harness') => {
+      setCodingHarness(harness);
+      void persist([['coding_harness', harness]]);
+    },
+    [persist],
+  );
+
+  const saveDeepseekApiKey = useCallback(
+    () => persist([['deepseek_api_key', deepseekApiKey.trim()]]),
+    [persist, deepseekApiKey],
+  );
+
+  const saveDeepseekBaseUrl = useCallback(
+    () => persist([['deepseek_base_url', deepseekBaseUrl.trim()]]),
+    [persist, deepseekBaseUrl],
+  );
+
+  const saveDeepseekModel = useCallback(
+    () => persist([['deepseek_model', deepseekModel.trim()]]),
+    [persist, deepseekModel],
+  );
+
+  const saveDshPath = useCallback(
+    () => persist([['dsh_path', dshPath.trim()]]),
+    [persist, dshPath],
+  );
+
+  const saveDshProfile = useCallback(
+    () => persist([['dsh_profile', dshProfile.trim()]]),
+    [persist, dshProfile],
+  );
+
   // Profile fields save even when emptied, so clearing one actually sticks.
   const saveUserName = useCallback(
     () => persist([['user_name', userName.trim()]]),
@@ -440,6 +493,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(customKey, saveCustomConfig, ready);
   useAutosave(anthropicKey, saveAnthropicKey, ready);
   useAutosave(fccServerUrl, saveFccServerUrl, ready);
+  useAutosave(deepseekApiKey, saveDeepseekApiKey, ready);
+  useAutosave(deepseekBaseUrl, saveDeepseekBaseUrl, ready);
+  useAutosave(deepseekModel, saveDeepseekModel, ready);
+  useAutosave(dshPath, saveDshPath, ready);
+  useAutosave(dshProfile, saveDshProfile, ready);
   useAutosave(userName, saveUserName, ready);
   useAutosave(userRole, saveUserRole, ready);
   useAutosave(baseInstructions, saveBaseInstructions, ready);
@@ -665,44 +723,139 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {/* Coding Workspace / Free Claude Code Integration */}
+                  {/* Coding Workspace Engine Selection */}
                   <div className="settings-field settings-field--fcc">
                     <div className="settings-fcc-badge-row">
                       <label className="settings-label">Coding Workspace Engine</label>
-                      <span className="settings-fcc-badge">
-                        ⚡ Powered by <a href="https://github.com/alishahryar1/free-claude-code" target="_blank" rel="noreferrer">Free Claude Code</a>
-                      </span>
+                      {codingHarness === 'claude-code' ? (
+                        <span className="settings-fcc-badge">
+                          ⚡ Powered by <a href="https://github.com/alishahryar1/free-claude-code" target="_blank" rel="noreferrer">Free Claude Code</a>
+                        </span>
+                      ) : (
+                        <span className="settings-fcc-badge settings-dsh-badge">
+                          🐋 Powered by <a href="https://github.com/deepseek-ai/deepseek-harness.git" target="_blank" rel="noreferrer">DeepSeek Harness</a>
+                        </span>
+                      )}
                     </div>
-                    <p className="settings-hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
-                      By default, Claude Code runs directly in the browser using your connected providers (Ollama, OpenRouter, 9Router, Custom) with zero extra setup.
-                    </p>
 
-                    <div className="settings-subfields">
-                      <div className="settings-subfield">
-                        <label className="settings-sublabel">Direct Anthropic API Key <span className="settings-optional">(optional)</span></label>
-                        <input
-                          className="settings-input"
-                          type="password"
-                          value={anthropicKey}
-                          onChange={(e) => setAnthropicKey(e.target.value)}
-                          onBlur={saveAnthropicKey}
-                          placeholder="sk-ant-... (leave blank to use Free Claude Code)"
-                        />
-                        <p className="settings-subhint">Leave blank to route Claude Code through your active provider.</p>
-                      </div>
-
-                      <div className="settings-subfield" style={{ marginTop: '8px' }}>
-                        <label className="settings-sublabel">External FCC Server URL <span className="settings-optional">(optional)</span></label>
-                        <input
-                          className="settings-input"
-                          value={fccServerUrl}
-                          onChange={(e) => setFccServerUrl(e.target.value)}
-                          onBlur={saveFccServerUrl}
-                          placeholder="http://127.0.0.1:8082 (leave blank to use built-in FCC proxy)"
-                        />
-                        <p className="settings-subhint">Only needed if running a standalone <code>fcc-server</code> daemon.</p>
-                      </div>
+                    <div className="settings-harness-selector">
+                      <button
+                        type="button"
+                        className={`settings-harness-btn ${codingHarness === 'claude-code' ? 'is-active' : ''}`}
+                        onClick={() => selectCodingHarness('claude-code')}
+                      >
+                        ⚡ Claude Code (SDK / FCC)
+                      </button>
+                      <button
+                        type="button"
+                        className={`settings-harness-btn ${codingHarness === 'deepseek-harness' ? 'is-active' : ''}`}
+                        onClick={() => selectCodingHarness('deepseek-harness')}
+                      >
+                        🐋 DeepSeek Harness (dsh)
+                      </button>
                     </div>
+
+                    {codingHarness === 'claude-code' ? (
+                      <>
+                        <p className="settings-hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
+                          Claude Code runs directly in the browser using your connected providers (Ollama, OpenRouter, 9Router, Custom) with zero extra setup.
+                        </p>
+
+                        <div className="settings-subfields">
+                          <div className="settings-subfield">
+                            <label className="settings-sublabel">Direct Anthropic API Key <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              type="password"
+                              value={anthropicKey}
+                              onChange={(e) => setAnthropicKey(e.target.value)}
+                              onBlur={saveAnthropicKey}
+                              placeholder="sk-ant-... (leave blank to use Free Claude Code)"
+                            />
+                            <p className="settings-subhint">Leave blank to route Claude Code through your active provider.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">External FCC Server URL <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={fccServerUrl}
+                              onChange={(e) => setFccServerUrl(e.target.value)}
+                              onBlur={saveFccServerUrl}
+                              placeholder="http://127.0.0.1:8082 (leave blank to use built-in FCC proxy)"
+                            />
+                            <p className="settings-subhint">Only needed if running a standalone <code>fcc-server</code> daemon.</p>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="settings-hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
+                          <a href="https://github.com/deepseek-ai/deepseek-harness.git" target="_blank" rel="noreferrer">DeepSeek Harness</a> (<code>dsh</code>) is an open-source, plugin-based agent runtime framework for autonomous coding, workspace tool execution, and planning.
+                        </p>
+
+                        <div className="settings-subfields">
+                          <div className="settings-subfield">
+                            <label className="settings-sublabel">DeepSeek API Key <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              type="password"
+                              value={deepseekApiKey}
+                              onChange={(e) => setDeepseekApiKey(e.target.value)}
+                              onBlur={saveDeepseekApiKey}
+                              placeholder="sk-... (leave blank to use active provider / environment)"
+                            />
+                            <p className="settings-subhint">Get your key from <a href="https://platform.deepseek.com" target="_blank" rel="noreferrer">platform.deepseek.com</a></p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">DeepSeek Base URL <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={deepseekBaseUrl}
+                              onChange={(e) => setDeepseekBaseUrl(e.target.value)}
+                              onBlur={saveDeepseekBaseUrl}
+                              placeholder="https://api.deepseek.com"
+                            />
+                            <p className="settings-subhint">Defaults to official DeepSeek API or custom proxy endpoint.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">DeepSeek Model <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={deepseekModel}
+                              onChange={(e) => setDeepseekModel(e.target.value)}
+                              onBlur={saveDeepseekModel}
+                              placeholder="deepseek-chat (e.g. deepseek-chat, deepseek-coder, deepseek-reasoner)"
+                            />
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">DSH CLI Path / Command <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={dshPath}
+                              onChange={(e) => setDshPath(e.target.value)}
+                              onBlur={saveDshPath}
+                              placeholder="dsh or npx @deepseek-ai/dsh (leave blank to use built-in engine)"
+                            />
+                            <p className="settings-subhint">Local DeepSeek Harness CLI command or executable.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">DSH Profile <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={dshProfile}
+                              onChange={(e) => setDshProfile(e.target.value)}
+                              onBlur={saveDshProfile}
+                              placeholder="headless"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <button

@@ -171,7 +171,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
             streamController.close();
           } catch (error) {
             dependencies.upsertCodingSession({ ...session, status: 'error' });
-            emit({ error: sanitizeError(error, 'Claude Code run failed') });
+            emit({ error: sanitizeError(error, 'Coding harness run failed') });
             streamController.close();
           }
         },
@@ -179,7 +179,7 @@ export function codingRouter(dependencies: AppDependencies): Hono {
       });
       return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' } });
     } catch (error) {
-      return context.json({ error: sanitizeError(error, 'Unable to start Claude Code') }, 500);
+      return context.json({ error: sanitizeError(error, 'Unable to start coding harness') }, 500);
     }
   });
 

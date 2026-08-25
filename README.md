@@ -33,7 +33,7 @@
 
 - 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Mistral, Qwen, Phi-4) with zero subscription fees.
 - ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI, OpenRouter, 9Router, DeepSeek, Anthropic, or any custom OpenAI-compatible server.
-- 💻 **Live Coding Workspace**: Edit and create project files with live diff reviews, run terminal commands, and use Auto-Approve mode powered by Claude Code & Free Claude Code (FCC).
+- 💻 **Live Coding Workspace Engines**: Swappable autonomous coding engines with live diff reviews, terminal execution, and Auto-Approve mode powered by **Claude Code** (via [Free Claude Code](https://github.com/alishahryar1/free-claude-code)) and **DeepSeek Harness** ([deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness.git)), selectable directly in Settings.
 - ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
 - 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
 - 📁 **Automated Workspace Organization**: Selecting a workspace folder automatically groups chats into dedicated project workspaces to keep your chat history tidy.
@@ -145,14 +145,18 @@ You can configure provider keys directly inside the UI in **Settings (⚙️) �
 | **9Router** | Multi-model routing engine | Developer flexibility |
 | **Custom API** | Any OpenAI-compatible endpoint (vLLM, LM Studio, LocalAI) | Self-hosted servers & custom rigs |
 | **Claude Code (FCC)** | Powered by Free Claude Code integration | Live coding, file edits, bash terminal |
+| **DeepSeek Harness (dsh)** | Powered by open-source DeepSeek Harness (`dsh`) | Autonomous coding, local or cloud DeepSeek |
 
 ---
 
 ## 🛠️ Key Features Walkthrough
 
-### 1. ⚡ Live Coding Workspace & Auto-Approve Mode
-- Select **Coding** mode in the chat composer to give the model access to your local workspace.
-- The model can read, write, edit files, and execute terminal commands.
+### 1. ⚡ Live Coding Workspace & Swappable Engines
+- Select **Coding** mode in the chat composer to give the model direct access to your local workspace directory.
+- **Swappable Coding Engines in Settings (⚙️)**:
+  - **⚡ Claude Code (SDK / FCC)**: Run Claude Code in the browser via direct Anthropic keys or free compatibility proxy.
+  - **🐋 DeepSeek Harness (`dsh`)**: Run autonomous coding tasks via [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness.git) (`dsh` CLI or direct DeepSeek API / local Ollama / vLLM models).
+- The model can read, write, edit files, inspect git state, and execute terminal commands.
 - **Rich Approval Dialog & Live Side Panel**: Inspect full commands, target files, and side-by-side diff previews before anything touches your disk.
 - **Auto-Approve Toggle**: Switch on `⚡ Auto-Approve` from the chat header or popup to let coding tasks run continuously without manual confirmation.
 
@@ -213,9 +217,10 @@ To get in touch or collaborate, connect via GitHub or email [care@vanaila.com](m
 ---
 
 ## 📜 License & Credits
-
-- **Free Claude Code (FCC)** integration powered by [@alishahryar1](https://github.com/alishahryar1/free-claude-code) (MIT License).
-- Built with ❤️ using React 19, TypeScript, Hono, Vite, and SQLite.
+ 
+ - **Free Claude Code (FCC)** integration powered by [@alishahryar1](https://github.com/alishahryar1/free-claude-code) (MIT License).
+ - **DeepSeek Harness** integration powered by [DeepSeek AI](https://github.com/deepseek-ai/deepseek-harness.git) (MIT License).
+ - Built with ❤️ using React 19, TypeScript, Hono, Vite, and SQLite.
 
 <div align="center">
 
