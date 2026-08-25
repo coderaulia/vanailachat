@@ -230,6 +230,7 @@ export function useSendMessage(deps: SendMessageDeps) {
     const workspacePath = (existingChat?.projectRoot ?? projectRoot).trim();
     const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
     let resolvedProjectId = activeProjectId;
+    let chosenHarness = 'claude-code';
 
     try {
       if (useCodingHarness) {
@@ -268,7 +269,6 @@ export function useSendMessage(deps: SendMessageDeps) {
           role: 'coding',
         } as Parameters<typeof upsertChat>[0]);
 
-        let chosenHarness = 'claude-code';
         try {
           const harnessRes = await fetch('/api/settings/coding_harness');
           if (harnessRes.ok) {
@@ -465,9 +465,10 @@ export function useSendMessage(deps: SendMessageDeps) {
         // because the stream has already started by then.
         const codingError = (data as unknown as { error?: string }).error;
         if (codingError) {
-          fullContent += `${fullContent ? '\n\n' : ''}> [!WARNING]\n> **Claude Code Notice**\n> ${codingError}`;
+          const harnessLabel = chosenHarness === 'deepseek-harness' ? 'DeepSeek Harness' : 'Claude Code';
+          fullContent += `${fullContent ? '\n\n' : ''}> [!WARNING]\n> **${harnessLabel} Notice**\n> ${codingError}`;
           assistantContentForSave = fullContent;
-          setStatusText(`Claude Code: ${codingError}`);
+          setStatusText(`${harnessLabel}: ${codingError}`);
           syncUIAndHistory();
           return;
         }
