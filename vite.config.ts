@@ -79,8 +79,14 @@ function backendProxyPlugin(): Plugin {
   };
 }
 
+const isTauri = Boolean(process.env.TAURI_ENV_PLATFORM || process.env.TAURI_PLATFORM);
+
 export default defineConfig({
-  plugins: [react(), backendProxyPlugin()],
+  plugins: [
+    react(),
+    // In Tauri desktop dev, IPC is used directly instead of the HTTP proxy
+    !isTauri && backendProxyPlugin(),
+  ].filter(Boolean),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

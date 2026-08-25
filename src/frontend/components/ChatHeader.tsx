@@ -26,8 +26,8 @@ export function ChatHeader({
     toggleTheme: onToggleTheme,
   } = useChat();
   return (
-    <header className="app-header">
-      <div className="header-main">
+    <header className="app-header" data-tauri-drag-region="true">
+      <div className="header-main" data-tauri-drag-region="true">
         <div className="header-left">
           <button
             className="icon-btn sidebar-toggle"

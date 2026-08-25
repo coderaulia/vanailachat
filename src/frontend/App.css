@@ -37,6 +37,32 @@
   overflow: hidden;
 }
 
+/* Desktop window drag regions */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] select,
+[data-tauri-drag-region] .icon-btn,
+[data-tauri-drag-region] .status-pill {
+  -webkit-app-region: no-drag;
+  user-select: text;
+}
+
+/* Desktop ultra-wide screen optimizations (>1440px) */
+@media (min-width: 1440px) {
+  .chat-column {
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+
 @media (max-width: 640px) {
   .main-content {
     padding: 8px;
