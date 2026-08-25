@@ -24,11 +24,11 @@ const DEEPSEEK_SYSTEM_PROMPT = `You are DeepSeek Harness (dsh), an autonomous co
 You operate inside the user's workspace repository to inspect code, run commands, create and edit files, and solve software engineering tasks.
 
 Guidelines:
-1. First explore and inspect the relevant files in the workspace.
-2. Formulate a plan before making changes.
-3. Make precise edits using edit_file or write_file.
-4. Verify your changes by running tests or build commands when appropriate.
-5. Provide clear, concise explanations of what you discovered and modified.`;
+1. First inspect the relevant files in the workspace with read_file, search_files, or list_directory.
+2. Present your thoughts and reasoning concisely in clean Markdown paragraphs. Do not output standalone punctuation or empty filler turns.
+3. Make precise edits using edit_file for targeted changes or write_file for new files.
+4. Verify changes with run_command or test suites when appropriate.
+5. Provide a crisp, structured summary of what was accomplished once the task is complete.`;
 
 const DSH_TOOLS = [
   {
@@ -567,6 +567,8 @@ export class DeepseekHarness implements CodingHarness {
       let assistantText = '';
       const toolCallsMap: Record<number, ToolCallState> = {};
 
+      let turnEmittedText = false;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -618,6 +620,10 @@ export class DeepseekHarness implements CodingHarness {
               const delta = parsed.choices?.[0]?.delta;
               if (delta) {
                 if (delta.content) {
+                  if (turn > 1 && !turnEmittedText && assistantText === '') {
+                    yield { type: 'text', text: '\n\n' };
+                  }
+                  turnEmittedText = true;
                   assistantText += delta.content;
                   yield { type: 'text', text: delta.content };
                 }
@@ -713,7 +719,7 @@ export class DeepseekHarness implements CodingHarness {
             input: parsedArgs,
           };
 
-          const toolResult = await ToolService.executeTool(tc.name, parsedArgs, input.cwd);
+          const toolResult = await this.executeDshTool(tc.name, parsedArgs, input.cwd);
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -736,7 +742,7 @@ export class DeepseekHarness implements CodingHarness {
             input: parsedArgs,
           };
 
-          const toolResult = await ToolService.executeTool(tc.name, parsedArgs, input.cwd);
+          const toolResult = await this.executeDshTool(tc.name, parsedArgs, input.cwd);
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -780,7 +786,7 @@ export class DeepseekHarness implements CodingHarness {
             input: parsedArgs,
           };
 
-          const toolResult = await ToolService.executeTool(tc.name, parsedArgs, input.cwd);
+          const toolResult = await this.executeDshTool(tc.name, parsedArgs, input.cwd);
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -795,19 +801,63 @@ export class DeepseekHarness implements CodingHarness {
             category: norm.category,
             file: norm.path,
             command: norm.command,
-            detail: 'Declined by user',
+            detail: 'User declined tool execution',
             input: parsedArgs,
           };
 
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
-            content: 'Operation was declined by the user.',
+            content: 'Tool execution was declined by user.',
           });
         }
       }
     }
 
     yield { type: 'done' };
+  }
+
+  /**
+   * Helper to execute DSH tools with proper command parsing and git alias support.
+   */
+  private async executeDshTool(
+    name: string,
+    args: Record<string, unknown>,
+    cwd: string,
+  ): Promise<string> {
+    if (name === 'git_status') {
+      return await ToolService.executeTool(
+        'run_command',
+        { command: 'git', args: ['status', '--short'] },
+        cwd,
+      );
+    }
+
+    if (name === 'git_diff') {
+      return await ToolService.executeTool(
+        'run_command',
+        { command: 'git', args: ['diff'] },
+        cwd,
+      );
+    }
+
+    if (name === 'run_command') {
+      let commandToRun = (args.command as string) || '';
+      let commandArgs = (args.args as string[]) || [];
+
+      if (typeof commandToRun === 'string' && commandToRun.includes(' ') && commandArgs.length === 0) {
+        const split = commandToRun.trim().split(/\s+/);
+        commandToRun = split[0];
+        commandArgs = split.slice(1);
+      }
+
+      return await ToolService.executeTool(
+        'run_command',
+        { command: commandToRun, args: commandArgs },
+        cwd,
+      );
+    }
+
+    return await ToolService.executeTool(name, args, cwd);
   }
 }

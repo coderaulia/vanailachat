@@ -1,10 +1,11 @@
 use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 use super::traits::*;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct ProviderRegistry {
     providers: HashMap<&'static str, Arc<dyn LlmProvider>>,
 }

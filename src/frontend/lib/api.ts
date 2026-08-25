@@ -169,7 +169,9 @@ export async function streamChatCompletion(
     try {
       const err = await response.json();
       if (err.error) errorMsg = err.error;
-    } catch {}
+    } catch {
+      // ignore json parse failure
+    }
     throw new Error(errorMsg);
   }
 
@@ -203,7 +205,9 @@ export async function streamChatCompletion(
     try {
       const parsed = JSON.parse(buffer.trim()) as StreamChunk;
       onChunk(parsed);
-    } catch {}
+    } catch {
+      // ignore trailing chunk parse failure
+    }
   }
 }
 
@@ -243,7 +247,9 @@ export async function streamResearch(
       try {
         const parsed = JSON.parse(trimmed);
         onEvent(parsed);
-      } catch {}
+      } catch {
+        // ignore malformed line
+      }
     }
   }
 }

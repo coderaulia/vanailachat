@@ -108,3 +108,22 @@
   font-size: 11px;
   letter-spacing: 0.02em;
 }
+
+@media (max-width: 768px) {
+  .header-main {
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .app-name-badge {
+    display: none;
+  }
+
+  .status-group {
+    display: none;
+  }
+
+  .auto-approve-toggle {
+    padding: 0 8px;
+  }
+}

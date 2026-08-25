@@ -3,7 +3,6 @@ use crate::providers::traits::*;
 use crate::state::AppState;
 use futures::StreamExt;
 use serde::Deserialize;
-use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::oneshot;
 

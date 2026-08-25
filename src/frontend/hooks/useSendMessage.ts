@@ -227,7 +227,8 @@ export function useSendMessage(deps: SendMessageDeps) {
     // The coding role drives Claude Code, which owns the filesystem and runs
     // in a workspace rather than off the conversation history. It streams the
     // same NDJSON envelope, so everything downstream is shared.
-    const workspacePath = (existingChat?.projectRoot ?? projectRoot).trim();
+    const activeProj = selectedProjectId ? projects.find((p) => p.id === selectedProjectId) : null;
+    const workspacePath = (existingChat?.projectRoot ?? (projectRoot.trim() || activeProj?.projectRoot || '')).trim();
     const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
     let resolvedProjectId = activeProjectId;
     let chosenHarness = 'claude-code';
@@ -416,15 +417,6 @@ export function useSendMessage(deps: SendMessageDeps) {
         }).coding_event;
         if (coding) {
           if (coding.type === 'text' && coding.text) {
-            if (
-              fullContent &&
-              !fullContent.endsWith('\n') &&
-              !fullContent.endsWith(' ') &&
-              !coding.text.startsWith('\n') &&
-              !coding.text.startsWith(' ')
-            ) {
-              fullContent += '\n\n';
-            }
             fullContent += coding.text;
             assistantContentForSave = fullContent;
           } else if (coding.type === 'tool' && coding.name) {

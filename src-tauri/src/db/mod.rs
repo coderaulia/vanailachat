@@ -19,7 +19,7 @@ impl Database {
         conn.pragma_update(None, "foreign_keys", "ON")?;
 
         // Run migrations
-        let mut migs = migrations::get_migrations();
+        let migs = migrations::get_migrations();
         migs.to_latest(&mut conn)?;
 
         Ok(Self { conn })
@@ -28,7 +28,7 @@ impl Database {
     pub fn in_memory() -> AppResult<Self> {
         let mut conn = Connection::open_in_memory()?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        let mut migs = migrations::get_migrations();
+        let migs = migrations::get_migrations();
         migs.to_latest(&mut conn)?;
         Ok(Self { conn })
     }

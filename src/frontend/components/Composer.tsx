@@ -194,7 +194,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 value={projectRoot}
                 onChange={(event) => onSetProjectRoot(event.target.value)}
                 onBlur={onSaveProjectRoot}
-                placeholder="Pick a folder for Claude Code to work in"
+                placeholder="Pick a folder for coding project to work in"
               />
               <button
                 type="button"

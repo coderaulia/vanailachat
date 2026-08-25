@@ -177,7 +177,15 @@ export function useChatSession(deps: {
     upsertChat: deps.upsertChat,
   });
 
-  // ── simple handlers ────────────────────────────────────────────────────────
+  // Keep projectRoot in sync with active project's root folder
+  useEffect(() => {
+    if (!currentChatId && deps.selectedProjectId) {
+      const activeProj = deps.projects.find((p) => p.id === deps.selectedProjectId);
+      if (activeProj?.projectRoot) {
+        setProjectRoot(activeProj.projectRoot);
+      }
+    }
+  }, [deps.selectedProjectId, deps.projects, currentChatId]);
 
   const handleAbort = () => {
     if (abortRef.current) {
@@ -193,7 +201,10 @@ export function useChatSession(deps: {
     deps.setPrompt('');
     deps.setAttachedFiles([]);
     setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-    setProjectRoot('');
+    const activeProj = deps.selectedProjectId
+      ? deps.projects.find((p) => p.id === deps.selectedProjectId)
+      : null;
+    setProjectRoot(activeProj?.projectRoot || '');
     const total = getContextWindowForModel(
       deps.selectedModel,
       deps.modelMetadata?.[deps.selectedModel],

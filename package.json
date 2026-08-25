@@ -18,7 +18,7 @@
     "test:watch": "vitest",
     "type-check": "tsc --noEmit",
     "tauri": "tauri",
-    "desktop:dev": "tauri dev",
+    "desktop:dev": "node scripts/predev.js && tauri dev",
     "desktop:build": "tauri build",
     "desktop:icon": "tauri icon"
   },

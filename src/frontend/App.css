@@ -53,11 +53,9 @@
   user-select: text;
 }
 
-/* Desktop ultra-wide screen optimizations (>1440px) */
-@media (min-width: 1440px) {
+/* Ultra-wide screens: keep clean proportional layout without floating gaps */
+@media (min-width: 1600px) {
   .chat-column {
-    max-width: 1200px;
-    margin: 0 auto;
     width: 100%;
   }
 }
