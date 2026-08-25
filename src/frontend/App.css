@@ -3,10 +3,7 @@
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: var(--bg-app);
-  position: relative;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-surface-strong);
 }
 
 .main-content {
@@ -15,11 +12,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 16px 12px;
+  padding: 0 20px 12px;
   overflow: hidden;
   height: 100vh;
   height: 100dvh;
-  background: var(--bg-app);
 }
 
 .chat-and-panel-wrapper {
@@ -41,8 +37,7 @@
   overflow: hidden;
 }
 
-/* ── Modern macOS / Desktop Drag Regions ───────────────────────────────── */
-
+/* Desktop window drag regions */
 [data-tauri-drag-region] {
   -webkit-app-region: drag;
   user-select: none;
@@ -53,51 +48,46 @@
 [data-tauri-drag-region] a,
 [data-tauri-drag-region] select,
 [data-tauri-drag-region] .icon-btn,
-[data-tauri-drag-region] .traffic-light,
-[data-tauri-drag-region] .status-glass-pill,
-[data-tauri-drag-region] .auto-approve-pill {
+[data-tauri-drag-region] .status-pill {
   -webkit-app-region: no-drag;
   user-select: text;
 }
 
-/* ── Sleek Desktop Scrollbars ─────────────────────────────────────────── */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(140, 155, 175, 0.25);
-  border-radius: 999px;
-  transition: background 0.15s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(140, 155, 175, 0.45);
-}
-
-/* ── Ultra-Wide Screen Constraints ─────────────────────────────────────── */
-
+/* Ultra-wide screens: keep clean proportional layout without floating gaps */
 @media (min-width: 1600px) {
   .chat-column {
     width: 100%;
   }
 }
 
-/* ── Mobile Responsive Breakpoints ─────────────────────────────────────── */
-
 @media (max-width: 640px) {
   .main-content {
-    padding: 6px 8px 8px;
+    padding: 8px;
+  }
+
+  .header-main,
+  .composer,
+  .chat-log {
+    border-radius: 24px;
+  }
+
+  .header-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-summary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .summary-pill {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .textarea {
-    min-height: 100px;
+    min-height: 120px;
   }
 
   .input-actions {
@@ -121,7 +111,7 @@
   }
 }
 
-/* Mobile sidebar drawer */
+/* Mobile sidebar: show menu toggle on small screens */
 @media (max-width: 860px) {
   .sidebar-open .sidebar {
     transform: translateX(0);
@@ -136,7 +126,7 @@
   }
 
   .main-content {
-    padding: 6px 8px 8px;
+    padding: 8px;
   }
 
   .welcome-screen {
@@ -144,10 +134,10 @@
   }
 
   .welcome-screen h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .welcome-screen p {
-    font-size: 13px;
+    font-size: 14px;
   }
 }

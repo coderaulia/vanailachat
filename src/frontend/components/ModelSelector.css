@@ -73,14 +73,15 @@
 .model-selector__dropdown {
   position: absolute;
   bottom: calc(100% + 8px);
-  right: 0;
-  width: 360px;
-  max-width: calc(100vw - 32px);
+  left: 0;
+  right: auto;
+  width: 380px;
+  max-width: min(380px, calc(100vw - 32px));
   background: var(--bg-surface);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-strong);
-  z-index: 100;
+  z-index: 1000;
   overflow: hidden;
   backdrop-filter: blur(20px);
   animation: dropdownFadeIn 0.2s ease-out;

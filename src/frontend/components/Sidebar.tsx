@@ -142,7 +142,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   }
 
   const filteredHistories = histories.filter(([id, chat]) => {
-    if (chat.projectId !== selectedProjectId) return false;
+    const chatProj = chat.projectId || null;
+    const currentProj = selectedProjectId || null;
+    if (chatProj !== currentProj) return false;
     if (!searchQuery.trim()) return true;
     if (chat.title?.toLowerCase().includes(searchQuery.toLowerCase())) return true;
     return snippetByChatId.has(id);
@@ -173,6 +175,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                     value={selectedProjectId ?? ''}
                     onChange={(event) => onSelectProject(event.target.value)}
                   >
+                    <option value="">Default Workspace</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
