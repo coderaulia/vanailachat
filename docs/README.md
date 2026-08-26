@@ -13,6 +13,7 @@ The native Linux desktop edition (`com.vanaila.chat`) runs as a dedicated, high-
 - 🐧 **[Linux Desktop Integration](architecture/desktop-integration.md)**: XDG Base Directory compliance, System Tray (`libayatana-appindicator`), `.desktop` entry, and Keyring roadmap.
 - 📦 **[Multi-Distro Packaging Guide](architecture/linux-packaging.md)**: Packaging for Debian/Ubuntu (`.deb`), Fedora (`.rpm`), Arch Linux (`PKGBUILD` for AUR), AppImage, Flatpak, and automated CI/CD.
 - 🎨 **[UI & Brand Identity Enhancements](architecture/ui-desktop-enhancements.md)**: Splash screen, brand identity, desktop multi-column responsiveness, window drag regions, and keyboard accelerators.
+- 🔍 **[Desktop Audit & Improvement Plan](architecture/desktop-audit-and-improvements.md)**: Complete audit report across 6 dimensions with an actionable Gantt roadmap.
 
 ---
 
