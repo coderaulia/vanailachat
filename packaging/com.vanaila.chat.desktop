@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=Vanaila Chat
+GenericName=AI Chat Client
+Comment=Privacy-first, high-performance local AI chat client with multi-provider LLM support
+Exec=vanaila-chat %U
+Icon=com.vanaila.chat
+Terminal=false
+Type=Application
+Categories=Utility;Development;TextEditor;Network;
+MimeType=x-scheme-handler/vanailachat;
+Keywords=AI;LLM;Chat;Ollama;OpenAI;Claude;Assistant;
+StartupWMClass=vanaila-chat
+Actions=NewChat;
+
+[Desktop Action NewChat]
+Name=New Chat
+Exec=vanaila-chat --action new-chat

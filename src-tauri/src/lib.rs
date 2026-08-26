@@ -65,6 +65,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ping,
             commands::chats::get_chats,
@@ -75,6 +77,7 @@ pub fn run() {
             commands::messages::search_messages,
             commands::messages::set_feedback,
             commands::models::get_models,
+            commands::models::pull_model,
             commands::projects::get_projects,
             commands::projects::create_project,
             commands::projects::delete_project,

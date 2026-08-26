@@ -167,3 +167,47 @@ impl LlmProvider for OllamaProvider {
         Ok(Box::pin(chunk_stream))
     }
 }
+
+impl OllamaProvider {
+    pub async fn pull_model(
+        &self,
+        model_name: &str,
+        mut on_progress: impl FnMut(serde_json::Value) + Send + 'static,
+    ) -> AppResult<()> {
+        let url = format!("{}/api/pull", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({ "name": model_name }))
+            .send()
+            .await
+            .map_err(AppError::Network)?;
+
+        let mut stream = resp.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(chunk_res) = stream.next().await {
+            let chunk = chunk_res.map_err(AppError::Network)?;
+            let text = String::from_utf8_lossy(&chunk);
+            buffer.push_str(&text);
+
+            while let Some(idx) = buffer.find('\n') {
+                let line = buffer[..idx].trim().to_string();
+                buffer.drain(..=idx);
+                if !line.is_empty() {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
+                        on_progress(parsed);
+                    }
+                }
+            }
+        }
+
+        if !buffer.trim().is_empty() {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(buffer.trim()) {
+                on_progress(parsed);
+            }
+        }
+
+        Ok(())
+    }
+}

@@ -1,0 +1,21 @@
+# Maintainer: Aulia Satrio Wibowo <care@vanaila.com>
+pkgname=vanaila-chat-bin
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Privacy-first, high-performance local AI chat client with multi-provider LLM support"
+arch=('x86_64')
+url="https://github.com/coderaulia/vanailachat"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
+optdepends=(
+  'ollama: for offline local model inference'
+)
+provides=('vanaila-chat')
+conflicts=('vanaila-chat')
+source=("${pkgname}-${pkgver}.deb::https://github.com/coderaulia/vanailachat/releases/download/v${pkgver}/vanaila-chat_${pkgver}_amd64.deb")
+sha256sums=('SKIP')
+
+package() {
+  tar -xf data.tar.gz -C "${pkgdir}"
+  install -Dm644 "${pkgdir}/usr/share/doc/vanaila-chat/copyright" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" || true
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.vanaila.chat</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Vanaila Chat</name>
+  <summary>Privacy-first local &amp; cloud AI chat workstation</summary>
+  <description>
+    <p>
+      Vanaila Chat is a privacy-first, local-first AI chat client and workstation.
+      It natively connects to Ollama for offline zero-data-leakage inference, as well as OpenAI, Anthropic, and OpenRouter.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.vanaila.chat.desktop</launchable>
+  <url type="homepage">https://github.com/coderaulia/vanailachat</url>
+  <url type="bugtracker">https://github.com/coderaulia/vanailachat/issues</url>
+  <provides>
+    <binary>vanaila-chat</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.3.0" date="2026-08-26">
+      <description>
+        <p>Initial native Linux desktop release supporting Debian, Arch, and Fedora with local Ollama IPC and multi-provider streaming.</p>
+      </description>
+    </release>
+  </releases>
+</component>

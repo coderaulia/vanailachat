@@ -261,6 +261,37 @@ export async function apiFetchModels(): Promise<Array<{ name: string; provider: 
   return Array.isArray(data.models) ? data.models : [];
 }
 
+export async function apiPullModel(
+  name: string,
+  onProgress?: (progress: { status?: string; completed?: number; total?: number }) => void
+): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const { listen } = await getTauriEvent();
+
+    let unlisten: (() => void) | null = null;
+    if (onProgress) {
+      unlisten = await listen('ollama-pull-progress', (event) => {
+        onProgress(event.payload as { status?: string; completed?: number; total?: number });
+      });
+    }
+
+    try {
+      await invoke('pull_model', { name });
+    } finally {
+      if (unlisten) unlisten();
+    }
+    return;
+  }
+
+  // Web fallback:
+  await requestApi('/api/models/pull', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
 export async function apiFetchSettings(): Promise<Record<string, string>> {
   if (isTauri) {
     const { invoke } = await getTauriCore();

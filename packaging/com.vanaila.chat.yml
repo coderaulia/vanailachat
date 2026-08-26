@@ -1,0 +1,46 @@
+app-id: com.vanaila.chat
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: vanaila-chat
+
+finish-args:
+  # Display & Wayland
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+
+  # Network & Local Ollama IPC
+  - --share=network
+
+  # File Access for Workspace Projects
+  - --filesystem=host:ro
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+  # Desktop Notifications & Tray
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+  env:
+    CARGO_HOME: /run/build/vanaila-chat/cargo
+
+modules:
+  - name: vanaila-chat
+    buildsystem: simple
+    build-commands:
+      - pnpm install --frozen-lockfile
+      - pnpm desktop:build
+      - install -Dm755 src-tauri/target/release/vanaila-chat /app/bin/vanaila-chat
+      - install -Dm644 packaging/com.vanaila.chat.desktop /app/share/applications/com.vanaila.chat.desktop
+      - install -Dm644 packaging/com.vanaila.chat.metainfo.xml /app/share/metainfo/com.vanaila.chat.metainfo.xml
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.vanaila.chat.png
+    sources:
+      - type: dir
+        path: ..

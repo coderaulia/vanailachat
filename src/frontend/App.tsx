@@ -77,7 +77,16 @@ const AppShell = () => {
 
   const shortcutsMap = useMemo(() => ({
     'ctrl+n': () => { handleNewChat(); setViewMode('chat'); },
+    'ctrl+b': () => toggleSidebar(),
     'ctrl+/': () => toggleSidebar(),
+    'ctrl+,': () => setIsSettingsOpen((prev) => !prev),
+    'ctrl+k': () => {
+      const searchInput = document.querySelector('.sidebar-search__input') as HTMLInputElement | null;
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    },
     'alt+s': () => setIsSearchEnabled((prev: boolean) => !prev),
     'escape': () => {
       if (isSettingsOpen) {
@@ -89,6 +98,19 @@ const AppShell = () => {
   }), [handleNewChat, toggleSidebar, setIsSearchEnabled, isSettingsOpen, isCurrentChatSending, handleAbort, setViewMode]);
 
   useKeyboardShortcuts(shortcutsMap);
+
+  // OS theme synchronization with FreeDesktop appearance portal
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleThemeChange = (e: MediaQueryListEvent) => {
+      const savedTheme = localStorage.getItem('vanaila-theme');
+      if (!savedTheme) {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      }
+    };
+    mediaQuery.addEventListener('change', handleThemeChange);
+    return () => mediaQuery.removeEventListener('change', handleThemeChange);
+  }, []);
 
   useEffect(() => {
     if (isCurrentChatSending) {

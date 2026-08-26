@@ -9,6 +9,9 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "notification:default",
-    "opener:default"
+    "opener:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "updater:default"
   ]
 }
