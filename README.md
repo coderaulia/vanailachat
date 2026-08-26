@@ -11,28 +11,45 @@
 
 # VanailaChat
 
-**Self-Hosted AI Workspace for Local and Cloud Models**
+**Privacy-First AI Workspace & Native Desktop Client for Local and Cloud LLMs**
 
+[![GitHub Release](https://img.shields.io/github/v/release/coderaulia/vanailachat?style=for-the-badge&color=blue)](https://github.com/coderaulia/vanailachat/releases/latest)
+[![Linux Packages](https://img.shields.io/badge/Linux%20Packages-.deb%20%7C%20.rpm%20%7C%20AppImage-orange?style=for-the-badge)](DOWNLOADS.md)
 [![Open Source](https://img.shields.io/badge/Open%20Source-100%25%20Free-brightgreen?style=for-the-badge)](https://github.com/coderaulia/vanailachat)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=for-the-badge)](https://github.com/coderaulia/vanailachat)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green?style=for-the-badge)](https://nodejs.org)
 [![Local AI](https://img.shields.io/badge/Ollama-Local%20%26%20Private-purple?style=for-the-badge)](https://ollama.com)
 [![Community](https://img.shields.io/badge/Community-Indonesian%20AI%20Community%20🇮🇩-red?style=for-the-badge)](https://github.com/coderaulia/vanailachat)
 
 ### 🇮🇩 *Made with love from Jakarta for Indonesian AI community!*
 
-*An open-source, privacy-first AI platform that empowers everyone — from beginners to senior developers — to run, chat, research, write code, and build with AI locally or through cloud APIs.*
+*An open-source, privacy-first AI workstation and native Linux desktop application that empowers everyone — from beginners to senior engineers — to chat, research, write code, manage workspaces, and build with AI locally or via cloud APIs.*
 
 </div>
 
 ---
 
+## 📦 Downloads & Distribution
+
+Get started in seconds! Download the native Linux desktop installer for your distribution or launch the automated cross-platform web edition.
+
+👉 **[View Full Download & Distribution Guide (DOWNLOADS.md)](DOWNLOADS.md)**
+
+| Distro / Platform | Package Format | Direct Download Link | Quick Installation |
+| :--- | :--- | :--- | :--- |
+| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.0_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.0-1.x86_64.rpm` |
+| **Universal Linux (Any Distro)** | `.AppImage` | [**Download `.AppImage`**](https://github.com/coderaulia/vanailachat/releases/latest) | `chmod +x *.AppImage && ./*.AppImage` |
+| **Arch Linux / Manjaro** | AUR | [**AUR Package**](DOWNLOADS.md) | `yay -S vanaila-chat-bin` |
+| **1-Click Web App (Linux/Mac/Win)** | Script | `start.sh` / `start.bat` | `./start.sh` (Linux/macOS) or `start.bat` (Win) |
+
+---
+
 ## 🌟 What is VanailaChat?
 
-**VanailaChat** brings the power of ChatGPT, Claude, and GitHub Copilot directly into your local machine and web browser with **complete privacy, control, and developer tooling**:
+**VanailaChat** brings the power of ChatGPT, Claude, and GitHub Copilot directly into your local machine and web browser with **complete privacy, local control, and developer tooling**:
 
-- 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Mistral, Qwen, Phi-4) with zero subscription fees.
-- ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI, OpenRouter, 9Router, DeepSeek, Anthropic, or any custom OpenAI-compatible server.
+- 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Qwen 2.5, Mistral, Phi-4) with zero subscription fees.
+- 🆓 **Zero-Cost Cloud Models**: Free-tier cloud LLMs through OpenRouter Free Models (Gemini Flash, DeepSeek-R1 Free, Llama 3.3 70B Free) and Free Claude Code (FCC).
+- ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI (GPT-4o, o1, o3-mini), 9Router, Anthropic Claude, DeepSeek, or any custom OpenAI-compatible server.
 - 💻 **Live Coding Workspace Engines**: Swappable autonomous coding engines with live diff reviews, terminal execution, and Auto-Approve mode powered by **Claude Code** (via [Free Claude Code](https://github.com/alishahryar1/free-claude-code)) and **DeepSeek Harness** ([deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness.git)), selectable directly in Settings.
 - ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
 - 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
@@ -46,158 +63,190 @@
 
 ---
 
-## 🚀 1-Click Automated Quick Start
+## 🔌 Comprehensive AI Providers & Setup Guide
 
-No complicated setup or terminal commands required. The automated launcher checks your system, installs missing dependencies, creates your environment file, starts the services, and opens your browser.
+VanailaChat supports both **100% offline local AI** and **cloud LLM providers**. You can configure your keys directly in **Settings (⚙️) → AI Connection** or via the `.env` file.
 
-### 🐧 Linux (Debian, Ubuntu, Fedora, Arch Linux, openSUSE, etc.)
+### 1. 🏠 Ollama (100% Free, Private & Offline Local AI)
 
-Open your terminal and run:
+Ollama allows you to run state-of-the-art open-source LLMs directly on your own hardware without internet or API keys.
 
+#### Step 1: Install Ollama
+- **Linux**:
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ```
+- **macOS**: Download from [ollama.com/download](https://ollama.com/download) or `brew install ollama`.
+- **Windows**: Download the official installer from [ollama.com/download](https://ollama.com/download).
+
+#### Step 2: Pull Recommended Models
+Run these commands in your terminal to download models:
+
+```bash
+# 💬 General Chat & Fast Reasoning (Recommended for everyday use)
+ollama pull llama3.2          # 3B parameters - lightweight & blazing fast
+ollama pull qwen2.5:7b        # 7B parameters - excellent general intelligence
+
+# 💻 Coding & Deep Logic (For Coding Workspace)
+ollama pull qwen2.5-coder:7b  # High accuracy code generation & debugging
+ollama pull deepseek-r1:7b    # Reasoning & step-by-step logic chain
+
+# 🧠 Semantic Long-Term Memory (RAG Vector Embeddings)
+ollama pull nomic-embed-text  # 768-dim embeddings for memory recall
+```
+
+#### Step 3: Verify Ollama Service
+Ensure Ollama is running at `http://localhost:11434`:
+```bash
+# Verify running models
+ollama list
+
+# Linux systemd auto-start (optional)
+sudo systemctl enable --now ollama
+```
+VanailaChat will automatically detect all installed Ollama models in the model selector!
+
+---
+
+### 2. 🆓 Free Cloud AI Models (Zero-Cost Setup)
+
+Want high-end cloud models without paying for subscriptions? You can use free cloud tiers:
+
+#### A. OpenRouter Free Tier
+[OpenRouter](https://openrouter.ai/) provides completely free access to leading models with zero credit card required.
+
+1. Go to [OpenRouter.ai](https://openrouter.ai/) and create a free account.
+2. Navigate to **Keys** and click **Create Key**.
+3. In VanailaChat, open **Settings (⚙️) → AI Connection**:
+   - Paste your API key into **OpenRouter API Key**.
+4. In the Model Selector dropdown, you can now use all free models (marked with `:free`), including:
+   - `google/gemini-2.0-flash-exp:free` (Super fast & smart)
+   - `meta-llama/llama-3.3-70b-instruct:free` (70B powerhouse)
+   - `deepseek/deepseek-r1:free` (Full DeepSeek reasoning)
+   - `qwen/qwen-2.5-72b-instruct:free` (Coding & math)
+
+#### B. Free Claude Code (FCC) Integration
+VanailaChat includes native integration with [Free Claude Code](https://github.com/alishahryar1/free-claude-code). Select **Claude Code (FCC)** as your engine in **Settings (⚙️) → Coding Engine** to run autonomous coding workflows.
+
+---
+
+### 3. 🔀 9Router Setup
+
+[9Router](https://github.com/) is a high-speed multi-model router and proxy compatible with OpenAI endpoints.
+
+1. Start your 9Router instance (defaults to `http://localhost:20128/v1`).
+2. In VanailaChat, open **Settings (⚙️) → AI Connection**:
+   - **9Router Base URL**: `http://localhost:20128/v1` (or your custom server URL)
+   - **9Router API Key**: Enter your 9Router access token.
+3. Alternatively, define them in your `.env` file:
+   ```env
+   NINE_ROUTER_BASE_URL=http://localhost:20128/v1
+   NINE_ROUTER_API_KEY=your_token_here
+   ```
+
+---
+
+### 4. 🤖 OpenAI Setup (Official)
+
+Connect directly to official OpenAI GPT models:
+
+1. Obtain your API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys).
+2. In VanailaChat **Settings (⚙️)**, enter your key in **OpenAI API Key**.
+3. Supported models include **GPT-4o**, **GPT-4o-mini**, **o1**, **o3-mini**, and **GPT-4-turbo**.
+4. Alternatively, configure in `.env`:
+   ```env
+   OPENAI_API_KEY=sk-...
+   OPENAI_BASE_URL=https://api.openai.com/v1
+   ```
+
+---
+
+### 5. 🛠️ Custom OpenAI-Compatible Endpoints
+
+VanailaChat can connect to **any server or cloud provider** that implements the OpenAI standard API format (`/v1/chat/completions` and `/v1/models`):
+
+| Server / Provider | Typical Base URL | Notes |
+| :--- | :--- | :--- |
+| **LM Studio** | `http://localhost:1234/v1` | Enable local server in LM Studio app |
+| **vLLM** | `http://localhost:8000/v1` | Production GPU server |
+| **LocalAI** | `http://localhost:8080/v1` | Self-hosted OpenAI drop-in replacement |
+| **Groq Cloud** | `https://api.groq.com/openai/v1` | Ultra-fast LPU inference (requires Groq key) |
+| **DeepSeek Official API** | `https://api.deepseek.com/v1` | DeepSeek-V3 and DeepSeek-R1 direct API |
+| **Together AI** | `https://api.together.xyz/v1` | Pay-as-you-go open-source cloud |
+
+#### How to configure:
+1. Open **Settings (⚙️) → AI Connection**.
+2. Set **Custom OpenAI Base URL** (e.g. `http://localhost:1234/v1` or `https://api.groq.com/openai/v1`).
+3. Set **Custom OpenAI API Key** (enter `not-needed` for local LM Studio / vLLM, or your actual provider key).
+
+---
+
+## 🚀 1-Click Automated Quick Start (Web Edition)
+
+The automated launcher checks your environment, installs missing dependencies, creates your config file, and opens your browser.
+
+### 🐧 Linux (Debian, Ubuntu, Fedora, Arch, openSUSE)
 ```bash
 git clone https://github.com/coderaulia/vanailachat.git
 cd vanailachat
 ./start.sh
 ```
-
-> **💡 Create Desktop Shortcut**: Run `./start.sh --desktop` to create an icon in your application launcher menu and Desktop.
-
----
+> **💡 Desktop Shortcut**: Run `./start.sh --desktop` to create an application launcher icon and Desktop shortcut.
 
 ### 🍎 macOS (Apple Silicon M1/M2/M3/M4 & Intel)
-
-1. Open **Terminal** (`Cmd + Space` → type `Terminal` → press `Enter`).
-2. Run:
-
 ```bash
 git clone https://github.com/coderaulia/vanailachat.git
 cd vanailachat
 ./start.sh
 ```
 
-**What `./start.sh` does automatically on Mac:**
-- Detects Homebrew and installs Node.js 20+ if not installed.
-- Prepares `pnpm` and installs all project packages.
-- Starts local Ollama (if installed) in the background.
-- Automatically opens your default browser at `http://localhost:5173`.
-
-> **💡 Create Desktop Launcher on Mac**: Run `./start.sh --desktop` to place a double-clickable `VanailaChat.command` icon directly on your Mac Desktop.
-
----
-
 ### 🪟 Windows (10 / 11)
-
-1. Clone or download the repository:
-   ```cmd
-   git clone https://github.com/coderaulia/vanailachat.git
-   ```
-2. Open the `vanailachat` folder in **File Explorer**.
-3. **Double-click `start.bat`** *(or right-click `start.ps1` → Run with PowerShell)*.
-
-> **💡 Create Desktop Shortcut on Windows**: Run `start.bat --shortcut` to create a `VanailaChat` shortcut on your Windows Desktop.
+```cmd
+git clone https://github.com/coderaulia/vanailachat.git
+cd vanailachat
+start.bat
+```
+*(Or right-click `start.ps1` → **Run with PowerShell**)*
 
 ---
 
-## 📖 Manual Setup (for Developers)
-
-If you prefer to run commands manually from your terminal:
+## 📖 Manual Developer Setup
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/coderaulia/vanailachat.git
 cd vanailachat
 
-# 2. Install dependencies (Node 20+ required)
+# 2. Install dependencies (Node 20+ / 22+ recommended)
 pnpm install
 
 # 3. Initialize environment variables
 cp .env.example .env
 
-# 4. Start frontend and backend
+# 4. Start frontend and backend in development mode
 pnpm dev
+
+# 5. (Optional) Run the native Linux Desktop app in dev mode
+pnpm desktop:dev
 ```
 
 Open `http://localhost:5173` in your browser.
 
-### Optional: Setting up Free Local Models with Ollama
-
-To run AI 100% locally on your device without internet or API keys:
-
-1. Download & install [Ollama](https://ollama.com/).
-2. Pull your desired models:
-   ```bash
-   ollama pull llama3.2          # Fast, general chat & reasoning
-   ollama pull deepseek-r1:7b    # Coding and deep logic
-   ollama pull nomic-embed-text  # Enables semantic long-term memory
-   ```
-
 ---
 
-## 🔌 Supported Providers & Setup
-
-You can configure provider keys directly inside the UI in **Settings (⚙️) → AI Connection** or via `.env`:
-
-| Provider | Description | Recommended For |
-| :--- | :--- | :--- |
-| **Ollama** | 100% local, private, no internet needed | Daily chat, privacy, offline work |
-| **OpenRouter** | 200+ models (Claude 3.5, GPT-4o, DeepSeek, Gemini) | Wide variety, low cost, pay-as-you-go |
-| **OpenAI** | Official GPT-4o, o1, o3-mini | Enterprise and standard OpenAI accounts |
-| **9Router** | Multi-model routing engine | Developer flexibility |
-| **Custom API** | Any OpenAI-compatible endpoint (vLLM, LM Studio, LocalAI) | Self-hosted servers & custom rigs |
-| **Claude Code (FCC)** | Powered by Free Claude Code integration | Live coding, file edits, bash terminal |
-| **DeepSeek Harness (dsh)** | Powered by open-source DeepSeek Harness (`dsh`) | Autonomous coding, local or cloud DeepSeek |
-
----
-
-## 🛠️ Key Features Walkthrough
-
-### 1. ⚡ Live Coding Workspace & Swappable Engines
-- Select **Coding** mode in the chat composer to give the model direct access to your local workspace directory.
-- **Swappable Coding Engines in Settings (⚙️)**:
-  - **⚡ Claude Code (SDK / FCC)**: Run Claude Code in the browser via direct Anthropic keys or free compatibility proxy.
-  - **🐋 DeepSeek Harness (`dsh`)**: Run autonomous coding tasks via [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness.git) (`dsh` CLI or direct DeepSeek API / local Ollama / vLLM models).
-- The model can read, write, edit files, inspect git state, and execute terminal commands.
-- **Rich Approval Dialog & Live Side Panel**: Inspect full commands, target files, and side-by-side diff previews before anything touches your disk.
-- **Auto-Approve Toggle**: Switch on `⚡ Auto-Approve` from the chat header or popup to let coding tasks run continuously without manual confirmation.
-
-### 2. 🌿 Git Branch Protection & Safety Creation
-- Live working branch display in the workspace bar (`🌿 feat/new-feature (2 modified)`).
-- Warning indicator when operating directly on `main` or `master` with an instant **`+ Create Branch`** button to safely isolate AI edits.
-
-### 3. 📁 Workspace Auto-Project Organization
-- Selecting or typing a workspace folder automatically organizes your chats into a dedicated project named after the folder, keeping your general chat history clean and organized.
-
-### 4. 🧠 Persistent Long-Term Memory
-- Automatically indexes past conversations using vector embeddings (via `nomic-embed-text`) or keyword search.
-- When you ask a question or start a coding task, relevant historical context and your past preferences are automatically recalled.
-
-### 5. 📄 Local Document Reader & Word Generator
-- Drag-and-drop PDF, DOCX, XLSX, and text files into the chat composer. Content is processed locally on your machine.
-- Generate downloadable formatted `.docx` Word documents directly from AI conversations.
-
-### 6. 🎨 Custom Appearance & Color Schemes
-- Choose from 6 curated color schemes in **Settings (⚙️) → Appearance**:
-  - **Vanaila Origin** (Default Slate Navy)
-  - **Catppuccin Teal** (`#179299`)
-  - **Catppuccin Rose** (`#f0c6c6`)
-  - **Catppuccin Blue** (`#8caaee`)
-  - **Catppuccin Green** (`#a6da95`)
-  - **Catppuccin Peach** (`#fab387`)
-- Color accents automatically adapt to all UI components, buttons, panels, chat bubbles, and the Skills drawer in both light and dark modes.
-
----
-
-## ⌨️ CLI Developer Scripts
+## ⌨️ CLI Developer & Packaging Commands
 
 ```bash
-pnpm dev           # Start both backend and frontend development servers
-pnpm dev:backend   # Start backend only
-pnpm dev:frontend  # Start frontend Vite server only
-pnpm build         # Build production bundle
-pnpm test          # Run full Vitest test suite (234 tests)
-pnpm type-check    # Run TypeScript validation
-pnpm lint          # Run ESLint validation
-pnpm backup        # Backup SQLite database to backups/
+pnpm dev            # Start backend and frontend development servers
+pnpm dev:backend    # Start backend only
+pnpm dev:frontend   # Start frontend Vite server only
+pnpm build          # Build production web bundle
+pnpm test           # Run full Vitest test suite (240 tests)
+pnpm type-check     # Run TypeScript type validation
+pnpm lint           # Run ESLint validation (--max-warnings=0)
+pnpm desktop:dev    # Launch native Tauri 2.0 Linux desktop client
+pnpm desktop:build  # Compile .deb, .rpm, and .AppImage Linux bundles
+pnpm backup         # Backup SQLite database to backups/
 ```
 
 ---
@@ -208,19 +257,19 @@ VanailaChat is an **open-source project built for the global community, with spe
 
 Everyone is welcome to contribute! You can:
 - 💡 **Suggest Ideas & Features**: Open an issue or join discussions.
-- 🐛 **Report Bugs**: Help us test and refine on different operating systems and hardware.
+- 🐛 **Report Bugs**: Help us test on different Linux distributions and GPU configurations.
 - 💻 **Submit Pull Requests**: Add new provider adapters, UI enhancements, or performance improvements.
-- 🌐 **Localization & Docs**: Help improve documentation and guides.
+- 🌐 **Documentation**: Help translate and improve guides.
 
 To get in touch or collaborate, connect via GitHub or email [care@vanaila.com](mailto:care@vanaila.com).
 
 ---
 
 ## 📜 License & Credits
- 
- - **Free Claude Code (FCC)** integration powered by [@alishahryar1](https://github.com/alishahryar1/free-claude-code) (MIT License).
- - **DeepSeek Harness** integration powered by [DeepSeek AI](https://github.com/deepseek-ai/deepseek-harness.git) (MIT License).
- - Built with ❤️ using React 19, TypeScript, Hono, Vite, and SQLite.
+
+- **Free Claude Code (FCC)** integration powered by [@alishahryar1](https://github.com/alishahryar1/free-claude-code) (MIT License).
+- **DeepSeek Harness** integration powered by [DeepSeek AI](https://github.com/deepseek-ai/deepseek-harness.git) (MIT License).
+- Built with ❤️ using Tauri 2.0, Rust, React 19, TypeScript, Hono, Vite, and SQLite.
 
 <div align="center">
 
