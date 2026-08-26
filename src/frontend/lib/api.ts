@@ -55,6 +55,36 @@ export interface ChatStreamRequest {
   maxTokens?: number;
 }
 
+export interface ApiProjectDto {
+  id: string;
+  name: string;
+  description?: string;
+  instructions?: string;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface ApiChatDto {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  project_root?: string | null;
+  system_prompt?: string | null;
+  model?: string | null;
+  role?: string | null;
+  created_at?: number;
+  updated_at?: number;
+  pinned?: boolean | number;
+}
+
+export interface ApiMessageDto {
+  id: string;
+  chat_id: string;
+  role: string;
+  content: string;
+  created_at?: number;
+}
+
 // ── Dynamic Tauri API Loader ──────────────────────────────────────────
 
 async function getTauriCore() {
@@ -69,11 +99,9 @@ async function getTauriDialog() {
   return await import('@tauri-apps/plugin-dialog');
 }
 
-// ── Generic REST / IPC Helper ─────────────────────────────────────────
+// ── Generic REST Helper ───────────────────────────────────────────────
 
 export async function requestApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  // If in desktop Tauri environment, we can route directly to invoke or fallback to internal bridge
-  // For standard fetch calls, if running as web or if HTTP proxy is active:
   const response = await fetch(endpoint, options);
   if (!response.ok) {
     let errorMsg = `API Error ${response.status}: ${response.statusText}`;
@@ -106,13 +134,153 @@ export async function pickDirectoryDialog(): Promise<string | null> {
     }
   }
 
-  // Web fallback: calls backend /api/pick-directory
   try {
     const res = await requestApi<{ path: string | null }>('/api/pick-directory', { method: 'POST' });
     return res.path ?? null;
   } catch {
     return null;
   }
+}
+
+// ── Projects IPC / REST ───────────────────────────────────────────────
+
+export async function apiFetchProjects(): Promise<ApiProjectDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiProjectDto[]>('get_projects');
+  }
+  const data = await requestApi<{ projects?: ApiProjectDto[] }>('/api/projects');
+  return Array.isArray(data.projects) ? data.projects : [];
+}
+
+export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string }): Promise<ApiProjectDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiProjectDto>('create_project', { payload });
+  }
+  const data = await requestApi<{ project?: ApiProjectDto }>('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.project ?? (payload as ApiProjectDto);
+}
+
+export async function apiDeleteProject(id: string): Promise<boolean> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<boolean>('delete_project', { id });
+  }
+  await requestApi(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return true;
+}
+
+// ── Chats IPC / REST ──────────────────────────────────────────────────
+
+export async function apiFetchChats(): Promise<ApiChatDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiChatDto[]>('get_chats');
+  }
+  const data = await requestApi<{ chats?: ApiChatDto[] }>('/api/chats');
+  return Array.isArray(data.chats) ? data.chats : [];
+}
+
+export async function apiCreateChat(payload: {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  project_root?: string | null;
+  system_prompt?: string | null;
+  model?: string | null;
+  role?: string | null;
+}): Promise<ApiChatDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiChatDto>('create_chat', { payload });
+  }
+  const data = await requestApi<{ chat?: ApiChatDto }>('/api/chats', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.chat ?? (payload as ApiChatDto);
+}
+
+export async function apiDeleteChat(id: string): Promise<boolean> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<boolean>('delete_chat', { id });
+  }
+  await requestApi(`/api/chats/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return true;
+}
+
+// ── Messages IPC / REST ───────────────────────────────────────────────
+
+export async function apiFetchMessages(chatId: string): Promise<ApiMessageDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiMessageDto[]>('get_messages', { chatId });
+  }
+  const data = await requestApi<{ messages?: ApiMessageDto[] }>(`/api/messages/${encodeURIComponent(chatId)}`);
+  return Array.isArray(data.messages) ? data.messages : [];
+}
+
+export async function apiSaveMessage(payload: {
+  id: string;
+  chat_id: string;
+  role: string;
+  content: string;
+}): Promise<ApiMessageDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiMessageDto>('save_message', { payload });
+  }
+  const data = await requestApi<{ message?: ApiMessageDto }>('/api/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: payload.id,
+      chatId: payload.chat_id,
+      role: payload.role,
+      content: payload.content,
+    }),
+  });
+  return data.message ?? payload;
+}
+
+// ── Models & Settings IPC / REST ──────────────────────────────────────
+
+export async function apiFetchModels(): Promise<Array<{ name: string; provider: string; model_type?: string }>> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('get_models');
+  }
+  const data = await requestApi<{ models?: Array<{ name: string; provider: string; model_type?: string }> }>('/api/models');
+  return Array.isArray(data.models) ? data.models : [];
+}
+
+export async function apiFetchSettings(): Promise<Record<string, string>> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<Record<string, string>>('get_settings');
+  }
+  const data = await requestApi<{ settings?: Record<string, string> }>('/api/settings');
+  return data.settings ?? {};
+}
+
+export async function apiUpdateSetting(key: string, value: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('update_setting', { key, value });
+    return;
+  }
+  await requestApi(`/api/settings/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value }),
+  });
 }
 
 // ── Streaming Chat Completions ────────────────────────────────────────
@@ -218,6 +386,28 @@ export async function streamResearch(
   onEvent: (event: Record<string, unknown>) => void,
   signal?: AbortSignal
 ): Promise<void> {
+  if (isTauri) {
+    try {
+      const { invoke } = await getTauriCore();
+      const { listen } = await getTauriEvent();
+
+      let unlisten: (() => void) | null = null;
+      unlisten = await listen('research-status', (event) => {
+        onEvent(event.payload as Record<string, unknown>);
+      });
+
+      try {
+        const res = await invoke<string[]>('start_research', { query });
+        onEvent({ status: 'complete', results: res });
+      } finally {
+        if (unlisten) unlisten();
+      }
+      return;
+    } catch (err) {
+      console.warn('[api] Tauri research IPC failed, falling back to HTTP:', err);
+    }
+  }
+
   const response = await fetch('/api/research', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
