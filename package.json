@@ -1,8 +1,12 @@
 {
   "name": "vanaila-chat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "predev": "node scripts/predev.js",
     "dev": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\"",
@@ -49,7 +53,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/dompurify": "^3.0.5",
     "@types/jsdom": "^28.0.1",
-    "@types/node": "^20.17.10",
+    "@types/node": "^22.13.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
     "@vitejs/plugin-react": "^4.3.4",
