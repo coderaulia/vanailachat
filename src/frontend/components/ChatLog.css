@@ -990,3 +990,71 @@ summary.thought-process__summary:hover {
 [data-theme="dark"] .thought-process__content {
   background: rgba(0, 0, 0, 0.15);
 }
+
+/* ── Responsive & Touch Enhancements ────────────────────────────────── */
+
+.message__prose table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-collapse: collapse;
+}
+
+@media (max-width: 860px) {
+  .chat-log {
+    padding: 12px 0;
+    grid-template-columns: min(100% - 16px, 1180px);
+    gap: 12px;
+  }
+
+  .message {
+    padding: 14px 16px;
+    border-radius: 18px;
+  }
+
+  .message.user {
+    max-width: 90%;
+  }
+
+  .code-block pre {
+    padding: 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-log {
+    padding: 14px 0 10px;
+    grid-template-columns: min(100% - 10px, 1180px);
+    gap: 10px;
+    scroll-padding-top: 16px;
+  }
+
+  .message {
+    padding: 12px 14px;
+    border-radius: 16px;
+    gap: 6px;
+  }
+
+  .message.user {
+    max-width: 96%;
+  }
+
+  .message__meta {
+    font-size: 11px;
+  }
+
+  .message__prose {
+    font-size: 13.5px;
+    gap: 10px;
+  }
+
+  /* Always keep action buttons visible on touch screens */
+  .message__copy-btn,
+  .message__rate-btn,
+  .message__action-btn {
+    opacity: 0.85;
+  }
+}

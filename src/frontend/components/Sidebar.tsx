@@ -39,14 +39,25 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const onNewChatLocal = () => {
     handleNewChat();
     setViewMode('chat');
+    if (typeof window !== 'undefined' && window.innerWidth <= 860) {
+      onClose();
+    }
   };
 
   const onSelectChatLocal = (id: string) => {
     handleSelectChat(id);
     setViewMode('chat');
+    if (typeof window !== 'undefined' && window.innerWidth <= 860) {
+      onClose();
+    }
   };
 
-  const onViewProjectDetail = () => setViewMode('project');
+  const onViewProjectDetail = () => {
+    setViewMode('project');
+    if (typeof window !== 'undefined' && window.innerWidth <= 860) {
+      onClose();
+    }
+  };
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);

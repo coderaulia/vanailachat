@@ -7,7 +7,8 @@
 }
 
 .app-header {
-  padding: 6px 0 8px;
+  padding: 4px 0 6px;
+  flex-shrink: 0;
 }
 
 .header-main,
@@ -21,10 +22,11 @@
 
 .header-main {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 16px;
+  gap: 12px;
+  padding: 0 14px;
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-soft);
@@ -32,12 +34,15 @@
   box-shadow: var(--shadow-soft);
   width: 100%;
   height: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .app-name-badge {
@@ -45,46 +50,76 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text-primary);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .header-summary {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .header-main .icon-btn {
   width: 32px;
   height: 32px;
   min-height: 32px;
+  min-width: 32px;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .status-group {
   display: flex;
+  align-items: center;
   gap: 8px;
   background: var(--bg-surface-strong);
-  padding: 4px;
+  padding: 3px 8px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border-soft);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.status-pill__label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.status-pill__value {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .auto-approve-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 5px;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-radius: var(--radius-full, 999px);
   border: 1px solid var(--border-soft);
   background: var(--bg-surface-strong);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .auto-approve-toggle:hover {
@@ -97,7 +132,7 @@
   background: rgba(245, 158, 11, 0.15);
   border-color: rgba(245, 158, 11, 0.45);
   color: #fbbf24;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
 }
 
 .auto-approve-toggle__icon {
@@ -109,21 +144,57 @@
   letter-spacing: 0.02em;
 }
 
-@media (max-width: 768px) {
-  .header-main {
-    padding: 0 10px;
-    gap: 8px;
-  }
-
-  .app-name-badge {
-    display: none;
-  }
-
+@media (max-width: 860px) {
   .status-group {
     display: none;
   }
+}
 
+@media (max-width: 640px) {
+  .app-header {
+    padding: 2px 0 4px;
+  }
+
+  .header-main {
+    padding: 0 10px;
+    gap: 8px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .header-summary {
+    gap: 6px;
+  }
+
+  /* Compact auto-approve button on mobile */
   .auto-approve-toggle {
+    height: 30px;
     padding: 0 8px;
+  }
+
+  .auto-approve-toggle__label {
+    display: none;
+  }
+
+  /* Hide token toggle on mobile to reduce crowding */
+  .header-summary .icon-btn[aria-label="Toggle token badges"] {
+    display: none;
+  }
+
+  .header-main .icon-btn {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    min-width: 30px;
+  }
+
+  .app-name-badge {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-name-badge {
+    display: none;
   }
 }

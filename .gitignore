@@ -32,8 +32,11 @@ backups/
 # Claude Code / Agent data
 .claude
 .claude/
+GEMINI.md
+CONTEXT.md
 
 # Tauri build output
 src-tauri/target/
 src-tauri/gen/
 
+dist-release/

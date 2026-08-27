@@ -13,6 +13,7 @@ interface AllSettings {
   nine_router_api_key?: string;
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
+  custom_openai_models?: string;
   anthropic_api_key?: string;
   fcc_server_url?: string;
   coding_harness?: string;
@@ -128,6 +129,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [nineRouterKey, setNineRouterKey] = useState('');
   const [customBaseUrl, setCustomBaseUrl] = useState('');
   const [customKey, setCustomKey] = useState('');
+  const [customModels, setCustomModels] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
   // Profile
@@ -203,9 +205,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         } else if (s.nine_router_api_key) {
           setLlmMode('9router');
           setNineRouterKey(s.nine_router_api_key);
-        } else if (s.custom_openai_api_key || s.custom_openai_base_url) {
+        } else if (s.custom_openai_api_key || s.custom_openai_base_url || s.custom_openai_models) {
           setLlmMode('custom');
           if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
+          if (s.custom_openai_models) setCustomModels(s.custom_openai_models);
         } else if (s.openai_api_key) {
           if (s.openai_base_url?.includes('openrouter')) {
             setLlmMode('openrouter');
@@ -223,6 +226,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
         if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
         if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
+        if (s.custom_openai_models) setCustomModels(s.custom_openai_models);
         if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'claude-code') {
           setCodingHarness(s.coding_harness);
         }
@@ -385,8 +389,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     () => persist([
       ['custom_openai_base_url', customBaseUrl.trim()],
       ['custom_openai_api_key', customKey.trim()],
+      ['custom_openai_models', customModels.trim()],
     ]),
-    [persist, customBaseUrl, customKey],
+    [persist, customBaseUrl, customKey, customModels],
   );
 
   const saveAnthropicKey = useCallback(
@@ -491,6 +496,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(nineRouterKey, saveNineRouterConfig, ready);
   useAutosave(customBaseUrl, saveCustomConfig, ready);
   useAutosave(customKey, saveCustomConfig, ready);
+  useAutosave(customModels, saveCustomConfig, ready);
   useAutosave(anthropicKey, saveAnthropicKey, ready);
   useAutosave(fccServerUrl, saveFccServerUrl, ready);
   useAutosave(deepseekApiKey, saveDeepseekApiKey, ready);
@@ -720,6 +726,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         onBlur={saveCustomConfig}
                         placeholder="sk-..."
                       />
+                    </div>
+                  )}
+
+                  {llmMode === 'custom' && (
+                    <div className="settings-field">
+                      <label className="settings-label">Custom Models (IDs)</label>
+                      <input
+                        className="settings-input"
+                        value={customModels}
+                        onChange={(e) => setCustomModels(e.target.value)}
+                        onBlur={saveCustomConfig}
+                        placeholder="gpt-4o, claude-3-7-sonnet-20250219, deepseek-chat"
+                      />
+                      <p className="settings-hint">
+                        Comma-separated model names or IDs. Useful when the provider does not support dynamic discovery via /models.
+                      </p>
                     </div>
                   )}
 

@@ -8,6 +8,7 @@ import {
   type OpenAIUsage,
 } from './openAICompat.js';
 import { DatabaseService } from './database.js';
+import { appFetch } from './httpClient.js';
 
 /**
  * OpenAI-compatible provider (covers OpenAI, Azure, etc.)
@@ -70,7 +71,7 @@ export class OpenAIProvider implements LLMProvider {
       if (apiKey) {
         headers.Authorization = `Bearer ${apiKey}`;
       }
-      const response = await fetch(`${baseUrl}/models`, { headers });
+      const response = await appFetch(`${baseUrl}/models`, { headers });
       if (!response.ok) return [];
       const data = (await response.json()) as {
         data?: Array<{
@@ -135,7 +136,7 @@ export class OpenAIProvider implements LLMProvider {
       if (apiKey) {
         headers.Authorization = `Bearer ${apiKey}`;
       }
-      const response = await fetch(`${baseUrl}/models/${modelName}`, { headers });
+      const response = await appFetch(`${baseUrl}/models/${modelName}`, { headers });
       if (!response.ok) return null;
       return (await response.json()) as Record<string, unknown>;
     } catch {

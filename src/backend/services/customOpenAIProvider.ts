@@ -8,6 +8,7 @@ import {
   type OpenAIUsage,
 } from './openAICompat.js';
 import { DatabaseService } from './database.js';
+import { appFetch } from './httpClient.js';
 
 /**
  * Custom OpenAI-compatible provider — points at any provider that speaks the
@@ -32,10 +33,27 @@ export class CustomOpenAIProvider implements LLMProvider {
   private getBaseUrl(): string {
     try {
       const url = DatabaseService.getSetting('custom_openai_base_url') ?? process.env.CUSTOM_OPENAI_BASE_URL ?? '';
-      return url.trim().replace(/\/+$/, '');
+      return url.trim().replace(/\/+$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '');
     } catch {
-      return (process.env.CUSTOM_OPENAI_BASE_URL ?? '').trim().replace(/\/+$/, '');
+      return (process.env.CUSTOM_OPENAI_BASE_URL ?? '')
+        .trim()
+        .replace(/\/+$/, '')
+        .replace(/\/chat\/completions\/?$/, '')
+        .replace(/\/+$/, '');
     }
+  }
+
+  private getCustomModels(): string[] {
+    let raw = '';
+    try {
+      raw = DatabaseService.getSetting('custom_openai_models') ?? process.env.CUSTOM_OPENAI_MODELS ?? '';
+    } catch {
+      raw = process.env.CUSTOM_OPENAI_MODELS ?? '';
+    }
+    return raw
+      .split(/[,\n]+/)
+      .map((m) => m.trim())
+      .filter(Boolean);
   }
 
   async listModels(): Promise<string[]> {
@@ -46,43 +64,86 @@ export class CustomOpenAIProvider implements LLMProvider {
   async getInstalledModelMetadata(): Promise<import('./ollama.js').InstalledModelMetadata[]> {
     const apiKey = this.getApiKey();
     const baseUrl = this.getBaseUrl();
-    if (!baseUrl) return [];
-    try {
-      const headers: Record<string, string> = {
-        'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
-        'X-Title': 'VanailaChat',
-      };
-      if (apiKey) {
-        headers.Authorization = `Bearer ${apiKey}`;
+    const configuredModels = this.getCustomModels();
+
+    if (!baseUrl && configuredModels.length === 0) return [];
+
+    const discoveredMap = new Map<string, import('./ollama.js').InstalledModelMetadata>();
+
+    // 1. If base URL is configured, try dynamic discovery via GET /models
+    if (baseUrl) {
+      try {
+        const headers: Record<string, string> = {
+          'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
+          'X-Title': 'VanailaChat',
+        };
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`;
+        }
+        const response = await appFetch(`${baseUrl}/models`, { headers });
+        if (response.ok) {
+          const data = (await response.json()) as {
+            data?: Array<{
+              id?: string;
+              name?: string;
+              context_length?: number;
+              max_model_len?: number;
+              context_window?: number;
+              max_context_length?: number;
+            }>;
+          } | Array<{ id?: string; name?: string }>;
+
+          const rawList = Array.isArray(data)
+            ? data
+            : Array.isArray(data.data)
+            ? data.data
+            : [];
+
+          for (const m of rawList) {
+            const id = m.id || m.name;
+            if (!id) continue;
+            const modelRecord = m as Record<string, unknown>;
+            const contextWindow =
+              typeof modelRecord.context_length === 'number' && modelRecord.context_length > 0
+                ? modelRecord.context_length
+                : typeof modelRecord.max_model_len === 'number' && modelRecord.max_model_len > 0
+                ? modelRecord.max_model_len
+                : typeof modelRecord.context_window === 'number' && modelRecord.context_window > 0
+                ? modelRecord.context_window
+                : typeof modelRecord.max_context_length === 'number' && modelRecord.max_context_length > 0
+                ? modelRecord.max_context_length
+                : null;
+
+            discoveredMap.set(id, {
+              name: id,
+              model: id,
+              contextWindow,
+              capabilities: ['chat', 'tools'],
+              architecture: null,
+              parameters: null,
+              family: null,
+              families: null,
+              format: null,
+              parameterSize: null,
+              quantizationLevel: null,
+              modifiedAt: null,
+              size: null,
+              digest: null,
+            });
+          }
+        }
+      } catch {
+        // Fall back to configured models if remote discovery fails
       }
-      const response = await fetch(`${baseUrl}/models`, { headers });
-      if (!response.ok) return [];
-      const data = (await response.json()) as {
-        data?: Array<{
-          id: string;
-          context_length?: number;
-          max_model_len?: number;
-          context_window?: number;
-          max_context_length?: number;
-        }>;
-      };
+    }
 
-      return (data.data ?? []).map((m) => {
-        const contextWindow =
-          typeof m.context_length === 'number' && m.context_length > 0
-            ? m.context_length
-            : typeof m.max_model_len === 'number' && m.max_model_len > 0
-            ? m.max_model_len
-            : typeof m.context_window === 'number' && m.context_window > 0
-            ? m.context_window
-            : typeof m.max_context_length === 'number' && m.max_context_length > 0
-            ? m.max_context_length
-            : null;
-
-        return {
-          name: m.id,
-          model: m.id,
-          contextWindow,
+    // 2. Merge user-configured custom models (or use as fallback)
+    for (const modelName of configuredModels) {
+      if (!discoveredMap.has(modelName)) {
+        discoveredMap.set(modelName, {
+          name: modelName,
+          model: modelName,
+          contextWindow: null,
           capabilities: ['chat', 'tools'],
           architecture: null,
           parameters: null,
@@ -94,11 +155,11 @@ export class CustomOpenAIProvider implements LLMProvider {
           modifiedAt: null,
           size: null,
           digest: null,
-        };
-      });
-    } catch {
-      return [];
+        });
+      }
     }
+
+    return Array.from(discoveredMap.values());
   }
 
   async getModelDetails(modelName: string): Promise<Record<string, unknown> | null> {
@@ -113,7 +174,7 @@ export class CustomOpenAIProvider implements LLMProvider {
       if (apiKey) {
         headers.Authorization = `Bearer ${apiKey}`;
       }
-      const response = await fetch(`${baseUrl}/models/${modelName}`, { headers });
+      const response = await appFetch(`${baseUrl}/models/${modelName}`, { headers });
       if (!response.ok) return null;
       return (await response.json()) as Record<string, unknown>;
     } catch {
@@ -122,6 +183,8 @@ export class CustomOpenAIProvider implements LLMProvider {
   }
 
   async isModelAvailable(modelName: string): Promise<boolean> {
+    const configuredModels = this.getCustomModels();
+    if (configuredModels.includes(modelName)) return true;
     if (!this.getBaseUrl()) return false;
     const models = await this.listModels();
     return models.includes(modelName);

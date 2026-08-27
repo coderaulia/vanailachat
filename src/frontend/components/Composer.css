@@ -170,21 +170,28 @@
   justify-content: space-between;
   gap: 10px;
   margin-top: 8px;
-  flex-wrap: wrap;
 }
 
 .composer-toolbar__right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
   flex-wrap: nowrap;
 }
 
 .send-btn {
-  padding-left: 18px;
-  padding-right: 22px;
-  height: 40px;
+  padding: 0 16px;
+  height: 36px;
+  min-height: 36px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--radius-full, 999px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .chat-status {
@@ -210,7 +217,16 @@
 .role-picker {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  padding: 2px 16px 4px 2px;
+}
+
+.role-picker::-webkit-scrollbar {
+  display: none;
 }
 
 .role-chip {
@@ -220,12 +236,14 @@
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 5px 11px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .role-chip__icon {
@@ -265,7 +283,8 @@
 .composer-model {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .composer-model label {
@@ -287,7 +306,8 @@
 .composer-context {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .composer-context label {
@@ -302,25 +322,26 @@
 .context-status {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 140px;
-  padding: 0 12px;
-  height: 36px;
+  gap: 8px;
+  min-width: 120px;
+  padding: 0 10px;
+  height: 34px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
   background: var(--bg-surface);
 }
 
 .context-status__text {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .context-status__meter {
   display: block;
-  width: 60px;
-  height: 6px;
+  width: 48px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(23, 23, 23, 0.08);
   overflow: hidden;
@@ -343,37 +364,145 @@
   background: linear-gradient(90deg, #d5644b 0%, #b6452f 100%);
 }
 
+.icon-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
 
-/* Improved mobile responsiveness */
-@media (max-width: 640px) {
+.icon-group .icon-btn {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full, 999px);
+}
+
+.composer-clear-btn {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: var(--radius-full, 999px);
+  flex-shrink: 0;
+}
+
+/* Responsive tablet & mobile toolbar */
+@media (max-width: 900px) {
   .composer-toolbar {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
-  }
-
-  .composer-toolbar__right {
-    flex-wrap: wrap;
-    justify-content: flex-start;
+    margin-top: 6px;
   }
 
   .role-picker {
-    flex-wrap: wrap;
-    justify-content: center;
+    padding: 2px 4px 6px;
+    width: 100%;
+    box-sizing: border-box;
   }
+}
 
-  .composer-model,
-  .composer-context {
+@media (min-width: 641px) and (max-width: 900px) {
+  .composer-toolbar__right {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
     width: 100%;
   }
 
-  .composer-model label,
+  .composer-model {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .composer-model label {
+    display: none;
+  }
+
+  .composer-context {
+    display: flex;
+  }
+
   .composer-context label {
     display: none;
   }
 
   .send-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .composer {
+    padding: 10px 12px;
+    border-radius: 18px;
+  }
+
+  .composer-toolbar__right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 6px;
     width: 100%;
+  }
+
+  /* Sub-row 1 on mobile: Model Selector + Clear Button */
+  .composer-model {
+    flex: 1 1 auto;
+    min-width: 140px;
+    max-width: calc(100% - 76px);
+  }
+
+  .composer-model label {
+    display: none;
+  }
+
+  .composer-context {
+    display: none;
+  }
+
+  .composer-clear-btn {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 11.5px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  /* Sub-row 2 on mobile: Action Icons on left + Send Button on right */
+  .icon-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 auto;
+  }
+
+  .icon-group .icon-btn {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    min-width: 34px;
+    flex-shrink: 0;
+  }
+
+  .send-btn {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 12.5px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-left: auto;
   }
 }
 

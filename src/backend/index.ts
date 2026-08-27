@@ -2,9 +2,33 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
-import { existsSync } from 'node:fs';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setDefaultResultOrder } from 'node:dns';
+import { setGlobalDispatcher, EnvHttpProxyAgent } from 'undici';
+
+// Prefer IPv4 over IPv6 to avoid connection timeouts (ETIMEDOUT / internalConnectMultiple)
+// on networks where IPv6 is configured on the host but not routed externally.
+try {
+  setDefaultResultOrder('ipv4first');
+} catch {
+  // best-effort
+}
+
+// Automatically configure Node.js global fetch to respect system proxy variables
+// (HTTP_PROXY, HTTPS_PROXY, http_proxy, https_proxy, NO_PROXY, no_proxy)
+try {
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy;
+  if (proxyUrl) {
+    setGlobalDispatcher(new EnvHttpProxyAgent());
+  }
+} catch {
+  // best-effort proxy setup
+}
 
 // Automatically load local .env and .env.local files if present
 for (const envFileName of ['.env', '.env.local']) {

@@ -8,6 +8,7 @@ import {
   type OpenAIUsage,
 } from './openAICompat.js';
 import { DatabaseService } from './database.js';
+import { appFetch } from './httpClient.js';
 
 /**
  * OpenRouter provider — routes to 100+ models via OpenRouter's API.
@@ -53,7 +54,7 @@ export class OpenRouterProvider implements LLMProvider {
     const baseUrl = this.getBaseUrl();
     if (!baseUrl || !apiKey) return [];
     try {
-      const response = await fetch(`${baseUrl}/models`, {
+      const response = await appFetch(`${baseUrl}/models`, {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'HTTP-Referer': 'https://github.com/coderaulia/vanailachat',
@@ -118,7 +119,7 @@ export class OpenRouterProvider implements LLMProvider {
       if (apiKey) {
         headers.Authorization = `Bearer ${apiKey}`;
       }
-      const response = await fetch(`${baseUrl}/models/${modelName}`, { headers });
+      const response = await appFetch(`${baseUrl}/models/${modelName}`, { headers });
       if (!response.ok) return null;
       return (await response.json()) as Record<string, unknown>;
     } catch {

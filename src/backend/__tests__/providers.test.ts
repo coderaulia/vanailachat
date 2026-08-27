@@ -119,6 +119,47 @@ describe('LLM Providers database settings and model resolution', () => {
     expect(await provider.isModelAvailable('local-model-1')).toBe(true);
   });
 
+  it('CustomOpenAIProvider falls back to custom_openai_models when remote discovery fails', async () => {
+    DatabaseService.upsertSetting('custom_openai_base_url', 'https://api.vikey.ai/v1');
+    DatabaseService.upsertSetting('custom_openai_api_key', 'vk-test-key');
+    DatabaseService.upsertSetting('custom_openai_models', 'gpt-4o, claude-3-7-sonnet, deepseek-chat');
+
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new CustomOpenAIProvider();
+    const models = await provider.listModels();
+
+    expect(models).toEqual(['gpt-4o', 'claude-3-7-sonnet', 'deepseek-chat']);
+    expect(await provider.isModelAvailable('claude-3-7-sonnet')).toBe(true);
+    expect(await provider.isModelAvailable('non-existent-model')).toBe(false);
+  });
+
+  it('CustomOpenAIProvider sanitizes base URL containing /chat/completions suffix', async () => {
+    DatabaseService.upsertSetting('custom_openai_base_url', 'https://api.vikey.ai/v1/chat/completions/');
+    DatabaseService.upsertSetting('custom_openai_api_key', 'vk-test-key');
+    DatabaseService.upsertSetting('custom_openai_models', 'gpt-4o');
+
+    let capturedUrl = '';
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      capturedUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          data: [{ id: 'remote-model-1' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    const provider = new CustomOpenAIProvider();
+    const models = await provider.listModels();
+
+    expect(capturedUrl).toBe('https://api.vikey.ai/v1/models');
+    expect(models).toContain('remote-model-1');
+    expect(models).toContain('gpt-4o');
+  });
+
   it('OpenRouterProvider extracts context_length including 1M context models', async () => {
     DatabaseService.upsertSetting('openrouter_api_key', 'sk-or-v1-testkey');
     DatabaseService.upsertSetting('openrouter_base_url', 'https://openrouter.ai/api/v1');

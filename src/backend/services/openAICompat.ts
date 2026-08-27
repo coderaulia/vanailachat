@@ -1,3 +1,26 @@
+import { setDefaultResultOrder } from 'node:dns';
+import { setGlobalDispatcher, EnvHttpProxyAgent } from 'undici';
+import { appFetch } from './httpClient.js';
+
+try {
+  setDefaultResultOrder('ipv4first');
+} catch {
+  // best-effort
+}
+
+try {
+  const proxyUrl =
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy;
+  if (proxyUrl) {
+    setGlobalDispatcher(new EnvHttpProxyAgent());
+  }
+} catch {
+  // best-effort proxy setup
+}
+
 /**
  * Shared bits for the OpenAI-compatible providers (OpenAI, 9Router, custom).
  *
@@ -101,7 +124,11 @@ export async function postChatCompletions(options: {
     ? { ...body, stream_options: { include_usage: true } }
     : body;
 
-  const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '');
+  const normalizedBaseUrl = baseUrl
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions\/?$/, '')
+    .replace(/\/+$/, '');
   const trimmedKey = (apiKey || '').trim();
 
   const headers: Record<string, string> = {
@@ -115,14 +142,43 @@ export async function postChatCompletions(options: {
   }
 
   const send = (payload: Record<string, unknown>) =>
-    fetch(`${normalizedBaseUrl}/chat/completions`, {
+    appFetch(`${normalizedBaseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       signal,
       body: JSON.stringify(payload),
     });
 
-  let response = await send(requestBody);
+  let response: Response;
+  try {
+    response = await send(requestBody);
+  } catch (error) {
+    console.error(`[${providerLabel}] Outbound fetch error:`, error);
+    const errorRecord = error as Record<string, unknown>;
+    const message = error instanceof Error ? error.message : String(error);
+    const causeObj = errorRecord?.cause;
+    let causeDetail = '';
+    if (causeObj instanceof Error) {
+      causeDetail = `${causeObj.name}: ${causeObj.message}`;
+    } else if (causeObj && typeof causeObj === 'object') {
+      try {
+        causeDetail = JSON.stringify(causeObj);
+      } catch {
+        causeDetail = String(causeObj);
+      }
+    } else if (causeObj) {
+      causeDetail = String(causeObj);
+    }
+
+    const isTimeout = message.includes('ETIMEDOUT') || causeDetail.includes('ETIMEDOUT');
+    if (isTimeout) {
+      throw new Error(
+        `[${providerLabel}] Connection timed out connecting to ${normalizedBaseUrl}. Please check your network connection, proxy settings, or endpoint URL.`,
+      );
+    }
+    const finalReason = causeDetail || message || 'Network connection failed';
+    throw new Error(`[${providerLabel}] Failed to connect to ${normalizedBaseUrl}: ${finalReason}`);
+  }
 
   if (!response.ok && response.status === 400 && streaming) {
     const errorText = await response.clone().text();
@@ -149,8 +205,20 @@ export async function postChatCompletions(options: {
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`${providerLabel} API error: ${response.status} ${errorText}`);
+    let errorText = await response.text();
+    try {
+      const parsed = JSON.parse(errorText) as { error?: { message?: string } | string; message?: string };
+      if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) {
+        errorText = parsed.error.message;
+      } else if (typeof parsed.error === 'string') {
+        errorText = parsed.error;
+      } else if (typeof parsed.message === 'string') {
+        errorText = parsed.message;
+      }
+    } catch {
+      // keep raw error text
+    }
+    throw new Error(`${providerLabel} error: ${errorText} (HTTP ${response.status})`);
   }
 
   return response;

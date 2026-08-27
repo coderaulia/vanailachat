@@ -445,7 +445,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
               />
 
               {/* Clear + Send */}
-              <button type="button" className="btn btn-secondary" onClick={onNewChat}>
+              <button type="button" className="btn btn-secondary composer-clear-btn" onClick={onNewChat} title="Clear current chat">
                 Clear
               </button>
 
