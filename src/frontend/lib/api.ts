@@ -474,3 +474,53 @@ export async function streamResearch(
     }
   }
 }
+
+// ── Data Backup & Restore ─────────────────────────────────────────────
+
+export async function apiExportData(): Promise<Record<string, unknown>> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('export_data');
+  }
+  const res = await fetch('/api/export');
+  if (!res.ok) throw new Error('Export failed');
+  return res.json();
+}
+
+export async function apiImportData(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('import_data', { payload });
+  }
+  const res = await fetch('/api/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Import failed');
+  return res.json();
+}
+
+// ── Git & Codebase Activity ───────────────────────────────────────────
+
+export async function apiGetGitStatus(workspaceRoot: string): Promise<{ branch: string; is_clean: boolean; files: string[] }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('get_git_status', { workspaceRoot });
+  }
+  const res = await fetch(`/api/git/status?workspace=${encodeURIComponent(workspaceRoot)}`);
+  if (!res.ok) throw new Error('Failed to get git status');
+  return res.json();
+}
+
+export async function apiGetGitDiff(workspaceRoot: string): Promise<string> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('get_git_diff', { workspaceRoot });
+  }
+  const res = await fetch(`/api/git/diff?workspace=${encodeURIComponent(workspaceRoot)}`);
+  if (!res.ok) throw new Error('Failed to get git diff');
+  const data = await res.json() as { diff?: string };
+  return data.diff ?? '';
+}
+
