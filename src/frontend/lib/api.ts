@@ -58,8 +58,10 @@ export interface ChatStreamRequest {
 export interface ApiProjectDto {
   id: string;
   name: string;
-  description?: string;
-  instructions?: string;
+  description?: string | null;
+  instructions?: string | null;
+  memory?: string | null;
+  pinned?: boolean;
   created_at?: number;
   updated_at?: number;
 }
@@ -75,6 +77,7 @@ export interface ApiChatDto {
   created_at?: number;
   updated_at?: number;
   pinned?: boolean | number;
+  usage?: number;
 }
 
 export interface ApiMessageDto {

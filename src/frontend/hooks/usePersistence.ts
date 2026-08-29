@@ -33,15 +33,14 @@ export function usePersistence() {
   const fetchProjects = async () => {
     try {
       const loadedProjects = await apiFetchProjects();
-      const mapped = loadedProjects.map((p) => ({
+      const mapped: ApiProject[] = loadedProjects.map((p) => ({
         id: p.id,
         name: p.name,
-        description: p.description,
-        instructions: p.instructions,
-        memory: p.memory,
-        pinned: p.pinned,
+        description: p.description ?? null,
+        instructions: p.instructions ?? null,
+        memory: p.memory ?? null,
+        pinned: Boolean(p.pinned),
         createdAt: p.created_at ?? Date.now(),
-        updatedAt: p.updated_at ?? Date.now(),
       }));
       setProjects(mapped);
       return mapped;
@@ -65,7 +64,7 @@ export function usePersistence() {
         model: c.model ?? undefined,
         projectRoot: c.project_root ?? undefined,
         systemPrompt: c.system_prompt ?? undefined,
-        pinned: c.pinned,
+        pinned: Boolean(c.pinned),
         role: c.role ?? undefined,
         createdAt: c.created_at ?? Date.now(),
         updatedAt: c.updated_at ?? Date.now(),
@@ -152,23 +151,22 @@ export function usePersistence() {
     try {
       const updated = await apiUpdateProject(id, {
         name: updates.name,
-        description: updates.description,
-        instructions: updates.instructions,
-        memory: updates.memory,
+        description: updates.description ?? undefined,
+        instructions: updates.instructions ?? undefined,
+        memory: updates.memory ?? undefined,
         pinned: updates.pinned,
       });
       if (updated) {
         const mapped: ApiProject = {
           id: updated.id,
           name: updated.name,
-          description: updated.description,
-          instructions: updated.instructions,
-          memory: updated.memory,
-          pinned: updated.pinned,
+          description: updated.description ?? null,
+          instructions: updated.instructions ?? null,
+          memory: updated.memory ?? null,
+          pinned: Boolean(updated.pinned),
           createdAt: updated.created_at ?? Date.now(),
-          updatedAt: updated.updated_at ?? Date.now(),
         };
-        setProjects(prev => prev.map(p => p.id === id ? mapped : p));
+        setProjects((prev) => prev.map((p) => (p.id === id ? mapped : p)));
         return mapped;
       }
     } catch {
@@ -184,7 +182,7 @@ export function usePersistence() {
     const data = await response.json() as { project?: ApiProject };
     if (!data.project) throw new Error('Missing project in response');
     
-    setProjects(prev => prev.map(p => p.id === id ? data.project! : p));
+    setProjects((prev) => prev.map((p) => (p.id === id ? data.project! : p)));
     return data.project;
   };
 
@@ -197,7 +195,7 @@ export function usePersistence() {
         content: m.content,
         promptTokens: null,
         completionTokens: null,
-        timestamp: m.created_at,
+        timestamp: m.created_at ?? Date.now(),
       }));
     } catch {
       const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);

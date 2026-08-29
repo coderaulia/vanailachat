@@ -88,10 +88,10 @@ export function useChatApp() {
             updatedAt: chat.updatedAt,
             pinned: Boolean(chat.pinned),
             role: chat.role || DEFAULT_MODEL_ROLE,
-            model: chat.model,
+            model: chat.model ?? null,
             projectRoot: chat.projectRoot || null,
             systemPrompt: chat.systemPrompt || null,
-            usage: chat.usage ?? 0,
+            usage: ('usage' in chat && typeof (chat as { usage?: number }).usage === 'number') ? (chat as { usage?: number }).usage! : 0,
           };
           return acc;
         }, {});
