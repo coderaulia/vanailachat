@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ModelRole, MODEL_ROLE_MAP, MODEL_ROLE_LABELS } from '../config/modelRoles';
+import { ModelRole, MODEL_ROLE_LABELS } from '../config/modelRoles';
 import { MODEL_STORAGE_KEY, DEFAULT_MODEL_ROLE } from '../config/constants';
 import type { ModelMetadata, ModelMetadataMap } from '../config/modelMetadata';
 
@@ -54,12 +54,12 @@ const getSuggestedRole = (p: string, hasImage: boolean): ModelRole | null => {
   if (hasImage) return 'vision';
   const lowered = p.toLowerCase();
   const hasCodeFence = lowered.includes('```');
-  const hasFileExtension = /\b[\w-]+\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|cs|rb|php|html|css|json)\b/.test(lowered);
-  const hasCodingKeyword = /\b(debug|refactor|write|design|implement|function|class)\b/.test(lowered);
-  const hasImageKeyword = /\b(image|draw|generate|paint|visualize|picture|photo|sketch|flux)\b/.test(lowered);
+  const hasFileExtension = /\b[\w-]+\.(ts|tsx|js|jsx|py|go|rs|java|cpp|c|cs|rb|php|html|css|json|sql|sh)\b/.test(lowered);
+  const hasCodingKeyword = /\b(debug|refactor|write\s+code|code|coding|script|python|javascript|typescript|golang|rust|implement|function|class|algorithm|regex|git|bug|error|sql|endpoint|api)\b/.test(lowered);
+  const hasWritingKeyword = /\b(essay|article|blog|draft|email|newsletter|summary|summarize|rewrite|proofread|story)\b/.test(lowered);
 
-  if (hasImageKeyword) return 'creative';
   if (hasCodeFence || hasFileExtension || hasCodingKeyword) return 'coding';
+  if (hasWritingKeyword) return 'writing';
   return null;
 };
 
@@ -72,12 +72,39 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
   const [dismissedSuggestionPrompt, setDismissedSuggestionPrompt] = useState<string | null>(null);
 
   const getRoleRecommendedModels = useCallback((role: ModelRole): string[] => {
-    if (!Array.isArray(availableModels)) return [];
-    const recommended = MODEL_ROLE_MAP[role];
-    return availableModels.filter((m) =>
-      recommended.some((r) => m.toLowerCase().includes(r.toLowerCase()))
-    );
-  }, [availableModels]);
+    if (!Array.isArray(availableModels) || availableModels.length === 0) return [];
+
+    const scored = availableModels.map((modelName) => {
+      const meta = modelMetadata[modelName];
+      const capabilities = (meta?.capabilities ?? []).map((c) => c.toLowerCase());
+      const lower = modelName.toLowerCase();
+      let score = 0;
+
+      if (role === 'coding') {
+        if (capabilities.includes('code') || capabilities.includes('tools')) score += 10;
+        if (/coder|coding|starcoder|codestral|dev|deepseek-coder|qwen.*coder|sonnet|opus|gpt-4|gpt-5/.test(lower)) score += 8;
+        if (/qwen|deepseek|claude|glm/.test(lower)) score += 4;
+      } else if (role === 'vision') {
+        if (capabilities.includes('vision') || capabilities.includes('image') || capabilities.includes('multimodal')) score += 12;
+        if (/vision|vl|4o|5|gemini|pixtral|llava|internvl|florence|flux/.test(lower)) score += 8;
+      } else if (role === 'writing') {
+        if (capabilities.includes('content') || capabilities.includes('writing')) score += 10;
+        if (/pro|opus|sonnet|large|kimi|luna|deepseek|llama|qwen|gemma/.test(lower)) score += 6;
+      } else {
+        if (capabilities.includes('chat')) score += 5;
+        score += 1;
+      }
+
+      return { modelName, score };
+    });
+
+    const matches = scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.modelName);
+
+    return matches.length > 0 ? matches : availableModels;
+  }, [availableModels, modelMetadata]);
 
   const fetchModels = useCallback(async () => {
     try {
@@ -139,8 +166,7 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
     () => (suggestedRole ? getRoleRecommendedModels(suggestedRole) : []),
     [getRoleRecommendedModels, suggestedRole]
   );
-  const suggestedModelName =
-    suggestedModels[0] || (suggestedRole ? MODEL_ROLE_MAP[suggestedRole][0] : '');
+  const suggestedModelName = suggestedModels[0] || availableModels[0] || '';
 
   const setSelectedModel = (model: string) => {
     setSelectedModelState(model);

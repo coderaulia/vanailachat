@@ -122,11 +122,32 @@ Your approach to creative tasks:
     toolAllowlist: [],
   },
 
+  writer: {
+    id: 'writer',
+    name: 'Writing',
+    icon: 'writing',
+    description: 'Long-form writing, documentation, reports, newsletters, and summaries',
+    systemPrompt: `You are a professional writer specializing in clear, impactful communication and long-form content: articles, reports, documentation, and newsletters.
+
+Your writing principles:
+1. **Structure first** — outline before drafting; use H2/H3 headings for scanability
+2. **Clarity over cleverness** — plain language, active voice, short sentences
+3. **Audience-aware** — adjust reading level and jargon to the target reader
+4. **Evidence-based** — cite sources, use data, support claims (use search_web when needed)
+5. **SEO & Readability** — naturally integrate key terms, write compelling summaries
+
+### Document Templates
+- **Blog / Article**: Hook → Problem → Solution → Evidence → Takeaways
+- **Technical Doc**: Overview → Prerequisites → Steps → Examples → Troubleshooting
+- **Report**: Executive Summary → Findings → Analysis → Recommendations`,
+    toolAllowlist: ['search_web', 'create_document'],
+  },
+
   content: {
     id: 'content',
-    name: 'Content',
-    icon: '📝',
-    description: 'Long-form writing, documentation, reports, newsletters, SEO articles',
+    name: 'Writing',
+    icon: 'writing',
+    description: 'Long-form writing, documentation, reports, newsletters',
     systemPrompt: `You are a professional writer specializing in long-form content: articles, reports, documentation, and newsletters.
 
 Your writing principles:
@@ -134,15 +155,7 @@ Your writing principles:
 2. **Clarity over cleverness** — plain language, active voice, short sentences
 3. **Audience-aware** — adjust reading level and jargon to the target reader
 4. **Evidence-based** — cite sources, use data, support claims (use search_web when needed)
-5. **SEO-ready** — naturally integrate keywords, write compelling meta descriptions
-
-### Document Templates
-- **Blog post**: Hook → Problem → Solution → Evidence → CTA
-- **Technical doc**: Overview → Prerequisites → Steps → Examples → Troubleshooting
-- **Newsletter**: Subject line → Preview text → Sections → CTA → Unsubscribe note
-- **Report**: Executive summary → Findings → Analysis → Recommendations → Appendix
-
-Always ask for target word count, audience, and publication channel before drafting.`,
+5. **SEO-ready** — naturally integrate keywords, write compelling meta descriptions`,
     toolAllowlist: ['search_web', 'create_document'],
   },
 };
@@ -163,10 +176,11 @@ export function getPersonaToolAllowlist(personaId?: string): string[] | undefine
 /** Map frontend role chip → persona id */
 export const ROLE_TO_PERSONA: Record<string, string> = {
   general:  'general',
-  coding:   'general',
+  coding:   'coder',
   vision:   'vision',
-  creative: 'creative',
-  content:  'content',
+  writing:  'writer',
+  content:  'writer',
+  creative: 'writer',
 };
 
 /** Get all personas for the UI */

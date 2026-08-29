@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { ChatHeader } from './components/ChatHeader';
 import { ChatLog } from './components/ChatLog';
 import { Composer } from './components/Composer';
@@ -20,13 +20,32 @@ const SettingsModal = lazy(() =>
 const ProjectDetail = lazy(() =>
   import('./components/ProjectDetail').then((m) => ({ default: m.ProjectDetail })),
 );
+const ProjectsLanding = lazy(() =>
+  import('./components/ProjectsLanding').then((m) => ({ default: m.ProjectsLanding })),
+);
 
 const AppShell = () => {
   const renderMarkdown = useMarkdownRenderer();
+  const { show: showOnboarding, markDone } = useOnboarding();
   const thinkingStart = useRef<number | null>(null);
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
-  const [showTokens, setShowTokens] = useState(false);
-  const { show: showOnboarding, markDone } = useOnboarding();
+  const [showTokens, setShowTokens] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('vanaila_show_tokens');
+    return saved === null ? true : saved === 'true';
+  });
+
+  const handleToggleTokens = useCallback(() => {
+    setShowTokens((previous) => {
+      const next = !previous;
+      try {
+        localStorage.setItem('vanaila_show_tokens', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Per-model rates the built-in table cannot know — a gateway serves its own
@@ -50,8 +69,6 @@ const AppShell = () => {
     projectRoot,
     isCurrentChatSending,
     isSidebarOpen,
-    projects,
-    selectedProjectId,
     viewMode,
     handleNewChat,
     toggleSidebar,
@@ -147,31 +164,20 @@ const AppShell = () => {
       <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="main-content">
-        {viewMode === 'project' ? (
-          (() => {
-            const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
-            if (currentProject) {
-              return (
-                <Suspense fallback={null}>
-                  <ProjectDetail />
-                </Suspense>
-              );
-            }
-            return (
-              <div className="welcome-screen">
-                <div className="welcome-content">
-                  <h1>Welcome to Vanaila Chat</h1>
-                  <p>Create a project or select an existing one to get started.</p>
-                </div>
-              </div>
-            );
-          })()
+        {viewMode === 'projects' ? (
+          <Suspense fallback={null}>
+            <ProjectsLanding />
+          </Suspense>
+        ) : viewMode === 'project' ? (
+          <Suspense fallback={null}>
+            <ProjectDetail />
+          </Suspense>
         ) : (
           <>
             <ChatHeader
               showTokens={showTokens}
               thinkingSeconds={thinkingSeconds}
-              onToggleShowTokens={() => setShowTokens((previous) => !previous)}
+              onToggleShowTokens={handleToggleTokens}
               isCodebasePanelOpen={isCodebasePanelOpen}
               onToggleCodebasePanel={() => setIsCodebasePanelOpen((prev) => !prev)}
             />

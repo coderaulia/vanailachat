@@ -10,6 +10,39 @@ import './Composer.css';
 
 import { useChat } from '../context/ChatContext';
 
+const renderRoleIcon = (role: string) => {
+  switch (role) {
+    case 'coding':
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="16 18 22 12 16 6" />
+          <polyline points="8 6 2 12 8 18" />
+        </svg>
+      );
+    case 'vision':
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case 'writing':
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 19l7-7 3 3-7 7-3-3z" />
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+          <path d="M2 2l7.586 7.586" />
+        </svg>
+      );
+    default:
+      return (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l2.4 7.2L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" />
+        </svg>
+      );
+  }
+};
+
 interface ComposerProps {
   thinkingSeconds: number;
 }
@@ -375,7 +408,8 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                   onClick={() => handleRoleClick(role as ModelRole)}
                   title={getPersonaForRole(role).description}
                 >
-                  <span className="role-chip__icon">{getPersonaForRole(role).icon}</span> {label}
+                  <span className="role-chip__icon">{renderRoleIcon(role)}</span>
+                  <span>{label}</span>
                 </button>
               ))}
             </div>

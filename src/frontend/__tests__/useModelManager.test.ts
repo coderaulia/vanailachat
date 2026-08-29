@@ -39,10 +39,10 @@ describe('useModelManager hook', () => {
     expect(result.current.suggestedRoleLabel).toBe('Coding');
   });
 
-  it('detects creative task from prompt', () => {
-    const { result } = renderHook(() => useModelManager('draw a cat', false));
+  it('detects writing task from prompt', () => {
+    const { result } = renderHook(() => useModelManager('summarize this long article', false));
     expect(result.current.shouldShowRoleSuggestion).toBe(true);
-    expect(result.current.suggestedRoleLabel).toBe('Creative');
+    expect(result.current.suggestedRoleLabel).toBe('Writing');
   });
 
   it('detects vision task from attachment', () => {

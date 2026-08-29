@@ -40,13 +40,74 @@ export function abRouter(dependencies: AppDependencies): Hono {
     const prompt = b.prompt as string;
     const modelA = b.modelA as string;
     const modelB = b.modelB as string;
-    const systemContent = typeof b.systemPrompt === 'string' && b.systemPrompt.trim()
-      ? b.systemPrompt
+    const searchEnabled = Boolean(b.search);
+    const deepResearchEnabled = Boolean(b.deepResearch);
+    const attachments = Array.isArray(b.attachments)
+      ? (b.attachments as Array<{ type?: string; name?: string; content?: string }>)
+      : [];
+
+    let systemContent = typeof b.systemPrompt === 'string' && b.systemPrompt.trim()
+      ? b.systemPrompt.trim()
       : 'You are a helpful assistant.';
+
+    // Deep research: synthesize relevant vector memories and web grounding
+    if (deepResearchEnabled) {
+      try {
+        const memories = await dependencies.searchMemoriesByText(prompt, 5, 0.25);
+        if (memories.length > 0) {
+          const memoryBlock = memories
+            .map((m, i) => `[Memory ${i + 1} (relevance: ${m.score.toFixed(2)})] ${m.content}`)
+            .join('\n\n');
+          systemContent += `\n\n[Relevant Memories]\n${memoryBlock}`;
+        }
+      } catch (err) {
+        console.warn('[AB] Memory recall failed in deep research:', err instanceof Error ? err.message : err);
+      }
+
+      try {
+        const searchResults = await dependencies.executeTool('search_web', { query: prompt }, null);
+        if (searchResults && searchResults.trim()) {
+          systemContent += `\n\n[Deep Web Research Grounding]\n${searchResults}`;
+        }
+      } catch (err) {
+        console.warn('[AB] Web search failed in deep research:', err instanceof Error ? err.message : err);
+      }
+    } else if (searchEnabled) {
+      try {
+        const searchResults = await dependencies.executeTool('search_web', { query: prompt }, null);
+        if (searchResults && searchResults.trim()) {
+          systemContent += `\n\n[Web Search Results]\n${searchResults}`;
+        }
+      } catch (err) {
+        console.warn('[AB] Web search failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // Process attachments
+    const textAttachments = attachments.filter((a) => a && a.type !== 'image' && a.content);
+    const imageAttachments = attachments.filter((a) => a && a.type === 'image' && a.content);
+
+    let promptText = prompt;
+    if (textAttachments.length > 0) {
+      const fileBlocks = textAttachments
+        .map((a) => `[File: ${a.name || 'attachment'}]\n\`\`\`\n${a.content}\n\`\`\``)
+        .join('\n\n');
+      promptText = `${fileBlocks}\n\n${promptText}`;
+    }
+
+    const userContent = imageAttachments.length > 0
+      ? [
+          { type: 'text', text: promptText },
+          ...imageAttachments.map((img) => ({
+            type: 'image_url',
+            image_url: { url: img.content as string },
+          })),
+        ]
+      : promptText;
 
     const messages = [
       { role: 'system', content: systemContent },
-      { role: 'user', content: prompt },
+      { role: 'user', content: userContent },
     ];
 
     const runModel = async (modelId: string): Promise<{ model: string; content: string; latencyMs: number }> => {

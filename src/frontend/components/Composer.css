@@ -251,31 +251,47 @@
   background: var(--bg-surface-strong);
   color: var(--text-secondary);
   border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
   flex-shrink: 0;
+  letter-spacing: -0.01em;
 }
 
 .role-chip__icon {
-  font-size: 13px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.65;
+  transition: opacity 0.15s ease;
 }
 
 .role-chip:hover {
   border-color: var(--border-medium);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-surface-strong) 80%, var(--bg-accent-soft));
+}
+
+.role-chip:hover .role-chip__icon {
+  opacity: 1;
 }
 
 .role-chip.active {
-  background: var(--bg-accent-soft);
-  color: var(--bg-accent-strong);
-  border-color: color-mix(in srgb, var(--bg-accent) 42%, transparent);
+  background: var(--bg-accent);
+  color: var(--text-on-accent);
+  border-color: var(--bg-accent-strong);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(36, 78, 120, 0.22);
+}
+
+.role-chip.active .role-chip__icon {
+  opacity: 1;
 }
 
 .role-suggestion {
@@ -384,15 +400,15 @@
 .icon-group {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
 .icon-group .icon-btn {
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
-  min-width: 34px;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  min-width: 30px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -401,11 +417,26 @@
 }
 
 .composer-clear-btn {
-  height: 36px;
-  min-height: 36px;
+  height: 30px;
+  min-height: 30px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 500;
   border-radius: var(--radius-full, 999px);
+  flex-shrink: 0;
+}
+
+.send-btn {
+  padding: 0 14px;
+  height: 32px;
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-full, 999px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex-shrink: 0;
 }
 
@@ -414,44 +445,38 @@
   .composer-toolbar {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
+    gap: 6px;
     margin-top: 6px;
   }
 
   .role-picker {
-    padding: 2px 4px 6px;
+    padding: 2px 2px 4px;
     width: 100%;
     box-sizing: border-box;
   }
-}
 
-@media (min-width: 641px) and (max-width: 900px) {
-  .composer-toolbar__right {
+  .composer-controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 8px 6px;
     width: 100%;
   }
 
-  .composer-model {
-    flex: 1;
-    min-width: 140px;
-  }
-
-  .composer-model label {
-    display: none;
-  }
-
-  .composer-context {
+  .composer-controls__left {
     display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
-  .composer-context label {
-    display: none;
-  }
-
-  .send-btn {
+  .composer-controls__right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     margin-left: auto;
     flex-shrink: 0;
   }
@@ -460,10 +485,10 @@
 @media (max-width: 640px) {
   .composer {
     padding: 10px 12px;
-    border-radius: 18px;
+    border-radius: 16px;
   }
 
-  .composer-toolbar__right {
+  .composer-controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -475,8 +500,8 @@
   /* Sub-row 1 on mobile: Model Selector + Clear Button */
   .composer-model {
     flex: 1 1 auto;
-    min-width: 140px;
-    max-width: calc(100% - 76px);
+    min-width: 120px;
+    max-width: calc(100% - 70px);
   }
 
   .composer-model label {
@@ -488,10 +513,10 @@
   }
 
   .composer-clear-btn {
-    height: 34px;
-    min-height: 34px;
-    padding: 0 10px;
-    font-size: 11.5px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 11px;
     flex-shrink: 0;
     margin-left: auto;
   }
@@ -500,24 +525,24 @@
   .icon-group {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex: 1 1 auto;
   }
 
   .icon-group .icon-btn {
-    width: 34px;
-    height: 34px;
-    min-height: 34px;
-    min-width: 34px;
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+    min-width: 30px;
     flex-shrink: 0;
   }
 
   .send-btn {
-    height: 36px;
-    min-height: 36px;
-    padding: 0 16px;
-    font-size: 12.5px;
-    font-weight: 700;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 12px;
+    font-size: 11.5px;
+    font-weight: 600;
     flex-shrink: 0;
     margin-left: auto;
   }

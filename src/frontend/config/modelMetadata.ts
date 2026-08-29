@@ -35,11 +35,30 @@ const CAPABILITY_LABELS: Record<string, string> = {
 };
 
 export const PROVIDER_DISPLAY: Record<string, { label: string; icon: string; description: string }> = {
-  ollama:     { label: 'Ollama',     icon: '🦙', description: 'Local Ollama model' },
-  openai:     { label: 'OpenAI',     icon: '✨', description: 'OpenAI model' },
-  '9router':  { label: '9Router',    icon: '⚡', description: '9Router cloud model' },
-  openrouter: { label: 'OpenRouter', icon: '🌐', description: 'OpenRouter model' },
-  custom:     { label: 'Custom',     icon: '🧩', description: 'OpenAI-compatible model' },
+  ollama:     { label: 'Ollama',     icon: 'Ollama', description: 'Local Ollama model' },
+  openai:     { label: 'OpenAI',     icon: 'OpenAI', description: 'OpenAI model' },
+  '9router':  { label: '9Router',    icon: '9Router', description: '9Router cloud model' },
+  openrouter: { label: 'OpenRouter', icon: 'OpenRouter', description: 'OpenRouter model' },
+  custom:     { label: 'Custom',     icon: 'Custom', description: 'OpenAI-compatible model' },
+};
+
+export const getProviderDisplayInfo = (providerId?: string): { label: string; icon: string; description: string } => {
+  if (!providerId) return PROVIDER_DISPLAY.ollama;
+  if (PROVIDER_DISPLAY[providerId]) return PROVIDER_DISPLAY[providerId];
+  if (providerId.startsWith('custom')) {
+    const rawName = providerId.replace(/^custom[-_]?/, '');
+    const label = rawName ? toTitleCase(rawName) : 'Custom';
+    return {
+      label,
+      icon: 'Custom',
+      description: `${label} (OpenAI-compatible)`,
+    };
+  }
+  return {
+    label: toTitleCase(providerId),
+    icon: 'Cloud',
+    description: `${toTitleCase(providerId)} model`,
+  };
 };
 
 /**
@@ -66,8 +85,11 @@ const getModelBaseName = (name: string): string => {
   // (e.g. "custom:gemini/gemini-3.5-flash") resolve to the model, not the prefix.
   let remainder = name;
   const prefixIdx = remainder.indexOf(':');
-  if (prefixIdx > 0 && EXTERNAL_PROVIDER_PREFIXES.has(remainder.slice(0, prefixIdx))) {
-    remainder = remainder.slice(prefixIdx + 1);
+  if (prefixIdx > 0) {
+    const prefix = remainder.slice(0, prefixIdx);
+    if (EXTERNAL_PROVIDER_PREFIXES.has(prefix) || prefix.startsWith('custom')) {
+      remainder = remainder.slice(prefixIdx + 1);
+    }
   }
 
   const withoutNamespace = remainder.split('/').pop() || remainder;
@@ -112,8 +134,9 @@ const getCapabilityLabels = (metadata?: ModelMetadata): string[] => {
 };
 
 const getDescription = (metadata?: ModelMetadata, provider?: string): string => {
+  const providerInfo = getProviderDisplayInfo(provider);
   if (!metadata) {
-    return PROVIDER_DISPLAY[provider ?? 'ollama']?.description ?? 'Local model';
+    return providerInfo.description;
   }
 
   const parameterSize = metadata.parameterSize || metadata.parameters;
@@ -125,13 +148,13 @@ const getDescription = (metadata?: ModelMetadata, provider?: string): string => 
     metadata.contextWindow ? `${metadata.contextWindow.toLocaleString()} context` : null,
   ]);
 
-  return details.length > 0 ? details.join(' - ') : (PROVIDER_DISPLAY[provider ?? 'ollama']?.description ?? 'Local model');
+  return details.length > 0 ? details.join(' - ') : providerInfo.description;
 };
 
 const getIcon = (metadata?: ModelMetadata, provider?: string): string => {
   const capabilities = metadata?.capabilities?.map((capability) => capability.toLowerCase()) ?? [];
-  if (capabilities.some((capability) => capability === 'image' || capability === 'vision')) return '🎨';
-  return PROVIDER_DISPLAY[provider ?? 'ollama']?.icon ?? '🤖';
+  if (capabilities.some((capability) => capability === 'image' || capability === 'vision')) return 'Vision';
+  return getProviderDisplayInfo(provider).icon;
 };
 
 export const getModelInfo = (
@@ -140,7 +163,7 @@ export const getModelInfo = (
   provider?: string,
 ): ModelInfo => {
   const name = modelName || '';
-  if (!name) return { name: '', displayName: 'Select Model', description: '', capabilities: [], icon: '🤖' };
+  if (!name) return { name: '', displayName: 'Select Model', description: '', capabilities: [], icon: 'Model' };
 
   return {
     name,

@@ -201,6 +201,23 @@ describe('LLM Providers database settings and model resolution', () => {
     });
   });
 
+  it('CustomOpenAIProvider.getAllProviders parses custom_openai_providers JSON', () => {
+    DatabaseService.upsertSetting(
+      'custom_openai_providers',
+      JSON.stringify([
+        { id: 'custom-vikey', name: 'Vikey AI', baseUrl: 'https://api.vikey.ai/v1', apiKey: 'vk-1', models: 'gpt-5.5' },
+        { id: 'custom-groq', name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gq-1', models: 'llama-3.3' },
+      ]),
+    );
+
+    const providers = CustomOpenAIProvider.getAllProviders();
+    expect(providers).toHaveLength(2);
+    expect(providers[0].id).toBe('custom-vikey');
+    expect(providers[0].label).toBe('Vikey AI');
+    expect(providers[1].id).toBe('custom-groq');
+    expect(providers[1].label).toBe('Groq');
+  });
+
   it('OpenAIProvider returns empty list when no OpenAI API key is set', async () => {
     DatabaseService.upsertSetting('openai_api_key', '');
     const provider = new OpenAIProvider();

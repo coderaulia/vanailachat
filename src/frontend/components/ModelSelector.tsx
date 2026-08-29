@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import './ModelSelector.css';
-import { getModelInfo, PROVIDER_DISPLAY } from '../config/modelMetadata';
+import { getModelInfo, getProviderDisplayInfo } from '../config/modelMetadata';
 import type { ModelMetadataMap } from '../config/modelMetadata';
 
 interface ModelSelectorProps {
@@ -51,7 +51,7 @@ export function ModelSelector({
       const matchedModels = models.filter((model) => {
         if (!query) return true;
         const info = getModelInfo(model, modelMetadata[model], provider);
-        const providerName = PROVIDER_DISPLAY[provider]?.label?.toLowerCase() ?? provider;
+        const providerName = getProviderDisplayInfo(provider).label.toLowerCase();
         return (
           model.toLowerCase().includes(query) ||
           info.displayName.toLowerCase().includes(query) ||
@@ -97,13 +97,12 @@ export function ModelSelector({
         className={`model-selector__trigger ${isOpen ? 'is-open' : ''}`}
         onClick={toggleDropdown}
       >
-        <span className="model-selector__icon">{selectedInfo.icon}</span>
         <div className="model-selector__current">
           <span className="model-selector__name">{selectedInfo.displayName}</span>
           <span className="model-selector__badge-container">
             {selectedProvider && (
               <span className="model-selector__provider-tag">
-                {PROVIDER_DISPLAY[selectedProvider]?.label ?? selectedProvider}
+                {getProviderDisplayInfo(selectedProvider).label}
               </span>
             )}
             {selectedInfo.capabilities.map((cap) => (
@@ -165,18 +164,20 @@ export function ModelSelector({
                 >
                   All ({availableModels.length})
                 </button>
-                {Array.from(allGrouped.entries()).map(([provider, models]) => (
-                  <button
-                    key={provider}
-                    type="button"
-                    className={`model-selector__filter-tab ${providerFilter === provider ? 'is-active' : ''}`}
-                    onClick={() => setProviderFilter(provider)}
-                  >
-                    <span>{PROVIDER_DISPLAY[provider]?.icon ?? '🤖'}</span>
-                    <span>{PROVIDER_DISPLAY[provider]?.label ?? provider}</span>
-                    <span className="model-selector__tab-count">({models.length})</span>
-                  </button>
-                ))}
+                {Array.from(allGrouped.entries()).map(([provider, models]) => {
+                  const pInfo = getProviderDisplayInfo(provider);
+                  return (
+                    <button
+                      key={provider}
+                      type="button"
+                      className={`model-selector__filter-tab ${providerFilter === provider ? 'is-active' : ''}`}
+                      onClick={() => setProviderFilter(provider)}
+                    >
+                      <span>{pInfo.label}</span>
+                      <span className="model-selector__tab-count">({models.length})</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -185,7 +186,6 @@ export function ModelSelector({
           <div className="model-selector__list">
             {availableModels.length === 0 && (
               <div className="model-selector__empty">
-                <span className="model-selector__empty-icon">🤖</span>
                 <p className="model-selector__empty-title">No models available</p>
                 <p className="model-selector__empty-hint">
                   Connect a provider in Settings, or run <code>ollama pull llama3.2</code> for local models.
@@ -198,56 +198,55 @@ export function ModelSelector({
                 <p className="model-selector__empty-hint">Try adjusting your search query or provider filter.</p>
               </div>
             )}
-            {Array.from(filteredGrouped.entries()).map(([provider, models]) => (
-              <div key={provider} className="model-selector__group">
-                {(hasMultipleProviders || providerFilter === 'all') && (
-                  <div className="model-selector__group-header">
-                    <span className="model-selector__group-icon">
-                      {PROVIDER_DISPLAY[provider]?.icon ?? '🤖'}
-                    </span>
-                    <span className="model-selector__group-label">
-                      {PROVIDER_DISPLAY[provider]?.label ?? provider}
-                    </span>
-                    <span className="model-selector__group-count">({models.length})</span>
-                  </div>
-                )}
-                {models.map((model) => {
-                  const info = getModelInfo(model, modelMetadata[model], provider);
-                  const isActive = model === selectedModel;
-                  return (
-                    <button
-                      key={model}
-                      type="button"
-                      className={`model-selector__option ${isActive ? 'is-active' : ''}`}
-                      onClick={() => {
-                        onSelectModel(model);
-                        setIsOpen(false);
-                      }}
-                    >
-                      <span className="model-selector__option-icon">{info.icon}</span>
-                      <div className="model-selector__option-content">
-                        <div className="model-selector__option-header">
-                          <span className="model-selector__option-name">{info.displayName}</span>
-                          {isActive && (
-                            <svg className="model-selector__check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
+            {Array.from(filteredGrouped.entries()).map(([provider, models]) => {
+              const pInfo = getProviderDisplayInfo(provider);
+              return (
+                <div key={provider} className="model-selector__group">
+                  {(hasMultipleProviders || providerFilter === 'all') && (
+                    <div className="model-selector__group-header">
+                      <span className="model-selector__group-label">
+                        {pInfo.label}
+                      </span>
+                      <span className="model-selector__group-count">({models.length})</span>
+                    </div>
+                  )}
+                  {models.map((model) => {
+                    const info = getModelInfo(model, modelMetadata[model], provider);
+                    const isActive = model === selectedModel;
+                    return (
+                      <button
+                        key={model}
+                        type="button"
+                        className={`model-selector__option ${isActive ? 'is-active' : ''}`}
+                        onClick={() => {
+                          onSelectModel(model);
+                          setIsOpen(false);
+                        }}
+                      >
+                        <div className="model-selector__option-content">
+                          <div className="model-selector__option-header">
+                            <span className="model-selector__option-name">{info.displayName}</span>
+                            {isActive && (
+                              <svg className="model-selector__check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </div>
+                          <p className="model-selector__option-desc">{info.description}</p>
+                          <div className="model-selector__option-badges">
+                            {info.capabilities.map((cap) => (
+                              <span key={cap} className="model-selector__option-badge">
+                                {cap}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <p className="model-selector__option-desc">{info.description}</p>
-                        <div className="model-selector__option-badges">
-                          {info.capabilities.map((cap) => (
-                            <span key={cap} className="model-selector__option-badge">
-                              {cap}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

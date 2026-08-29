@@ -9,8 +9,11 @@ export function toMessageRole(role: string): MessageRole {
 }
 
 export function toModelRole(role: string | null | undefined): ModelRole {
-  if (role === 'general' || role === 'coding' || role === 'vision' || role === 'content') {
+  if (role === 'general' || role === 'coding' || role === 'vision' || role === 'writing') {
     return role;
+  }
+  if (role === 'content' || role === 'creative') {
+    return 'writing';
   }
   return 'general';
 }

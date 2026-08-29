@@ -15,7 +15,7 @@ export function useChatApp() {
   const hasImageAttachment = attachedFiles.some(f => f.type === 'image');
 
   const uiState = useUIState();
-  const [viewMode, setViewMode] = useState<'chat' | 'project'>('chat');
+  const [viewMode, setViewMode] = useState<'chat' | 'projects' | 'project'>('chat');
   const persistence = usePersistence();
   const modelManager = useModelManager(prompt, hasImageAttachment);
 
@@ -196,14 +196,14 @@ export function useChatApp() {
     }
   };
 
-  const handleCreateProject = async (name: string) => {
+  const handleCreateProject = async (name: string, description?: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
       const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, description: description?.trim() || undefined }),
       });
       if (!response.ok) throw new Error(await response.text());
       const data = (await response.json()) as { project?: ApiProject };
@@ -211,9 +211,11 @@ export function useChatApp() {
       persistence.setProjects((prev) => [...prev, data.project!]);
       setSelectedProjectId(data.project.id);
       handleNewChat();
+      return data.project;
     } catch (error) {
       console.error(error);
       setStatusText('Failed to create project');
+      return null;
     }
   };
 
@@ -234,16 +236,18 @@ export function useChatApp() {
       
       persistence.setProjects((prev) => prev.filter(p => p.id !== projectId));
       
-      // If deleted project was selected, switch to first available or default
+      // If deleted project was selected, switch to first available or null
       if (selectedProjectId === projectId) {
         const remaining = persistence.projects.filter(p => p.id !== projectId);
         if (remaining.length > 0) {
           setSelectedProjectId(remaining[0].id);
+        } else {
+          setSelectedProjectId(null);
         }
       }
       
       setStatusText('Project deleted');
-      setViewMode('chat');
+      setViewMode((prev) => (prev === 'projects' ? 'projects' : 'chat'));
     } catch (error) {
       console.error(error);
       setStatusText('Failed to delete project');

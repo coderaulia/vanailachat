@@ -10,6 +10,51 @@ import {
 import { DatabaseService } from './database.js';
 import { appFetch } from './httpClient.js';
 
+export interface CustomProviderConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  models?: string;
+}
+
+export function parseCustomProvidersConfig(): CustomProviderConfig[] {
+  try {
+    const raw = DatabaseService.getSetting('custom_openai_providers');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((p): p is CustomProviderConfig => Boolean(p && typeof p.id === 'string' && typeof p.name === 'string'));
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+
+  // Fallback to legacy single custom provider settings
+  const baseUrl = DatabaseService.getSetting('custom_openai_base_url') ?? process.env.CUSTOM_OPENAI_BASE_URL ?? '';
+  const apiKey = DatabaseService.getSetting('custom_openai_api_key') ?? process.env.CUSTOM_OPENAI_API_KEY ?? '';
+  const models = DatabaseService.getSetting('custom_openai_models') ?? process.env.CUSTOM_OPENAI_MODELS ?? '';
+
+  if (baseUrl || models || apiKey) {
+    return [{
+      id: 'custom',
+      name: 'Custom',
+      baseUrl,
+      apiKey,
+      models,
+    }];
+  }
+
+  return [{
+    id: 'custom',
+    name: 'Custom',
+    baseUrl: '',
+    apiKey: '',
+    models: '',
+  }];
+}
+
 /**
  * Custom OpenAI-compatible provider — points at any provider that speaks the
  * OpenAI /chat/completions format (Groq, Together, Fireworks, DeepSeek,
@@ -17,43 +62,52 @@ import { appFetch } from './httpClient.js';
  * the settings DB (or env var fallback), like 9Router.
  */
 export class CustomOpenAIProvider implements LLMProvider {
-  readonly id = 'custom';
-  readonly label = 'Custom (OpenAI-compatible)';
+  readonly id: string;
+  readonly label: string;
+  private configOverride?: Partial<CustomProviderConfig>;
 
-  constructor() {}
+  constructor(config?: Partial<CustomProviderConfig>) {
+    this.id = config?.id || 'custom';
+    this.label = config?.name ? `${config.name}` : 'Custom';
+    this.configOverride = config;
+  }
+
+  private getConfig(): CustomProviderConfig {
+    if (this.configOverride && (this.configOverride.baseUrl !== undefined || this.configOverride.apiKey !== undefined)) {
+      return {
+        id: this.id,
+        name: this.configOverride.name || this.label,
+        baseUrl: this.configOverride.baseUrl || '',
+        apiKey: this.configOverride.apiKey || '',
+        models: this.configOverride.models || '',
+      };
+    }
+    const all = parseCustomProvidersConfig();
+    const found = all.find((p) => p.id === this.id);
+    if (found) return found;
+    return all[0] || { id: 'custom', name: 'Custom', baseUrl: '', apiKey: '', models: '' };
+  }
 
   private getApiKey(): string {
-    try {
-      return (DatabaseService.getSetting('custom_openai_api_key') ?? process.env.CUSTOM_OPENAI_API_KEY ?? '').trim();
-    } catch {
-      return (process.env.CUSTOM_OPENAI_API_KEY ?? '').trim();
-    }
+    return (this.getConfig().apiKey ?? '').trim();
   }
 
   private getBaseUrl(): string {
-    try {
-      const url = DatabaseService.getSetting('custom_openai_base_url') ?? process.env.CUSTOM_OPENAI_BASE_URL ?? '';
-      return url.trim().replace(/\/+$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '');
-    } catch {
-      return (process.env.CUSTOM_OPENAI_BASE_URL ?? '')
-        .trim()
-        .replace(/\/+$/, '')
-        .replace(/\/chat\/completions\/?$/, '')
-        .replace(/\/+$/, '');
-    }
+    const url = this.getConfig().baseUrl ?? '';
+    return url.trim().replace(/\/+$/, '').replace(/\/chat\/completions\/?$/, '').replace(/\/+$/, '');
   }
 
   private getCustomModels(): string[] {
-    let raw = '';
-    try {
-      raw = DatabaseService.getSetting('custom_openai_models') ?? process.env.CUSTOM_OPENAI_MODELS ?? '';
-    } catch {
-      raw = process.env.CUSTOM_OPENAI_MODELS ?? '';
-    }
+    const raw = this.getConfig().models ?? '';
     return raw
       .split(/[,\n]+/)
       .map((m) => m.trim())
       .filter(Boolean);
+  }
+
+  static getAllProviders(): CustomOpenAIProvider[] {
+    const configs = parseCustomProvidersConfig();
+    return configs.map((c) => new CustomOpenAIProvider(c));
   }
 
   async listModels(): Promise<string[]> {

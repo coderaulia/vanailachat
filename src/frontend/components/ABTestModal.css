@@ -369,6 +369,103 @@
   to { transform: rotate(360deg); }
 }
 
+/* Feature Toggles Toolbar */
+.ab-features-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px 0;
+  flex-wrap: wrap;
+}
+
+.ab-feature-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-surface-strong);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.ab-feature-toggle:hover:not(:disabled) {
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ab-feature-toggle.is-active {
+  background: var(--bg-accent-soft, rgba(72, 127, 174, 0.18));
+  border-color: var(--bg-accent);
+  color: var(--bg-accent);
+  font-weight: 600;
+}
+
+.ab-feature-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* System Prompt */
+.ab-system-prompt-area {
+  padding-top: 10px;
+}
+
+.ab-system-textarea {
+  min-height: 54px;
+  font-size: 13px;
+}
+
+/* Attachments */
+.ab-attachments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px 0;
+  flex-wrap: wrap;
+}
+
+.ab-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-surface-strong);
+  border: 1px solid var(--border-soft);
+  font-size: 11px;
+  color: var(--text-primary);
+  max-width: 200px;
+}
+
+.ab-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ab-attachment-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+}
+
+.ab-attachment-remove:hover {
+  color: var(--color-danger, #ef4444);
+}
+
 /* Responsive */
 @media (max-width: 680px) {
   .ab-results { grid-template-columns: 1fr; }

@@ -71,7 +71,11 @@ export function ChatHeader({
             aria-pressed={isAutoApprove}
             onClick={() => void toggleAutoApprove()}
           >
-            <span className="auto-approve-toggle__icon">⚡</span>
+            <span className="auto-approve-toggle__icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </span>
             <span className="auto-approve-toggle__label">Auto-Approve: {isAutoApprove ? 'ON' : 'OFF'}</span>
           </button>
 

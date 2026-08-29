@@ -67,12 +67,12 @@
 
   .sidebar-open .sidebar {
     transform: translateX(0);
-    width: var(--sidebar-width, 280px);
+    width: var(--sidebar-width, 248px);
   }
 
   .sidebar-closed .sidebar {
-    transform: translateX(calc(var(--sidebar-width, 280px) * -1));
-    width: var(--sidebar-width, 280px);
+    transform: translateX(calc(var(--sidebar-width, 248px) * -1));
+    width: var(--sidebar-width, 248px);
     opacity: 1;
     pointer-events: auto;
   }

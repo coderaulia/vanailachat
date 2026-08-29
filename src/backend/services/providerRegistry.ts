@@ -1,4 +1,5 @@
 import type { LLMProvider } from './provider.js';
+import { CustomOpenAIProvider } from './customOpenAIProvider.js';
 
 /**
  * How long provider model listings and metadata stay fresh. These are remote
@@ -93,6 +94,12 @@ export class ProviderRegistry {
     if (providerId && this.providers.has(providerId)) {
       return this.providers.get(providerId)!;
     }
+    if (providerId && (providerId === 'custom' || providerId.startsWith('custom'))) {
+      const allCustom = CustomOpenAIProvider.getAllProviders();
+      const matched = allCustom.find((p) => p.id === providerId);
+      if (matched) return matched;
+      if (this.providers.has('custom')) return this.providers.get('custom')!;
+    }
     // Default
     if (this.defaultProviderId) {
       return this.providers.get(this.defaultProviderId)!;
@@ -111,13 +118,19 @@ export class ProviderRegistry {
       const prefix = model.slice(0, colonIndex);
       const provider = this.providers.get(prefix);
       if (provider) return provider;
+      if (prefix === 'custom' || prefix.startsWith('custom')) {
+        const allCustom = CustomOpenAIProvider.getAllProviders();
+        const matched = allCustom.find((p) => p.id === prefix);
+        if (matched) return matched;
+        if (this.providers.has('custom')) return this.providers.get('custom')!;
+      }
     }
     return this.get();
   }
 
   /**
    * Resolve provider AND strip known prefix from model name.
-   * Only strips when the prefix matches a registered provider ID.
+   * Only strips when the prefix matches a registered provider ID or custom provider.
    * Handles Ollama tag colons correctly (e.g. "qwen3.5:latest" stays as-is).
    */
   resolveModel(model: string): { provider: LLMProvider; modelName: string } {
@@ -127,6 +140,16 @@ export class ProviderRegistry {
       const provider = this.providers.get(prefix);
       if (provider) {
         return { provider, modelName: model.slice(colonIndex + 1) };
+      }
+      if (prefix === 'custom' || prefix.startsWith('custom')) {
+        const allCustom = CustomOpenAIProvider.getAllProviders();
+        const matched = allCustom.find((p) => p.id === prefix);
+        if (matched) {
+          return { provider: matched, modelName: model.slice(colonIndex + 1) };
+        }
+        if (this.providers.has('custom')) {
+          return { provider: this.providers.get('custom')!, modelName: model.slice(colonIndex + 1) };
+        }
       }
     }
     return { provider: this.get(), modelName: model };
@@ -139,7 +162,20 @@ export class ProviderRegistry {
   }
 
   list(): LLMProvider[] {
-    return [...this.providers.values()];
+    const registered = [...this.providers.values()];
+    const customProvider = this.providers.get('custom');
+    if (customProvider instanceof CustomOpenAIProvider) {
+      const customProviders = CustomOpenAIProvider.getAllProviders();
+      const map = new Map<string, LLMProvider>();
+      for (const p of registered) {
+        if (p.id !== 'custom') map.set(p.id, p);
+      }
+      for (const cp of customProviders) {
+        map.set(cp.id, cp);
+      }
+      return [...map.values()];
+    }
+    return registered;
   }
 
   /**
@@ -148,8 +184,19 @@ export class ProviderRegistry {
    * endpoint cost the sum of every provider's latency.
    */
   async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: Record<string, unknown> }>> {
-    // Ollama handled separately via getInstalledModelMetadata
-    const entries = [...this.providers].filter(([id]) => id !== 'ollama');
+    const hasCustom = this.providers.has('custom');
+    const nonCustomEntries = [...this.providers].filter(([id]) => id !== 'ollama' && id !== 'custom');
+    
+    let entries: Array<[string, LLMProvider]> = nonCustomEntries;
+    if (hasCustom) {
+      const customProvider = this.providers.get('custom')!;
+      if (customProvider instanceof CustomOpenAIProvider) {
+        const customProviders = CustomOpenAIProvider.getAllProviders();
+        entries = [...entries, ...customProviders.map((cp): [string, LLMProvider] => [cp.id, cp])];
+      } else {
+        entries = [...entries, ['custom', customProvider]];
+      }
+    }
 
     const settled = await Promise.allSettled(
       entries.map(async ([, provider]) => {

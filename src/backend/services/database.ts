@@ -990,14 +990,8 @@ export class DatabaseService {
     const userMsgId = generateId('msg');
     const assistantMsgId = generateId('msg');
 
-    const projectId = (() => {
-      const row = db.prepare(
-        `SELECT id FROM projects WHERE name = 'Default' LIMIT 1`,
-      ).get() as { id: string } | undefined;
-      return row?.id ?? null;
-    })();
-
-    if (!projectId) throw new Error('Default project not found');
+    const defaultProject = this.ensureDefaultProject();
+    const projectId = defaultProject.id;
 
     db.transaction(() => {
       db.prepare(

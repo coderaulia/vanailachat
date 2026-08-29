@@ -3,6 +3,14 @@ import { COLOR_SCHEME_STORAGE_KEY } from '../config/constants';
 import type { ColorScheme } from '../config/constants';
 import './SettingsModal.css';
 
+interface CustomProviderConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  models?: string;
+}
+
 interface AllSettings {
   ollama_host?: string;
   openai_api_key?: string;
@@ -11,6 +19,7 @@ interface AllSettings {
   openrouter_base_url?: string;
   nine_router_host?: string;
   nine_router_api_key?: string;
+  custom_openai_providers?: string;
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
   custom_openai_models?: string;
@@ -53,7 +62,7 @@ interface TrainingStats {
   oldest: number | null;
   newest: number | null;
 }
-type LlmMode = 'ollama' | 'openai' | 'openrouter' | '9router' | 'custom';
+type LlmMode = 'ollama' | 'custom' | '9router' | 'openrouter' | 'openai';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
 
@@ -72,16 +81,9 @@ async function saveSetting(key: string, value: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ value }),
   });
-  // Swallowing this hid every write made while the backend was down, which
-  // looked like settings silently resetting themselves.
   if (!response.ok) throw new Error(`Failed to save ${key} (HTTP ${response.status})`);
 }
 
-/**
- * Persists shortly after the user stops typing, skipping the initial render.
- * Saving on blur alone lost edits whenever the modal was dismissed with Escape
- * or a backdrop click, neither of which fires a blur first.
- */
 function useAutosave(value: string, action: () => void | Promise<void>, ready: boolean) {
   const actionRef = useRef(action);
   actionRef.current = action;
@@ -90,7 +92,6 @@ function useAutosave(value: string, action: () => void | Promise<void>, ready: b
 
   useEffect(() => {
     if (!ready) return;
-    // First pass after load records the stored value rather than re-saving it.
     if (baseline.current === null) {
       baseline.current = value;
       return;
@@ -127,9 +128,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [nineRouterHost, setNineRouterHost] = useState('http://localhost:20128/v1');
   const [nineRouterKey, setNineRouterKey] = useState('');
-  const [customBaseUrl, setCustomBaseUrl] = useState('');
-  const [customKey, setCustomKey] = useState('');
-  const [customModels, setCustomModels] = useState('');
+  const [customProviders, setCustomProviders] = useState<CustomProviderConfig[]>([
+    { id: 'custom', name: 'Custom', baseUrl: '', apiKey: '', models: '' },
+  ]);
+  const [activeCustomId, setActiveCustomId] = useState<string>('custom');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
   // Profile
@@ -199,16 +201,38 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       .then((data: { settings?: AllSettings }) => {
         const s = data.settings ?? {};
         if (s.ollama_host) setOllamaHost(s.ollama_host);
+
+        // Load custom providers
+        if (s.custom_openai_providers) {
+          try {
+            const list = JSON.parse(s.custom_openai_providers);
+            if (Array.isArray(list) && list.length > 0) {
+              setCustomProviders(list);
+              setActiveCustomId(list[0].id);
+            }
+          } catch {
+            // fallback
+          }
+        } else if (s.custom_openai_base_url || s.custom_openai_api_key || s.custom_openai_models) {
+          const legacy: CustomProviderConfig = {
+            id: 'custom',
+            name: 'Custom',
+            baseUrl: s.custom_openai_base_url || '',
+            apiKey: s.custom_openai_api_key || '',
+            models: s.custom_openai_models || '',
+          };
+          setCustomProviders([legacy]);
+          setActiveCustomId('custom');
+        }
+
         if (s.openrouter_api_key) {
           setLlmMode('openrouter');
           setOpenrouterKey(s.openrouter_api_key);
+        } else if (s.custom_openai_providers || s.custom_openai_base_url || s.custom_openai_api_key || s.custom_openai_models) {
+          setLlmMode('custom');
         } else if (s.nine_router_api_key) {
           setLlmMode('9router');
           setNineRouterKey(s.nine_router_api_key);
-        } else if (s.custom_openai_api_key || s.custom_openai_base_url || s.custom_openai_models) {
-          setLlmMode('custom');
-          if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
-          if (s.custom_openai_models) setCustomModels(s.custom_openai_models);
         } else if (s.openai_api_key) {
           if (s.openai_base_url?.includes('openrouter')) {
             setLlmMode('openrouter');
@@ -224,9 +248,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.openai_api_key && !s.openai_base_url?.includes('openrouter')) setOpenaiKey(s.openai_api_key);
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
         if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
-        if (s.custom_openai_base_url) setCustomBaseUrl(s.custom_openai_base_url);
-        if (s.custom_openai_api_key) setCustomKey(s.custom_openai_api_key);
-        if (s.custom_openai_models) setCustomModels(s.custom_openai_models);
         if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'claude-code') {
           setCodingHarness(s.coding_harness);
         }
@@ -385,14 +406,48 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     [persist, nineRouterHost, nineRouterKey],
   );
 
-  const saveCustomConfig = useCallback(
-    () => persist([
-      ['custom_openai_base_url', customBaseUrl.trim()],
-      ['custom_openai_api_key', customKey.trim()],
-      ['custom_openai_models', customModels.trim()],
-    ]),
-    [persist, customBaseUrl, customKey, customModels],
-  );
+  const saveCustomProviders = useCallback((providersToSave: CustomProviderConfig[]) => {
+    const primary = providersToSave[0] ?? { id: 'custom', name: 'Custom', baseUrl: '', apiKey: '', models: '' };
+    void persist([
+      ['custom_openai_providers', JSON.stringify(providersToSave)],
+      ['custom_openai_base_url', primary.baseUrl.trim()],
+      ['custom_openai_api_key', (primary.apiKey ?? '').trim()],
+      ['custom_openai_models', (primary.models ?? '').trim()],
+    ]);
+  }, [persist]);
+
+  const updateCurrentCustomProvider = (field: keyof CustomProviderConfig, value: string) => {
+    setCustomProviders((prev) => {
+      const updated = prev.map((p) => (p.id === activeCustomId ? { ...p, [field]: value } : p));
+      saveCustomProviders(updated);
+      return updated;
+    });
+  };
+
+  const addCustomProvider = () => {
+    const newId = `custom_${Date.now()}`;
+    const newProvider: CustomProviderConfig = {
+      id: newId,
+      name: `Provider ${customProviders.length + 1}`,
+      baseUrl: '',
+      apiKey: '',
+      models: '',
+    };
+    const updated = [...customProviders, newProvider];
+    setCustomProviders(updated);
+    setActiveCustomId(newId);
+    saveCustomProviders(updated);
+  };
+
+  const removeCustomProvider = (idToRemove: string) => {
+    if (customProviders.length <= 1) return;
+    const updated = customProviders.filter((p) => p.id !== idToRemove);
+    setCustomProviders(updated);
+    if (activeCustomId === idToRemove) {
+      setActiveCustomId(updated[0]?.id || 'custom');
+    }
+    saveCustomProviders(updated);
+  };
 
   const saveAnthropicKey = useCallback(
     () => persist([['anthropic_api_key', anthropicKey.trim()]]),
@@ -494,9 +549,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(openrouterKey, saveOpenrouterKey, ready);
   useAutosave(nineRouterHost, saveNineRouterConfig, ready);
   useAutosave(nineRouterKey, saveNineRouterConfig, ready);
-  useAutosave(customBaseUrl, saveCustomConfig, ready);
-  useAutosave(customKey, saveCustomConfig, ready);
-  useAutosave(customModels, saveCustomConfig, ready);
   useAutosave(anthropicKey, saveAnthropicKey, ready);
   useAutosave(fccServerUrl, saveFccServerUrl, ready);
   useAutosave(deepseekApiKey, saveDeepseekApiKey, ready);
@@ -515,7 +567,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       else if (llmMode === 'openai') await saveOpenaiKey();
       else if (llmMode === 'openrouter') await saveOpenrouterKey();
       else if (llmMode === '9router') await saveNineRouterConfig();
-      else if (llmMode === 'custom') await saveCustomConfig();
+      else if (llmMode === 'custom') saveCustomProviders(customProviders);
 
       const res = await fetch('/api/models');
       if (res.ok) {
@@ -537,15 +589,100 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     window.location.reload();
   };
 
-  const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'ai',           label: 'AI Connection',  icon: '🧠' },
-    { id: 'profile',      label: 'Profile',         icon: '🪪' },
-    { id: 'instructions', label: 'Instructions',    icon: '📋' },
-    { id: 'behaviour',    label: 'Behaviour',       icon: '⚙️' },
-    { id: 'appearance',   label: 'Appearance',      icon: '🎨' },
-    { id: 'memories',     label: 'Memories',        icon: '🧩' },
-    { id: 'training',     label: 'Training',        icon: '🧪' },
-    { id: 'about',        label: 'About',           icon: 'ℹ️' },
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    {
+      id: 'ai',
+      label: 'AI Connection',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4c0 1.1-.5 2.1-1.2 2.8l-.8.7v1.5h-4V9.5l-.8-.7A4 4 0 0 1 12 2z" />
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+          <path d="M8 14h8" />
+        </svg>
+      ),
+    },
+    {
+      id: 'profile',
+      label: 'Profile',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+    },
+    {
+      id: 'instructions',
+      label: 'Instructions',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      ),
+    },
+    {
+      id: 'behaviour',
+      label: 'Behaviour',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'appearance',
+      label: 'Appearance',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+          <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+          <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+          <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'memories',
+      label: 'Memories',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <line x1="12" y1="22.08" x2="12" y2="12" />
+        </svg>
+      ),
+    },
+    {
+      id: 'training',
+      label: 'Training',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 18h12" />
+          <path d="M6 14h12" />
+          <path d="M10 2v4" />
+          <path d="M14 2v4" />
+          <path d="M10 2h4" />
+          <path d="M8.5 6h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+        </svg>
+      ),
+    },
+    {
+      id: 'about',
+      label: 'About',
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="16" x2="12" y2="12" />
+          <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -585,7 +722,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               className={`settings-tab ${activeTab === t.id ? 'is-active' : ''}`}
               onClick={() => setActiveTab(t.id)}
             >
-              <span>{t.icon}</span>
+              <span className="settings-tab-icon">{t.icon}</span>
               <span>{t.label}</span>
             </button>
           ))}
@@ -605,27 +742,27 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       type="button"
                       className={`settings-llm-tab ${llmMode === 'ollama' ? 'is-active' : ''}`}
                       onClick={() => setLlmMode('ollama')}
-                    >🦙 Ollama (Local)</button>
-                    <button
-                      type="button"
-                      className={`settings-llm-tab ${llmMode === 'openai' ? 'is-active' : ''}`}
-                      onClick={() => setLlmMode('openai')}
-                    >⚡ OpenAI</button>
-                    <button
-                      type="button"
-                      className={`settings-llm-tab ${llmMode === 'openrouter' ? 'is-active' : ''}`}
-                      onClick={() => setLlmMode('openrouter')}
-                    >🔀 OpenRouter</button>
-                    <button
-                      type="button"
-                      className={`settings-llm-tab ${llmMode === '9router' ? 'is-active' : ''}`}
-                      onClick={() => setLlmMode('9router')}
-                    >🔄 9Router</button>
+                    >Ollama (Local)</button>
                     <button
                       type="button"
                       className={`settings-llm-tab ${llmMode === 'custom' ? 'is-active' : ''}`}
                       onClick={() => setLlmMode('custom')}
-                    >🧩 Custom</button>
+                    >Custom Provider{customProviders.length > 1 ? ` (${customProviders.length})` : ''}</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === '9router' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('9router')}
+                    >9Router</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'openrouter' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('openrouter')}
+                    >OpenRouter</button>
+                    <button
+                      type="button"
+                      className={`settings-llm-tab ${llmMode === 'openai' ? 'is-active' : ''}`}
+                      onClick={() => setLlmMode('openai')}
+                    >OpenAI</button>
                   </div>
 
                   {llmMode === 'ollama' && (
@@ -642,33 +779,103 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {llmMode === 'openai' && (
-                    <div className="settings-field">
-                      <label className="settings-label">OpenAI API Key</label>
-                      <input
-                        className="settings-input"
-                        type="password"
-                        value={openaiKey}
-                        onChange={(e) => setOpenaiKey(e.target.value)}
-                        onBlur={saveOpenaiKey}
-                        placeholder="sk-..."
-                      />
-                      <p className="settings-hint">Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></p>
-                    </div>
-                  )}
+                  {llmMode === 'custom' && (
+                    <div className="settings-custom-section">
+                      {/* Provider subtabs */}
+                      <div className="settings-custom-picker-row">
+                        <div className="settings-custom-pills">
+                          {customProviders.map((p, idx) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className={`settings-custom-pill ${activeCustomId === p.id ? 'is-active' : ''}`}
+                              onClick={() => setActiveCustomId(p.id)}
+                            >
+                              <span>{p.name || `Provider ${idx + 1}`}</span>
+                              {customProviders.length > 1 && (
+                                <span
+                                  className="settings-custom-pill-del"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeCustomProvider(p.id);
+                                  }}
+                                  title="Remove provider"
+                                >
+                                  ✕
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="settings-custom-add-btn"
+                          onClick={addCustomProvider}
+                          title="Add another OpenAI-compatible provider"
+                        >
+                          + Add Provider
+                        </button>
+                      </div>
 
-                  {llmMode === 'openrouter' && (
-                    <div className="settings-field">
-                      <label className="settings-label">OpenRouter API Key</label>
-                      <input
-                        className="settings-input"
-                        type="password"
-                        value={openrouterKey}
-                        onChange={(e) => setOpenrouterKey(e.target.value)}
-                        onBlur={saveOpenrouterKey}
-                        placeholder="sk-or-..."
-                      />
-                      <p className="settings-hint">Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a></p>
+                      {(() => {
+                        const current = customProviders.find((p) => p.id === activeCustomId) || customProviders[0] || {
+                          id: 'custom',
+                          name: 'Custom',
+                          baseUrl: '',
+                          apiKey: '',
+                          models: '',
+                        };
+                        return (
+                          <div className="settings-custom-fields">
+                            <div className="settings-field">
+                              <label className="settings-label">Provider Name</label>
+                              <input
+                                className="settings-input"
+                                value={current.name}
+                                onChange={(e) => updateCurrentCustomProvider('name', e.target.value)}
+                                placeholder="e.g. Vikey AI, Groq, DeepSeek Direct, LM Studio"
+                              />
+                            </div>
+
+                            <div className="settings-field">
+                              <label className="settings-label">Base URL</label>
+                              <input
+                                className="settings-input"
+                                value={current.baseUrl}
+                                onChange={(e) => updateCurrentCustomProvider('baseUrl', e.target.value)}
+                                placeholder="https://api.example.com/v1"
+                              />
+                              <p className="settings-hint">
+                                Any OpenAI-compatible endpoint — Groq, Together, Fireworks, DeepSeek, Mistral, LM Studio, vLLM, etc.
+                              </p>
+                            </div>
+
+                            <div className="settings-field">
+                              <label className="settings-label">API Key <span className="settings-optional">(optional for local endpoints)</span></label>
+                              <input
+                                className="settings-input"
+                                type="password"
+                                value={current.apiKey || ''}
+                                onChange={(e) => updateCurrentCustomProvider('apiKey', e.target.value)}
+                                placeholder="sk-..."
+                              />
+                            </div>
+
+                            <div className="settings-field">
+                              <label className="settings-label">Custom Models (IDs)</label>
+                              <input
+                                className="settings-input"
+                                value={current.models || ''}
+                                onChange={(e) => updateCurrentCustomProvider('models', e.target.value)}
+                                placeholder="gpt-4o, claude-3-7-sonnet-20250219, deepseek-chat"
+                              />
+                              <p className="settings-hint">
+                                Comma-separated model names or IDs. Useful when the provider does not support dynamic discovery via /models.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -701,47 +908,33 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   )}
 
-                  {llmMode === 'custom' && (
+                  {llmMode === 'openrouter' && (
                     <div className="settings-field">
-                      <label className="settings-label">Base URL</label>
-                      <input
-                        className="settings-input"
-                        value={customBaseUrl}
-                        onChange={(e) => setCustomBaseUrl(e.target.value)}
-                        onBlur={saveCustomConfig}
-                        placeholder="https://api.example.com/v1"
-                      />
-                      <p className="settings-hint">Any OpenAI-compatible endpoint — Groq, Together, Fireworks, DeepSeek, Mistral, LM Studio, vLLM, etc.</p>
-                    </div>
-                  )}
-
-                  {llmMode === 'custom' && (
-                    <div className="settings-field">
-                      <label className="settings-label">API Key</label>
+                      <label className="settings-label">OpenRouter API Key</label>
                       <input
                         className="settings-input"
                         type="password"
-                        value={customKey}
-                        onChange={(e) => setCustomKey(e.target.value)}
-                        onBlur={saveCustomConfig}
-                        placeholder="sk-..."
+                        value={openrouterKey}
+                        onChange={(e) => setOpenrouterKey(e.target.value)}
+                        onBlur={saveOpenrouterKey}
+                        placeholder="sk-or-..."
                       />
+                      <p className="settings-hint">Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a></p>
                     </div>
                   )}
 
-                  {llmMode === 'custom' && (
+                  {llmMode === 'openai' && (
                     <div className="settings-field">
-                      <label className="settings-label">Custom Models (IDs)</label>
+                      <label className="settings-label">OpenAI API Key</label>
                       <input
                         className="settings-input"
-                        value={customModels}
-                        onChange={(e) => setCustomModels(e.target.value)}
-                        onBlur={saveCustomConfig}
-                        placeholder="gpt-4o, claude-3-7-sonnet-20250219, deepseek-chat"
+                        type="password"
+                        value={openaiKey}
+                        onChange={(e) => setOpenaiKey(e.target.value)}
+                        onBlur={saveOpenaiKey}
+                        placeholder="sk-..."
                       />
-                      <p className="settings-hint">
-                        Comma-separated model names or IDs. Useful when the provider does not support dynamic discovery via /models.
-                      </p>
+                      <p className="settings-hint">Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></p>
                     </div>
                   )}
 
