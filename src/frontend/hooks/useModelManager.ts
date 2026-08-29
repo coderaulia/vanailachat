@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ModelRole, MODEL_ROLE_LABELS } from '../config/modelRoles';
 import { MODEL_STORAGE_KEY, DEFAULT_MODEL_ROLE } from '../config/constants';
 import type { ModelMetadata, ModelMetadataMap } from '../config/modelMetadata';
+import { apiFetchModels, isTauri } from '../lib/api';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -108,14 +109,25 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
 
   const fetchModels = useCallback(async () => {
     try {
+      if (isTauri) {
+        const data = await apiFetchModels();
+        if (Array.isArray(data) && data.length > 0) {
+          const { models, metadata } = normalizeModelsResponse({ models: data });
+          setAvailableModels(models);
+          setModelMetadata(metadata);
+          setProviders(data.map((m) => ({ name: m.name, provider: m.provider })));
+          return;
+        }
+      }
+
       const response = await fetch('/api/models');
       if (response.ok) {
-        const data = await response.json();
-        const { models, metadata } = normalizeModelsResponse(data);
+        const resData = await response.json();
+        const { models, metadata } = normalizeModelsResponse(resData);
         setAvailableModels(models);
         setModelMetadata(metadata);
-        if (Array.isArray(data.providers)) {
-          setProviders(data.providers as Array<{ name: string; provider: string }>);
+        if (Array.isArray(resData.providers)) {
+          setProviders(resData.providers as Array<{ name: string; provider: string }>);
         }
       }
     } catch (error) {

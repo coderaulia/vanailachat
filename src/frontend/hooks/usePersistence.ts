@@ -1,5 +1,14 @@
 import { useState, useMemo } from 'react';
 import type { Chat, ApiChat, ApiMessage, ApiProject, Message, MessageRole } from '../types/chat';
+import {
+  apiFetchProjects,
+  apiFetchChats,
+  apiCreateChat,
+  apiDeleteChat,
+  apiSaveMessage,
+  apiFetchMessages,
+  apiUpdateProject,
+} from '../lib/api';
 
 function toMessageRole(role: string): MessageRole {
   if (role === 'user' || role === 'assistant' || role === 'system') {
@@ -22,28 +31,72 @@ export function usePersistence() {
   }, [chatHistories]);
 
   const fetchProjects = async () => {
-    const response = await fetch('/api/projects');
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { projects?: ApiProject[] };
-    const loadedProjects = Array.isArray(data.projects) ? data.projects : [];
-    setProjects(loadedProjects);
-    return loadedProjects;
+    try {
+      const loadedProjects = await apiFetchProjects();
+      const mapped = loadedProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        instructions: p.instructions,
+        memory: p.memory,
+        pinned: p.pinned,
+        createdAt: p.created_at ?? Date.now(),
+        updatedAt: p.updated_at ?? Date.now(),
+      }));
+      setProjects(mapped);
+      return mapped;
+    } catch {
+      const response = await fetch('/api/projects');
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json() as { projects?: ApiProject[] };
+      const loadedProjects = Array.isArray(data.projects) ? data.projects : [];
+      setProjects(loadedProjects);
+      return loadedProjects;
+    }
   };
 
   const fetchChats = async () => {
-    const response = await fetch('/api/chats');
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { chats?: ApiChat[] };
-    return Array.isArray(data.chats) ? data.chats : [];
+    try {
+      const loadedChats = await apiFetchChats();
+      return loadedChats.map((c) => ({
+        id: c.id,
+        projectId: c.project_id ?? undefined,
+        title: c.title,
+        model: c.model ?? undefined,
+        projectRoot: c.project_root ?? undefined,
+        systemPrompt: c.system_prompt ?? undefined,
+        pinned: c.pinned,
+        role: c.role ?? undefined,
+        createdAt: c.created_at ?? Date.now(),
+        updatedAt: c.updated_at ?? Date.now(),
+      }));
+    } catch {
+      const response = await fetch('/api/chats');
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json() as { chats?: ApiChat[] };
+      return Array.isArray(data.chats) ? data.chats : [];
+    }
   };
 
   const upsertChat = async (chat: ApiChat) => {
-    const response = await fetch('/api/chats', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(chat),
-    });
-    if (!response.ok) throw new Error(await response.text());
+    try {
+      await apiCreateChat({
+        id: chat.id,
+        title: chat.title,
+        project_id: chat.projectId,
+        project_root: chat.projectRoot,
+        system_prompt: chat.systemPrompt,
+        model: chat.model,
+        role: chat.role,
+      });
+    } catch {
+      const response = await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chat),
+      });
+      if (!response.ok) throw new Error(await response.text());
+    }
   };
 
   const patchChat = async (id: string, updates: Partial<ApiChat>) => {
@@ -59,30 +112,69 @@ export function usePersistence() {
   };
 
   const deleteChat = async (id: string) => {
-    const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error(await response.text());
+    try {
+      await apiDeleteChat(id);
+    } catch {
+      const response = await fetch(`/api/chats/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(await response.text());
+    }
   };
 
   const saveMessage = async (chatId: string, message: Message, options?: { promptTokens?: number; completionTokens?: number }) => {
-    const response = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await apiSaveMessage({
         id: message.id,
-        chatId,
+        chat_id: chatId,
         role: message.role,
         content: message.content,
-        promptTokens: options?.promptTokens,
-        completionTokens: options?.completionTokens,
-        createdAt: message.timestamp,
-      }),
-    });
-    if (!response.ok) throw new Error(await response.text());
+      });
+    } catch {
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: message.id,
+          chatId,
+          role: message.role,
+          content: message.content,
+          promptTokens: options?.promptTokens,
+          completionTokens: options?.completionTokens,
+          createdAt: message.timestamp,
+        }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+    }
   };
 
   const patchProject = async (id: string, updates: Partial<ApiProject>) => {
+    try {
+      const updated = await apiUpdateProject(id, {
+        name: updates.name,
+        description: updates.description,
+        instructions: updates.instructions,
+        memory: updates.memory,
+        pinned: updates.pinned,
+      });
+      if (updated) {
+        const mapped: ApiProject = {
+          id: updated.id,
+          name: updated.name,
+          description: updated.description,
+          instructions: updated.instructions,
+          memory: updated.memory,
+          pinned: updated.pinned,
+          createdAt: updated.created_at ?? Date.now(),
+          updatedAt: updated.updated_at ?? Date.now(),
+        };
+        setProjects(prev => prev.map(p => p.id === id ? mapped : p));
+        return mapped;
+      }
+    } catch {
+      // Fall through to web fetch
+    }
+
     const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -97,18 +189,30 @@ export function usePersistence() {
   };
 
   const loadMessages = async (chatId: string): Promise<Message[]> => {
-    const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
-    if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { messages?: ApiMessage[] };
-    const messages = Array.isArray(data.messages) ? data.messages : [];
-    return messages.map((m) => ({
-      id: m.id,
-      role: toMessageRole(m.role),
-      content: m.content,
-      promptTokens: m.promptTokens ?? null,
-      completionTokens: m.completionTokens ?? null,
-      timestamp: m.createdAt,
-    }));
+    try {
+      const msgs = await apiFetchMessages(chatId);
+      return msgs.map((m) => ({
+        id: m.id,
+        role: toMessageRole(m.role),
+        content: m.content,
+        promptTokens: null,
+        completionTokens: null,
+        timestamp: m.created_at,
+      }));
+    } catch {
+      const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json() as { messages?: ApiMessage[] };
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      return messages.map((m) => ({
+        id: m.id,
+        role: toMessageRole(m.role),
+        content: m.content,
+        promptTokens: m.promptTokens ?? null,
+        completionTokens: m.completionTokens ?? null,
+        timestamp: m.createdAt,
+      }));
+    }
   };
 
   return {

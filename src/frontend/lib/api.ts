@@ -153,6 +153,15 @@ export async function apiFetchProjects(): Promise<ApiProjectDto[]> {
   return Array.isArray(data.projects) ? data.projects : [];
 }
 
+export async function apiGetProject(id: string): Promise<ApiProjectDto | null> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiProjectDto | null>('get_project', { id });
+  }
+  const data = await requestApi<{ project?: ApiProjectDto }>(`/api/projects/${encodeURIComponent(id)}`);
+  return data.project ?? null;
+}
+
 export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string }): Promise<ApiProjectDto> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -164,6 +173,22 @@ export async function apiCreateProject(payload: { id: string; name: string; desc
     body: JSON.stringify(payload),
   });
   return data.project ?? (payload as ApiProjectDto);
+}
+
+export async function apiUpdateProject(
+  id: string,
+  payload: { name?: string; description?: string; instructions?: string; memory?: string; pinned?: boolean }
+): Promise<ApiProjectDto | null> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<ApiProjectDto | null>('update_project', { id, payload });
+  }
+  const data = await requestApi<{ project?: ApiProjectDto }>(`/api/projects/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return data.project ?? null;
 }
 
 export async function apiDeleteProject(id: string): Promise<boolean> {

@@ -79,6 +79,60 @@ impl Database {
         })
     }
 
+    pub fn get_project(&self, id: &str) -> AppResult<Option<ProjectRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, description, instructions, memory, pinned, created_at, updated_at 
+             FROM projects WHERE id = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(ProjectRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                instructions: row.get(3)?,
+                memory: row.get(4)?,
+                pinned: row.get::<_, i32>(5)? != 0,
+                created_at: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
+        })?;
+
+        if let Some(r) = rows.next() {
+            Ok(Some(r?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn update_project(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        instructions: Option<&str>,
+        memory: Option<&str>,
+        pinned: Option<bool>,
+    ) -> AppResult<Option<ProjectRecord>> {
+        let existing = match self.get_project(id)? {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+
+        let new_name = name.unwrap_or(&existing.name);
+        let new_description = description.or(existing.description.as_deref());
+        let new_instructions = instructions.or(existing.instructions.as_deref());
+        let new_memory = memory.or(existing.memory.as_deref());
+        let new_pinned = pinned.unwrap_or(existing.pinned);
+        let now = chrono::Utc::now().timestamp_millis();
+
+        self.conn.execute(
+            "UPDATE projects SET name = ?1, description = ?2, instructions = ?3, memory = ?4, pinned = ?5, updated_at = ?6 WHERE id = ?7",
+            params![new_name, new_description, new_instructions, new_memory, if new_pinned { 1 } else { 0 }, now, id],
+        )?;
+
+        self.get_project(id)
+    }
+
     pub fn delete_project(&self, id: &str) -> AppResult<bool> {
         let affected = self.conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
         Ok(affected > 0)

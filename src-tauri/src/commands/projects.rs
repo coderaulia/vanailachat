@@ -18,6 +18,21 @@ pub struct CreateProjectPayload {
     pub instructions: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateProjectPayload {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub instructions: Option<String>,
+    pub memory: Option<String>,
+    pub pinned: Option<bool>,
+}
+
+#[tauri::command]
+pub async fn get_project(state: State<'_, AppState>, id: String) -> AppResult<Option<ProjectRecord>> {
+    let db = state.db.lock();
+    db.get_project(&id)
+}
+
 #[tauri::command]
 pub async fn create_project(
     state: State<'_, AppState>,
@@ -29,6 +44,23 @@ pub async fn create_project(
         &payload.name,
         payload.description.as_deref(),
         payload.instructions.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub async fn update_project(
+    state: State<'_, AppState>,
+    id: String,
+    payload: UpdateProjectPayload,
+) -> AppResult<Option<ProjectRecord>> {
+    let db = state.db.lock();
+    db.update_project(
+        &id,
+        payload.name.as_deref(),
+        payload.description.as_deref(),
+        payload.instructions.as_deref(),
+        payload.memory.as_deref(),
+        payload.pinned,
     )
 }
 
