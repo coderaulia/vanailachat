@@ -85,7 +85,7 @@ export class NineRouterProvider implements LLMProvider {
   }
 
   async chatStream(
-    request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
+    request: { model: string; messages: Array<{ role: string; content: string; images?: string[]; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
     signal?: AbortSignal,
   ): Promise<Response> {
     const apiKey = this.getApiKey();
@@ -118,7 +118,7 @@ export class NineRouterProvider implements LLMProvider {
   }
 
   async chat(
-    request: { model: string; messages: Array<{ role: string; content: string; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
+    request: { model: string; messages: Array<{ role: string; content: string; images?: string[]; tool_call_id?: string; tool_calls?: unknown }>; tools?: unknown[] },
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const apiKey = this.getApiKey();

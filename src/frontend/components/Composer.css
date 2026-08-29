@@ -163,21 +163,53 @@
   border-radius: 10px;
 }
 
-/* Single unified toolbar row */
+/* Single unified toolbar row on Main Chat */
 .composer-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   margin-top: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
-.composer-toolbar__right {
+.role-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  padding: 2px 8px 4px 2px;
+}
+
+.role-picker::-webkit-scrollbar {
+  display: none;
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.composer-controls__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.composer-controls__right {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  flex-wrap: nowrap;
 }
 
 .send-btn {
@@ -212,21 +244,6 @@
   background: color-mix(in srgb, var(--bg-accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--bg-accent) 35%, transparent);
   animation: thinking-pulse 1.6s ease-in-out infinite;
-}
-
-.role-picker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  flex-wrap: nowrap;
-  padding: 2px 16px 4px 2px;
-}
-
-.role-picker::-webkit-scrollbar {
-  display: none;
 }
 
 .role-chip {

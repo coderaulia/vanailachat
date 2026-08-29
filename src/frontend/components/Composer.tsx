@@ -41,6 +41,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     suggestedRoleLabel,
     systemPrompt,
     handleAttach: onAttach,
+    handleAttachFiles: onAttachFiles,
     handleNewChat: onNewChat,
     removeAttachment: onRemoveAttachment,
     handleAcceptRoleSuggestion: onRoleAcceptSuggestion,
@@ -57,6 +58,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     setIsSearchEnabled,
     handleRefreshModels: onRefreshModels,
     handleAbort: onAbort,
+    setViewMode,
   } = useChat();
 
   const [gitStatus, setGitStatus] = useState<{
@@ -128,7 +130,52 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   const activePersona = getPersonaForRole(selectedRole);
 
+  const handlePaste = async (event: React.ClipboardEvent) => {
+    const clipboardData = event.clipboardData;
+    if (!clipboardData) return;
+
+    const filesToAttach: File[] = [];
+
+    // Check for images in clipboard items (e.g. screenshot or copied image)
+    if (clipboardData.items && clipboardData.items.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = file.type.split('/')[1] || 'png';
+            const name = file.name && file.name !== 'image.png'
+              ? file.name
+              : `screenshot-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.${ext}`;
+            filesToAttach.push(new File([file], name, { type: file.type }));
+          }
+        }
+      }
+    }
+
+    // Check for copied files in clipboard
+    if (filesToAttach.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        filesToAttach.push(clipboardData.files[i]);
+      }
+    }
+
+    if (filesToAttach.length > 0) {
+      event.preventDefault();
+      await onAttachFiles(filesToAttach);
+    }
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      event.preventDefault();
+      await onAttachFiles(files);
+    }
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
+    setViewMode('chat');
     onSend(event);
   };
 
@@ -136,7 +183,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     <>
     <footer className="app-footer">
       <form className="chat-form" onSubmit={handleSubmit}>
-        <div className="composer">
+        <div
+          className="composer"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
 
           {/* System prompt popover */}
           {showSystemPrompt && (
@@ -302,9 +353,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
             rows={3}
             value={prompt}
             onChange={(event) => onSetPrompt(event.target.value)}
+            onPaste={handlePaste}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
+                setViewMode('chat');
                 void onSend();
               }
             }}
@@ -312,7 +365,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
           {/* Unified toolbar */}
           <div className="composer-toolbar">
-            {/* Left: role chips */}
+            {/* Top / Left: role chips */}
             <div className="role-picker">
               {Object.entries(MODEL_ROLE_LABELS).map(([role, label]) => (
                 <button
@@ -327,144 +380,149 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
               ))}
             </div>
 
-            {/* Right: model, context, actions */}
-            <div className="composer-toolbar__right">
-              {/* Model selector */}
-              <div className="composer-model">
-                <label>Model</label>
-                <ModelSelector
-                  availableModels={availableModels}
-                  modelMetadata={modelMetadata}
-                  selectedModel={selectedModel}
-                  onSelectModel={onSelectModel}
-                  onRefresh={onRefreshModels}
-                  providers={providers}
-                />
-              </div>
-
-              {/* Context window */}
-              {contextWindow && (
-                <div className="composer-context">
-                  <label>Context</label>
-                  <div className="context-status" title={`${contextWindow.current.toLocaleString()} / ${contextWindow.total.toLocaleString()} tokens`}>
-                    <span className="context-status__text">
-                      {contextWindow.current.toLocaleString()} / {formatTokensCompact(contextWindow.total)}
-                    </span>
-                    <span className="context-status__meter">
-                      <span className="context-status__meter-fill" style={{ width: `${contextPercentage ?? 0}%` }}></span>
-                    </span>
-                  </div>
+            {/* Controls row/group */}
+            <div className="composer-controls">
+              <div className="composer-controls__left">
+                {/* Model selector */}
+                <div className="composer-model">
+                  <label>Model</label>
+                  <ModelSelector
+                    availableModels={availableModels}
+                    modelMetadata={modelMetadata}
+                    selectedModel={selectedModel}
+                    onSelectModel={onSelectModel}
+                    onRefresh={onRefreshModels}
+                    providers={providers}
+                  />
                 </div>
-              )}
 
-              {/* Icon actions */}
-              <div className="icon-group">
-                {/* Search */}
-                <button
-                  type="button"
-                  className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''} ${
-                    isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''
-                  }`}
-                  onClick={onToggleSearch}
-                  title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Toggle Web Search (Alt+S)'}
-                  aria-busy={isCurrentChatSending && isSearchEnabled}
-                  disabled={isCurrentChatSending}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </button>
-
-                {/* Deep Research */}
-                <button
-                  type="button"
-                  className={`btn btn-secondary icon-btn research-toggle ${isResearchEnabled ? 'active' : ''} ${
-                    isCurrentChatSending && isResearchEnabled ? 'is-loading' : ''
-                  }`}
-                  onClick={() => setIsResearchEnabled((prev: boolean) => !prev)}
-                  title={isCurrentChatSending && isResearchEnabled ? 'Researching…' : 'Enable Deep Research'}
-                  aria-busy={isCurrentChatSending && isResearchEnabled}
-                  disabled={isCurrentChatSending}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path>
-                    <path d="M8.5 2h7"></path>
-                    <path d="M7 16h10"></path>
-                  </svg>
-                  {isResearchEnabled && <span className="research-label">Research</span>}
-                </button>
-
-                {/* Attach */}
-                <button
-                  type="button"
-                  className="btn btn-secondary icon-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                  </svg>
-                </button>
-
-                {/* A/B model comparison */}
-                <button
-                  type="button"
-                  className="btn btn-secondary icon-btn"
-                  onClick={() => setShowABTest(true)}
-                  title="A/B Model Comparison"
-                  disabled={isCurrentChatSending}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                    <path d="M16 3l3 3-3 3" /><path d="M8 21l-3-3 3-3" />
-                  </svg>
-                </button>
-
-                {/* System prompt toggle */}
-                <button
-                  type="button"
-                  className={`btn btn-secondary icon-btn ${showSystemPrompt ? 'active' : ''}`}
-                  onClick={() => setShowSystemPrompt((prev) => !prev)}
-                  title="System Prompt"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="4 17 10 11 4 5"></polyline>
-                    <line x1="12" y1="19" x2="20" y2="19"></line>
-                  </svg>
-                </button>
+                {/* Context window */}
+                {contextWindow && (
+                  <div className="composer-context">
+                    <label>Context</label>
+                    <div className="context-status" title={`${contextWindow.current.toLocaleString()} / ${contextWindow.total.toLocaleString()} tokens`}>
+                      <span className="context-status__text">
+                        {contextWindow.current.toLocaleString()} / {formatTokensCompact(contextWindow.total)}
+                      </span>
+                      <span className="context-status__meter">
+                        <span className="context-status__meter-fill" style={{ width: `${contextPercentage ?? 0}%` }}></span>
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={onAttach}
-                multiple
-                hidden
-                accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php,.docx,.xlsx,.xlsm,.pdf"
-              />
+              <div className="composer-controls__right">
+                {/* Icon actions */}
+                <div className="icon-group">
+                  {/* Search */}
+                  <button
+                    type="button"
+                    className={`btn btn-secondary icon-btn ${isSearchEnabled ? 'active' : ''} ${
+                      isCurrentChatSending && isSearchEnabled ? 'is-loading' : ''
+                    }`}
+                    onClick={onToggleSearch}
+                    title={isCurrentChatSending && isSearchEnabled ? 'Searching web...' : 'Toggle Web Search (Alt+S)'}
+                    aria-busy={isCurrentChatSending && isSearchEnabled}
+                    disabled={isCurrentChatSending}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </button>
 
-              {/* Clear + Send */}
-              <button type="button" className="btn btn-secondary composer-clear-btn" onClick={onNewChat} title="Clear current chat">
-                Clear
-              </button>
+                  {/* Deep Research */}
+                  <button
+                    type="button"
+                    className={`btn btn-secondary icon-btn research-toggle ${isResearchEnabled ? 'active' : ''} ${
+                      isCurrentChatSending && isResearchEnabled ? 'is-loading' : ''
+                    }`}
+                    onClick={() => setIsResearchEnabled((prev: boolean) => !prev)}
+                    title={isCurrentChatSending && isResearchEnabled ? 'Researching…' : 'Enable Deep Research'}
+                    aria-busy={isCurrentChatSending && isResearchEnabled}
+                    disabled={isCurrentChatSending}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path>
+                      <path d="M8.5 2h7"></path>
+                      <path d="M7 16h10"></path>
+                    </svg>
+                    {isResearchEnabled && <span className="research-label">Research</span>}
+                  </button>
 
-              {isCurrentChatSending ? (
-                <button type="button" className="btn btn-danger send-btn" onClick={onAbort}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="6" y="6" width="12" height="12"></rect>
-                  </svg>
-                  <span>Stop</span>
+                  {/* Attach */}
+                  <button
+                    type="button"
+                    className="btn btn-secondary icon-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach files or images"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                  </button>
+
+                  {/* A/B model comparison */}
+                  <button
+                    type="button"
+                    className="btn btn-secondary icon-btn"
+                    onClick={() => setShowABTest(true)}
+                    title="A/B Model Comparison"
+                    disabled={isCurrentChatSending}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                      <path d="M16 3l3 3-3 3" /><path d="M8 21l-3-3 3-3" />
+                    </svg>
+                  </button>
+
+                  {/* System prompt toggle */}
+                  <button
+                    type="button"
+                    className={`btn btn-secondary icon-btn ${showSystemPrompt ? 'active' : ''}`}
+                    onClick={() => setShowSystemPrompt((prev) => !prev)}
+                    title="System Prompt"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="4 17 10 11 4 5"></polyline>
+                      <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                  </button>
+                </div>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={onAttach}
+                  multiple
+                  hidden
+                  accept="image/*,.txt,.md,.js,.ts,.tsx,.jsx,.py,.html,.css,.json,.csv,.log,.sh,.rs,.go,.cpp,.c,.h,.hpp,.java,.php,.docx,.xlsx,.xlsm,.pdf"
+                />
+
+                {/* Clear + Send */}
+                <button type="button" className="btn btn-secondary composer-clear-btn" onClick={onNewChat} title="Clear current chat">
+                  Clear
                 </button>
-              ) : (
-                <button type="submit" className="btn btn-primary send-btn" disabled={isCurrentChatSending}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                  <span>Send</span>
-                </button>
-              )}
+
+                {isCurrentChatSending ? (
+                  <button type="button" className="btn btn-danger send-btn" onClick={onAbort}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <button type="submit" className="btn btn-primary send-btn" disabled={isCurrentChatSending}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    <span>Send</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

@@ -53,6 +53,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   };
 
   const onViewProjectDetail = () => {
+    if (!selectedProjectId && projects.length > 0) {
+      onSelectProject(projects[0].id);
+    }
     setViewMode('project');
     if (typeof window !== 'undefined' && window.innerWidth <= 860) {
       onClose();

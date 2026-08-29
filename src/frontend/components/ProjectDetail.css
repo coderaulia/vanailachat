@@ -3,9 +3,14 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
-  padding: 32px 24px;
+  overflow-x: hidden;
+  padding: 28px 24px 48px;
   background: var(--bg-app);
   color: var(--text-primary);
 }
@@ -16,9 +21,10 @@
 
 /* ── Header ── */
 .project-detail__header {
-  max-width: 1000px;
+  max-width: 1080px;
   width: 100%;
-  margin: 0 auto 40px;
+  margin: 0 auto 32px;
+  box-sizing: border-box;
 }
 
 /* Breadcrumb */
@@ -190,11 +196,12 @@
 /* ── Content grid ── */
 .project-detail__content {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 40px;
-  max-width: 1000px;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 32px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* ── Main col ── */
@@ -202,6 +209,8 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
+  min-width: 0;
+  width: 100%;
 }
 
 .project-detail__composer-wrap {
@@ -211,11 +220,64 @@
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-soft);
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .project-detail__composer-wrap .app-footer {
   position: relative;
   bottom: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.project-detail__composer-wrap .composer {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* Scoped specifically for Workspace UI to prevent clipping */
+.project-detail__composer-wrap .composer-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.project-detail__composer-wrap .role-picker {
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 2px 2px 4px 2px;
+  overflow-x: auto;
+}
+
+.project-detail__composer-wrap .composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.project-detail__composer-wrap .composer-controls__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.project-detail__composer-wrap .composer-controls__right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Chats section */
@@ -390,6 +452,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  width: 100%;
 }
 
 /* Project cards */
@@ -571,21 +635,56 @@
 }
 
 /* ── Responsive ── */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .project-detail__content {
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .project-detail {
+    padding: 20px 16px 36px;
   }
 
-  .project-detail__side-col {
-    order: -1;
+  .project-detail__header {
+    margin-bottom: 24px;
   }
 
   .project-detail__name {
-    font-size: 26px;
+    font-size: 28px;
   }
 
   .project-detail__stats {
     flex-wrap: wrap;
+    padding: 10px 14px;
+    gap: 8px 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .project-detail {
+    padding: 14px 10px 24px;
+  }
+
+  .project-detail__name {
+    font-size: 22px;
+  }
+
+  .project-detail__stats {
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .project-stat {
+    padding: 0 8px;
+  }
+
+  .project-stat__value {
+    font-size: 17px;
+  }
+
+  .project-stat__label {
+    font-size: 10px;
   }
 }

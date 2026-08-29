@@ -261,9 +261,8 @@ export function useChatSession(deps: {
   /** Formats the browser cannot read as text — the backend unpacks these. */
   const NEEDS_EXTRACTION = /\.(docx|xlsx|xlsm|pdf)$/i;
 
-  const handleAttach = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
+  const handleAttachFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
 
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -306,6 +305,13 @@ export function useChatSession(deps: {
     }
     deps.setAttachedFiles((prev) => [...prev, ...newAttachments]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleAttach = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      await handleAttachFiles(files);
+    }
   };
 
   const removeAttachment = (index: number) => {
@@ -463,6 +469,7 @@ export function useChatSession(deps: {
     handleNewChat,
     handleSelectChat,
     handleAttach,
+    handleAttachFiles,
     removeAttachment,
     handleProjectRootChange,
     handleSystemPromptChange,

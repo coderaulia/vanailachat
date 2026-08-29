@@ -36,11 +36,23 @@ export interface OpenAIUsage {
   total_tokens?: number;
 }
 
-interface OpenAICompatibleMessage {
+export interface OpenAICompatibleMessage {
   role: string;
   content: unknown;
+  images?: string[];
   tool_call_id?: string;
   tool_calls?: unknown;
+}
+
+function toDataUrl(image: string): string {
+  if (image.startsWith('data:') || image.startsWith('http://') || image.startsWith('https://')) {
+    return image;
+  }
+  if (image.startsWith('/9j/')) return `data:image/jpeg;base64,${image}`;
+  if (image.startsWith('iVBORw0KGgo')) return `data:image/png;base64,${image}`;
+  if (image.startsWith('UklGR')) return `data:image/webp;base64,${image}`;
+  if (image.startsWith('R0lGOD')) return `data:image/gif;base64,${image}`;
+  return `data:image/png;base64,${image}`;
 }
 
 /**
@@ -50,9 +62,27 @@ interface OpenAICompatibleMessage {
 export function toOpenAICompatibleMessage(
   message: OpenAICompatibleMessage,
 ): Record<string, unknown> {
-  const content = message.role === 'tool' && typeof message.content !== 'string'
+  let content = message.role === 'tool' && typeof message.content !== 'string'
     ? JSON.stringify(message.content ?? {})
     : message.content;
+
+  if (Array.isArray(message.images) && message.images.length > 0) {
+    const text = typeof content === 'string' ? content : '';
+    const parts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+    if (text) {
+      parts.push({ type: 'text', text });
+    }
+    for (const img of message.images) {
+      if (typeof img === 'string' && img.trim()) {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: toDataUrl(img.trim()) },
+        });
+      }
+    }
+    content = parts;
+  }
+
   const result: Record<string, unknown> = {
     role: message.role,
     content,

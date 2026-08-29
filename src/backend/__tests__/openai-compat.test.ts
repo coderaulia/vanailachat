@@ -57,6 +57,27 @@ describe('OpenAI-compatible message normalization', () => {
     });
   });
 
+  it('formats image attachments into OpenAI-compatible multimodal content array', () => {
+    expect(
+      toOpenAICompatibleMessage({
+        role: 'user',
+        content: 'Check this screenshot',
+        images: ['iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='],
+      }),
+    ).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Check this screenshot' },
+        {
+          type: 'image_url',
+          image_url: {
+            url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          },
+        },
+      ],
+    });
+  });
+
   it('omits Authorization header when apiKey is empty', async () => {
     let capturedHeaders: HeadersInit | undefined;
     let capturedUrl: string | undefined;

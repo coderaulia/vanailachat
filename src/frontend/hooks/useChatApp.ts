@@ -346,6 +346,7 @@ export function useChatApp() {
     handleEditAndResend: chatSession.handleEditAndResend,
     handleAbort: chatSession.handleAbort,
     handleAttach: chatSession.handleAttach,
+    handleAttachFiles: chatSession.handleAttachFiles,
     removeAttachment: chatSession.removeAttachment,
     handleNewChat: chatSession.handleNewChat,
     handleSelectChat: chatSession.handleSelectChat,

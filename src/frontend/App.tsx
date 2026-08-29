@@ -44,7 +44,6 @@ const AppShell = () => {
   }, []);
 
   const {
-    currentChatId,
     conversation,
     pendingApproval,
     respondToApproval,
@@ -148,7 +147,26 @@ const AppShell = () => {
       <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="main-content">
-        {(viewMode === 'chat' || currentChatId) ? (
+        {viewMode === 'project' ? (
+          (() => {
+            const currentProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+            if (currentProject) {
+              return (
+                <Suspense fallback={null}>
+                  <ProjectDetail />
+                </Suspense>
+              );
+            }
+            return (
+              <div className="welcome-screen">
+                <div className="welcome-content">
+                  <h1>Welcome to Vanaila Chat</h1>
+                  <p>Create a project or select an existing one to get started.</p>
+                </div>
+              </div>
+            );
+          })()
+        ) : (
           <>
             <ChatHeader
               showTokens={showTokens}
@@ -181,25 +199,6 @@ const AppShell = () => {
               )}
             </div>
           </>
-        ) : (
-          (() => {
-            const currentProject = projects.find(p => p.id === selectedProjectId);
-            if (currentProject) {
-              return (
-                <Suspense fallback={null}>
-                  <ProjectDetail />
-                </Suspense>
-              );
-            }
-            return (
-              <div className="welcome-screen">
-                <div className="welcome-content">
-                  <h1>Welcome to Vanaila Chat</h1>
-                  <p>Create a project or select an existing one to get started.</p>
-                </div>
-              </div>
-            );
-          })()
         )}
       </main>
     </div>
