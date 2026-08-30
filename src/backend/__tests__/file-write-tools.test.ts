@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ToolService } from '../services/tools.js';
+import { ToolService, executableForPlatform, isAllowedCommand } from '../services/tools.js';
 
 describe('write_file / edit_file', () => {
   let root: string;
@@ -102,6 +102,15 @@ describe('write_file / edit_file', () => {
 });
 
 describe('git allowlist', () => {
+  it('maps package-manager shims on Windows without using a shell for arguments', () => {
+    expect(executableForPlatform('npm', 'win32')).toBe('npm.cmd');
+    expect(executableForPlatform('pnpm', 'win32')).toBe('pnpm.cmd');
+    expect(executableForPlatform('git', 'win32')).toBe('git');
+    expect(executableForPlatform('pnpm', 'linux')).toBe('pnpm');
+    expect(isAllowedCommand('pnpm', ['test'])).toBe(true);
+    expect(isAllowedCommand('pnpm', ['run', 'build'])).toBe(true);
+  });
+
   it('permits read-only subcommands', async () => {
     const definitions = ToolService.getToolDefinitions() as Array<{ function?: { name?: string } }>;
     expect(definitions.map((d) => d.function?.name)).toEqual(

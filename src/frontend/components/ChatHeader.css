@@ -103,6 +103,17 @@
   color: var(--text-primary);
 }
 
+.response-stats {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.response-stats span + span::before {
+  content: '·';
+  margin: 0 5px;
+  color: var(--text-tertiary);
+}
+
 .auto-approve-toggle {
   display: inline-flex;
   align-items: center;

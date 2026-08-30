@@ -77,6 +77,12 @@
 }
 
 /* Tabs */
+.settings-tabs-wrap {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 .settings-tabs {
   display: flex;
   align-items: center;
@@ -88,6 +94,31 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   flex-shrink: 0;
+  padding-right: 48px;
+}
+
+.settings-tabs-arrow {
+  position: absolute;
+  right: 14px;
+  bottom: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--bg-surface-strong);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: -8px 0 12px var(--bg-surface);
+}
+
+.settings-tabs-arrow:hover {
+  color: var(--text-primary);
+  border-color: var(--border-medium);
 }
 
 .settings-tabs::-webkit-scrollbar {
@@ -622,6 +653,65 @@
   gap: 6px;
   margin: 8px 0 12px;
 }
+
+.settings-training-review {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+.settings-training-review__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-training-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.settings-training-example {
+  display: flex;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  background: var(--bg-surface-strong);
+}
+
+.settings-training-example.is-selected {
+  border-color: var(--border-medium);
+}
+
+.settings-training-example__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-training-example__meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.settings-training-example__prompt,
+.settings-training-example__answer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.settings-training-example__answer { color: var(--text-secondary); }
 
 .settings-button-row {
   display: flex;

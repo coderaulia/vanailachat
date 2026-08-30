@@ -12,7 +12,7 @@ Welcome to the official download and installation guide for **Vanaila Chat**. Ch
 
 ---
 
-## 🚀 Quick Download Links (Latest Release: v0.3.0)
+## 🚀 Quick Download Links (Latest Release: v0.3.1)
 
 All standalone native Linux desktop installers and standalone bundles are hosted on our official [GitHub Releases Page](https://github.com/coderaulia/vanailachat/releases/latest).
 
@@ -31,15 +31,15 @@ All standalone native Linux desktop installers and standalone bundles are hosted
 
 ### 1. Debian, Ubuntu, Linux Mint, Pop!_OS (`.deb`)
 
-1. Download `vanaila-chat_0.3.0_amd64.deb` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
+1. Download `vanaila-chat_0.3.1_amd64.deb` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
 2. Open your terminal in your download folder and install via `apt`:
    ```bash
    sudo apt update
-   sudo apt install ./vanaila-chat_0.3.0_amd64.deb
+   sudo apt install ./vanaila-chat_0.3.1_amd64.deb
    ```
    *(Alternatively, using `dpkg`:)*
    ```bash
-   sudo dpkg -i vanaila-chat_0.3.0_amd64.deb
+   sudo dpkg -i vanaila-chat_0.3.1_amd64.deb
    sudo apt-get install -f # resolve any missing dependencies
    ```
 3. Launch **Vanaila Chat** from your desktop application menu or run `vanaila-chat` in your terminal.
@@ -48,10 +48,10 @@ All standalone native Linux desktop installers and standalone bundles are hosted
 
 ### 2. Fedora, RHEL, openSUSE (`.rpm`)
 
-1. Download `vanaila-chat-0.3.0-1.x86_64.rpm` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
+1. Download `vanaila-chat-0.3.1-1.x86_64.rpm` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
 2. Install via `dnf`:
    ```bash
-   sudo dnf install ./vanaila-chat-0.3.0-1.x86_64.rpm
+   sudo dnf install ./vanaila-chat-0.3.1-1.x86_64.rpm
    ```
 3. Launch **Vanaila Chat** from your desktop app menu or run `vanaila-chat`.
 
@@ -61,11 +61,11 @@ All standalone native Linux desktop installers and standalone bundles are hosted
 
 AppImage runs on virtually all Linux distributions without root permissions or system installation.
 
-1. Download `Vanaila-Chat_0.3.0_amd64.AppImage` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
+1. Download `Vanaila-Chat_0.3.1_amd64.AppImage` from [Releases](https://github.com/coderaulia/vanailachat/releases/latest).
 2. Make the file executable and launch:
    ```bash
-   chmod +x Vanaila-Chat_0.3.0_amd64.AppImage
-   ./Vanaila-Chat_0.3.0_amd64.AppImage
+   chmod +x Vanaila-Chat_0.3.1_amd64.AppImage
+   ./Vanaila-Chat_0.3.1_amd64.AppImage
    ```
 
 > **💡 Tip (Desktop Integration for AppImage)**: You can use [Geary / AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) to automatically integrate the AppImage into your system's application launcher.
@@ -122,7 +122,7 @@ To verify the integrity and authenticity of your downloaded files, compare the S
 sha256sum -c SHA256SUMS.txt --ignore-missing
 
 # Or calculate manually:
-sha256sum vanaila-chat_0.3.0_amd64.deb
+sha256sum vanaila-chat_0.3.1_amd64.deb
 ```
 
 ---

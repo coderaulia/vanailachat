@@ -47,8 +47,8 @@ function preprocessMessageContent(content: string): string {
 
   // Convert raw Claude Code error lines into structured Alert callouts
   result = result.replace(
-    /(?:^\s*|\n\s*)(?:\*{0,2}Claude Code error:\*{0,2}|Claude Code error:)\s*(.*)/gi,
-    '\n\n> [!WARNING]\n> **Claude Code Notice**\n> $1\n\n'
+    /(?:^\s*|\n\s*)(?:\*{0,2}(?:Claude Code|Pi Harness) error:\*{0,2}|(?:Claude Code|Pi Harness) error:)\s*(.*)/gi,
+    '\n\n> [!WARNING]\n> **Pi Harness Notice**\n> $1\n\n'
   );
 
   return result;
@@ -221,4 +221,3 @@ export async function getMarkdownRenderer(): Promise<MarkdownRenderFn> {
 export function renderMarkdownFallback(content: string): string {
   return fallbackRender(content);
 }
-

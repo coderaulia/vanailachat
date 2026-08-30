@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createAgentSession,
-  createCodingToolDefinitions,
+  createCodingTools,
+  createReadOnlyTools,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
@@ -12,6 +13,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { ApprovalService, describeToolCall, normalizeApprovalDetails } from './approvals.js';
 import { DatabaseService } from './database.js';
+import { resolveHarnessProvider } from './harnessProvider.js';
 import type { CodingEvent, CodingHarness, CodingHarnessStatus, CodingRunInput } from './codingHarness.js';
 
 const READ_ONLY_PI_TOOLS = new Set(['find', 'grep', 'ls', 'read']);
@@ -100,7 +102,7 @@ async function createModelRuntime(config: PiHarnessConfig): Promise<{
   tempDir?: string;
 }> {
   if (!config.baseUrl) {
-    const modelRuntime = await ModelRuntime.create({ agentDir: config.agentDir });
+    const modelRuntime = await ModelRuntime.create();
     if (config.apiKey && config.provider) {
       await modelRuntime.setRuntimeApiKey(config.provider, config.apiKey);
     }
@@ -119,7 +121,7 @@ async function createModelRuntime(config: PiHarnessConfig): Promise<{
       },
     },
   }));
-  return { modelRuntime: await ModelRuntime.create({ agentDir: config.agentDir, modelsPath }), tempDir };
+  return { modelRuntime: await ModelRuntime.create({ modelsPath }), tempDir };
 }
 
 export class PiHarness implements CodingHarness {
@@ -127,22 +129,22 @@ export class PiHarness implements CodingHarness {
 
   async status(): Promise<CodingHarnessStatus> {
     const config = getConfig();
-    if (!config.model || !config.provider) {
-      return {
-        id: this.id,
-        label: 'Pi Harness',
-        available: false,
-        reason: 'Configure a Pi provider and model in Settings.',
-      };
-    }
-    return { id: this.id, label: 'Pi Harness', available: true };
+    const resolved = resolveHarnessProvider(undefined, config.provider, config.model);
+    const label = resolved.provider === 'openrouter'
+      ? 'Pi Harness (via OpenRouter)'
+      : resolved.provider === '9router'
+        ? 'Pi Harness (via 9Router)'
+        : resolved.provider === 'ollama'
+          ? 'Pi Harness (via Ollama)'
+          : resolved.provider.startsWith('custom')
+            ? 'Pi Harness (via Custom Provider)'
+            : 'Pi Harness';
+    return { id: this.id, label, available: true };
   }
 
   async *run(input: CodingRunInput): AsyncIterable<CodingEvent> {
-    const config = getConfig();
-    if (!config.model || !config.provider) {
-      throw new Error('Pi Harness requires a provider and model in Settings.');
-    }
+    const storedConfig = getConfig();
+    const config = { ...storedConfig, ...resolveHarnessProvider(input.model, storedConfig.provider, storedConfig.model) };
 
     const modelId = config.model.includes('/')
       ? config.model.split('/').slice(1).join('/')
@@ -167,13 +169,29 @@ export class PiHarness implements CodingHarness {
     });
     await resourceLoader.reload();
 
-    const allTools = createCodingToolDefinitions(input.cwd);
+    const eventQueue: CodingEvent[] = [];
+    let wakeConsumer: (() => void) | null = null;
+    let producerDone = false;
+    let producerError: unknown;
+
+    const pushEvent = (event: CodingEvent) => {
+      eventQueue.push(event);
+      wakeConsumer?.();
+      wakeConsumer = null;
+    };
+
+    const readOnlyTools = createReadOnlyTools(input.cwd);
+    const codingTools = createCodingTools(input.cwd);
+    const allTools = [
+      ...readOnlyTools,
+      ...codingTools.filter((t) => !readOnlyTools.some((r) => r.name === t.name)),
+    ] as ToolDefinition[];
     const enabledTools = config.toolPolicy === 'readonly'
       ? allTools.filter((tool) => READ_ONLY_PI_TOOLS.has(tool.name))
       : allTools.map((tool) => this.wrapTool(tool, input, pushEvent));
 
     const sessionManager = input.sessionId
-      ? SessionManager.open(input.sessionId, input.cwd)
+      ? SessionManager.open(input.sessionId)
       : SessionManager.inMemory(input.cwd);
     const { session } = await createAgentSession({
       agentDir: config.agentDir,
@@ -191,33 +209,27 @@ export class PiHarness implements CodingHarness {
     const abort = () => session.agent.abort();
     input.signal.addEventListener('abort', abort, { once: true });
 
-    const eventQueue: CodingEvent[] = [];
-    let wakeConsumer: (() => void) | null = null;
-    let producerDone = false;
-    let producerError: unknown;
-
-    const pushEvent = (event: CodingEvent) => {
-      eventQueue.push(event);
-      wakeConsumer?.();
-      wakeConsumer = null;
-    };
-
     try {
       yield { type: 'session', sessionId: session.sessionManager.getSessionId() };
       let usageEmitted = false;
+      const toolArgs = new Map<string, Record<string, unknown>>();
 
       session.subscribe((event) => {
         if (event.type === 'tool_execution_start' && READ_ONLY_PI_TOOLS.has(event.toolName)) {
-          pushEvent(toolEvent(event.toolCallId, event.toolName, event.args as Record<string, unknown>, 'start'));
+          const args = event.args as Record<string, unknown>;
+          toolArgs.set(event.toolCallId, args);
+          pushEvent(toolEvent(event.toolCallId, event.toolName, args, 'start'));
         }
 
         if (event.type === 'tool_execution_end' && READ_ONLY_PI_TOOLS.has(event.toolName)) {
+          const args = toolArgs.get(event.toolCallId) ?? {};
+          toolArgs.delete(event.toolCallId);
           const detail = toolText(event.result?.content)
-            || describeToolCall(event.toolName, event.args as Record<string, unknown>);
+            || describeToolCall(event.toolName, args);
           pushEvent(toolEvent(
             event.toolCallId,
             event.toolName,
-            event.args as Record<string, unknown>,
+            args,
             event.isError ? 'error' : 'done',
             detail,
           ));
@@ -229,7 +241,11 @@ export class PiHarness implements CodingHarness {
             pushEvent({ type: 'text', text: update.delta });
           }
 
-          const usage = event.message?.usage as { input?: number; output?: number; totalTokens?: number } | undefined;
+          const usage = (event.message as { role?: string; usage?: {
+            input?: number;
+            output?: number;
+            totalTokens?: number;
+          } } | undefined)?.usage;
           if (!usageEmitted && usage) {
             usageEmitted = true;
             pushEvent({

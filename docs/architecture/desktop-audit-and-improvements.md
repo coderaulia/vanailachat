@@ -2,7 +2,7 @@
 
 > **Audit Date**: August 2026  
 > **Target OS**: Linux (Fedora 40+, Debian 12+, Ubuntu 24.04+, Arch Linux) & Cross-Desktop Environments (GNOME/Mutter, KDE Plasma, Sway/Hyprland)  
-> **App Version**: 0.3.0 (`com.vanaila.chat`)
+> **App Version**: 0.3.1 (`com.vanaila.chat`)
 
 ---
 

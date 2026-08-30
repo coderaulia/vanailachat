@@ -69,6 +69,16 @@ interface TrainingStats {
   oldest: number | null;
   newest: number | null;
 }
+interface TrainingExample {
+  id: string;
+  chatId: string;
+  chatTitle: string;
+  userContent: string;
+  assistantContent: string;
+  rating: number;
+  edited: boolean;
+  createdAt: number;
+}
 type LlmMode = 'ollama' | 'custom' | '9router' | 'openrouter' | 'openai';
 
 const STORAGE_KEY = 'vanaila_onboarding_done';
@@ -125,6 +135,7 @@ function useAutosave(value: string, action: () => void | Promise<void>, ready: b
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>('ai');
+  const settingsTabsRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -203,6 +214,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [trainingError, setTrainingError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'sharegpt' | 'alpaca'>('sharegpt');
   const [includeDistillation, setIncludeDistillation] = useState(false);
+  const [trainingExamples, setTrainingExamples] = useState<TrainingExample[]>([]);
+  const [selectedTrainingIds, setSelectedTrainingIds] = useState<Set<string>>(new Set());
   const trainingFetched = useRef(false);
 
   const flash = (label: string) => {
@@ -313,9 +326,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (activeTab !== 'training' || trainingFetched.current) return;
     setTrainingLoading(true);
-    fetch('/api/training/stats')
-      .then((r) => r.json())
-      .then((data: TrainingStats) => setTrainingStats(data))
+    Promise.all([fetch('/api/training/stats'), fetch('/api/training/examples')])
+      .then(async ([statsResponse, examplesResponse]) => {
+        const data = await statsResponse.json() as TrainingStats;
+        const examples = await examplesResponse.json() as { examples?: TrainingExample[] };
+        setTrainingStats(data);
+        const nextExamples = examples.examples ?? [];
+        setTrainingExamples(nextExamples);
+        setSelectedTrainingIds(new Set(nextExamples.map((example) => example.id)));
+      })
       .catch(() => setTrainingError('Failed to load stats'))
       .finally(() => {
         setTrainingLoading(false);
@@ -327,9 +346,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setTrainingLoading(true);
     setTrainingError(null);
     try {
-      const r = await fetch('/api/training/stats');
-      const data = (await r.json()) as TrainingStats;
+      const [statsResponse, examplesResponse] = await Promise.all([fetch('/api/training/stats'), fetch('/api/training/examples')]);
+      const data = (await statsResponse.json()) as TrainingStats;
+      const examples = (await examplesResponse.json()) as { examples?: TrainingExample[] };
       setTrainingStats(data);
+      const nextExamples = examples.examples ?? [];
+      setTrainingExamples(nextExamples);
+      setSelectedTrainingIds(new Set(nextExamples.map((example) => example.id)));
     } catch {
       setTrainingError('Failed to load stats');
     } finally {
@@ -345,7 +368,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       const response = await fetch('/api/training/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: exportFormat, includeDistillation }),
+        body: JSON.stringify({ format: exportFormat, includeDistillation, selectedIds: [...selectedTrainingIds] }),
       });
       const data = (await response.json()) as { path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string };
       if (!response.ok || data.error) {
@@ -798,8 +821,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Tab bar */}
-        <div className="settings-tabs" role="tablist">
-          {TABS.map((t) => (
+        <div className="settings-tabs-wrap">
+          <div ref={settingsTabsRef} className="settings-tabs" role="tablist">
+            {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -811,7 +835,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <span className="settings-tab-icon">{t.icon}</span>
               <span>{t.label}</span>
             </button>
-          ))}
+            ))}
+          </div>
+          <button
+            type="button"
+            className="settings-tabs-arrow"
+            aria-label="Show more settings"
+            title="Show more settings"
+            onClick={() => settingsTabsRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
         </div>
 
         {/* Body */}
@@ -1555,6 +1591,38 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     <p className="settings-hint">No stats available.</p>
                   )}
 
+                  {trainingExamples.length > 0 && (
+                    <div className="settings-training-review">
+                      <div className="settings-training-review__header">
+                        <div>
+                          <strong>Review examples</strong>
+                          <p className="settings-hint">Choose which thumbs-up answers to include. Edited answers use your correction.</p>
+                        </div>
+                        <button type="button" className="settings-secondary-btn" onClick={() => setSelectedTrainingIds(new Set(trainingExamples.map((example) => example.id)))}>Select all</button>
+                      </div>
+                      <div className="settings-training-examples">
+                        {trainingExamples.map((example) => {
+                          const selected = selectedTrainingIds.has(example.id);
+                          return (
+                            <label key={example.id} className={`settings-training-example ${selected ? 'is-selected' : ''}`}>
+                              <input type="checkbox" checked={selected} onChange={() => setSelectedTrainingIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(example.id)) next.delete(example.id); else next.add(example.id);
+                                return next;
+                              })} />
+                              <span className="settings-training-example__body">
+                                <span className="settings-training-example__meta">{example.chatTitle} · {example.edited ? 'Edited answer' : 'Thumbs-up'}</span>
+                                <span className="settings-training-example__prompt">{example.userContent}</span>
+                                <span className="settings-training-example__answer">{example.assistantContent}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <p className="settings-hint">{selectedTrainingIds.size} of {trainingExamples.length} examples selected. Export includes chat text, so review for private information first.</p>
+                    </div>
+                  )}
+
                   <div className="settings-divider" />
 
                   <div className="settings-field">
@@ -1592,7 +1660,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       type="button"
                       className="settings-primary-btn"
                       onClick={exportTrainingData}
-                      disabled={trainingExporting || !trainingStats || trainingStats.pairs === 0}
+                      disabled={trainingExporting || !trainingStats || selectedTrainingIds.size === 0}
                     >
                       {trainingExporting ? 'Exporting…' : 'Export dataset'}
                     </button>

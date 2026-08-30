@@ -19,6 +19,11 @@
   </provides>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.3.1" date="2026-08-30">
+      <description>
+        <p>Improved coding harness provider resolution, safer tool execution, training example review/export, and responsive desktop settings navigation.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-08-26">
       <description>
         <p>Initial native Linux desktop release supporting Debian, Arch, and Fedora with local Ollama IPC and multi-provider streaming.</p>

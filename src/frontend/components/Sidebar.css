@@ -573,7 +573,7 @@
 }
 
 .sidebar-settings-btn {
-  width: 58px;
+  width: 28px;
   height: 28px;
   min-height: 28px;
   min-width: 28px;
@@ -583,10 +583,6 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-}
-
-.sidebar-settings-btn__arrow {
-  margin-left: 2px;
 }
 
 .sidebar-settings-btn:hover {

@@ -330,7 +330,7 @@ async function assertSafeOutboundUrl(rawUrl: string): Promise<void> {
   }
 }
 
-function isAllowedCommand(command: string, args: string[]): boolean {
+export function isAllowedCommand(command: string, args: string[]): boolean {
   command = command.toLowerCase();
   if (command === 'git') {
     // Read-only subcommands only. Anything that rewrites history, moves refs,
@@ -346,12 +346,12 @@ function isAllowedCommand(command: string, args: string[]): boolean {
     return true;
   }
 
-  if (command === 'npm') {
-    if (args.length === 1 && args[0] === 'test') {
+  if (['npm', 'pnpm', 'yarn', 'bun'].includes(command)) {
+    if (args.length === 1 && ['test', 'build', 'type-check', 'lint'].includes(args[0])) {
       return true;
     }
 
-    return args.length === 2 && args[0] === 'run' && args[1] === 'lint';
+    return args.length === 2 && args[0] === 'run' && ['test', 'build', 'type-check', 'lint'].includes(args[1]);
   }
 
   if (
@@ -393,7 +393,8 @@ async function readWithFs(
 }
 
 export function executableForPlatform(command: string, platform: NodeJS.Platform): string {
-  return platform === 'win32' && command.toLowerCase() === 'npm' ? 'npm.cmd' : command;
+  if (platform !== 'win32') return command;
+  return ['npm', 'pnpm', 'yarn', 'bun'].includes(command.toLowerCase()) ? command + '.cmd' : command;
 }
 
 export class ToolService {

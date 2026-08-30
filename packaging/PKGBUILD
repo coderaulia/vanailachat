@@ -1,6 +1,6 @@
 # Maintainer: Aulia Satrio Wibowo <care@vanaila.com>
 pkgname=vanaila-chat-bin
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Privacy-first, high-performance local AI chat client with multi-provider LLM support"
 arch=('x86_64')

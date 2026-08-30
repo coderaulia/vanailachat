@@ -224,14 +224,14 @@ export function useSendMessage(deps: SendMessageDeps) {
     let assistantContentForSave = '';
     let rafId: ReturnType<typeof requestAnimationFrame> | null = null;
 
-    // The coding role drives Claude Code, which owns the filesystem and runs
+    // The coding role drives a coding harness, which owns the filesystem and runs
     // in a workspace rather than off the conversation history. It streams the
     // same NDJSON envelope, so everything downstream is shared.
     const activeProj = selectedProjectId ? projects.find((p) => p.id === selectedProjectId) : null;
     const workspacePath = (existingChat?.projectRoot ?? (projectRoot.trim() || activeProj?.projectRoot || '')).trim();
     const useCodingHarness = selectedRole === 'coding' && workspacePath.length > 0;
     let resolvedProjectId = activeProjectId;
-    let chosenHarness = 'claude-code';
+    let chosenHarness = 'pi-harness';
 
     try {
       if (useCodingHarness) {
@@ -274,12 +274,12 @@ export function useSendMessage(deps: SendMessageDeps) {
           const harnessRes = await fetch('/api/settings/coding_harness');
           if (harnessRes.ok) {
             const hData = (await harnessRes.json()) as { value?: string };
-            if (hData.value && (hData.value === 'deepseek-harness' || hData.value === 'claude-code')) {
+            if (hData.value && (hData.value === 'deepseek-harness' || hData.value === 'pi-harness')) {
               chosenHarness = hData.value;
             }
           }
         } catch {
-          // fallback to default 'claude-code'
+          // fallback to default 'pi-harness'
         }
 
         const sessionResponse = await fetch('/api/coding/sessions', {
@@ -398,7 +398,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           return;
         }
 
-        // Claude Code speaks its own envelope: prose arrives as text events and
+        // Coding harnesses speak their own envelope: prose arrives as text events and
         // each tool use is announced separately, so the transcript shows what
         // it did rather than going silent between edits.
         const coding = (data as unknown as {
@@ -457,7 +457,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         // because the stream has already started by then.
         const codingError = (data as unknown as { error?: string }).error;
         if (codingError) {
-          const harnessLabel = chosenHarness === 'deepseek-harness' ? 'DeepSeek Harness' : 'Claude Code';
+          const harnessLabel = chosenHarness === 'deepseek-harness' ? 'DeepSeek Harness' : 'Pi Harness';
           fullContent += `${fullContent ? '\n\n' : ''}> [!WARNING]\n> **${harnessLabel} Notice**\n> ${codingError}`;
           assistantContentForSave = fullContent;
           setStatusText(`${harnessLabel}: ${codingError}`);
@@ -619,7 +619,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         id: assistantMessage.id,
         role: 'assistant',
         content: assistantContentForSave,
-        timestamp: assistantMessage.timestamp,
+        timestamp: finishedAt,
         promptTokens: promptTokens ?? null,
         completionTokens: completionTokens ?? null,
         toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
@@ -633,6 +633,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           updated[last] = {
             ...updated[last],
             content: assistantContentForSave,
+            timestamp: finishedAt,
             promptTokens: assistantToPersist.promptTokens,
             completionTokens: assistantToPersist.completionTokens,
             toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,

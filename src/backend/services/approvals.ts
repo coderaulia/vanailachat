@@ -104,7 +104,7 @@ export interface NormalizedApprovalDetails {
 }
 
 /**
- * Normalizes tool arguments across Claude Code SDK and custom agent tools
+ * Normalizes tool arguments across coding-agent SDKs and custom agent tools
  * so the frontend UI gets uniform access to file paths, diffs, and commands.
  */
 export function normalizeApprovalDetails(tool: string, args: unknown): NormalizedApprovalDetails {

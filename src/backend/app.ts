@@ -13,7 +13,7 @@ import { CustomOpenAIProvider } from './services/customOpenAIProvider.js';
 import { ToolService } from './services/tools.js';
 import { ProviderRegistry } from './services/providerRegistry.js';
 import { CodingHarnessRegistry } from './services/codingHarness.js';
-import { ClaudeCodeHarness } from './services/claudeCodeHarness.js';
+import { PiHarness } from './services/piHarness.js';
 import { DeepseekHarness } from './services/deepseekHarness.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
@@ -36,7 +36,6 @@ import { abRouter } from './routes/ab.js';
 import { attachmentsRouter } from './routes/attachments.js';
 import { codingRouter } from './routes/coding.js';
 import { filesystemRouter } from './routes/filesystem.js';
-import { freeClaudeCodeRouter } from './routes/freeClaudeCodeRoute.js';
 import { createGitRoutes } from './routes/git.js';
 
 const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
@@ -64,6 +63,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getFeedback: DatabaseService.getFeedback.bind(DatabaseService),
   listFeedbackForChat: DatabaseService.listFeedbackForChat.bind(DatabaseService),
   listTrainingPairs: DatabaseService.listTrainingPairs.bind(DatabaseService),
+  listTrainingExamples: DatabaseService.listTrainingExamples.bind(DatabaseService),
   autoPositiveForChat: DatabaseService.autoPositiveForChat.bind(DatabaseService),
   listHighScoringChats: DatabaseService.listHighScoringChats.bind(DatabaseService),
   listDistillationPairs: DatabaseService.listDistillationPairs.bind(DatabaseService),
@@ -84,7 +84,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   getAllSettings: DatabaseService.getAllSettings.bind(DatabaseService),
   getSetting: DatabaseService.getSetting.bind(DatabaseService),
   upsertSetting: DatabaseService.upsertSetting.bind(DatabaseService),
-  codingHarnesses: new CodingHarnessRegistry([new ClaudeCodeHarness(), new DeepseekHarness()]),
+  codingHarnesses: new CodingHarnessRegistry([new PiHarness(), new DeepseekHarness()]),
   getCodingSession: DatabaseService.getCodingSession.bind(DatabaseService),
   upsertCodingSession: DatabaseService.upsertCodingSession.bind(DatabaseService),
   runInTransaction: DatabaseService.runInTransaction.bind(DatabaseService),
@@ -112,7 +112,7 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
       '$owner.Opacity = 0',
       '$owner.Show()',
       "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
-      "$dialog.Description = 'Select the folder Claude Code should work in'",
+      "$dialog.Description = 'Select the folder the coding harness should work in'",
       '$dialog.ShowNewFolderButton = $true',
       "if ($dialog.ShowDialog($owner) -eq 'OK') { Write-Output $dialog.SelectedPath }",
       '$owner.Close()',
@@ -309,7 +309,6 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
   app.use('/api/attachments/*', rateLimiter({ maxRequests: 30, windowMs: 60_000 }));
   app.route('/api/attachments', attachmentsRouter());
   app.route('/api/coding', codingRouter(dependencies));
-  app.route('/api/fcc', freeClaudeCodeRouter(dependencies));
   app.route('/api/git', createGitRoutes());
   // Directory listing for the in-app folder picker (names only, no contents).
   app.use('/api/fs/*', rateLimiter({ maxRequests: 120, windowMs: 60_000 }));

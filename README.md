@@ -35,8 +35,8 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 
 | Distro / Platform | Package Format | Direct Download Link | Quick Installation |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.0_amd64.deb` |
-| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.0-1.x86_64.rpm` |
+| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.1_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.1-1.x86_64.rpm` |
 | **Universal Linux (Any Distro)** | `.AppImage` | [**Download `.AppImage`**](https://github.com/coderaulia/vanailachat/releases/latest) | `chmod +x *.AppImage && ./*.AppImage` |
 | **Arch Linux / Manjaro** | AUR | [**AUR Package**](DOWNLOADS.md) | `yay -S vanaila-chat-bin` |
 | **1-Click Web App (Linux/Mac/Win)** | Script | `start.sh` / `start.bat` | `./start.sh` (Linux/macOS) or `start.bat` (Win) |
@@ -48,9 +48,9 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 **VanailaChat** brings the power of ChatGPT, Claude, and GitHub Copilot directly into your local machine and web browser with **complete privacy, local control, and developer tooling**:
 
 - 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Qwen 2.5, Mistral, Phi-4) with zero subscription fees.
-- 🆓 **Zero-Cost Cloud Models**: Free-tier cloud LLMs through OpenRouter Free Models (Gemini Flash, DeepSeek-R1 Free, Llama 3.3 70B Free) and Free Claude Code (FCC).
+- 🆓 **Zero-Cost Cloud Models**: Free-tier cloud LLMs through OpenRouter Free Models (Gemini Flash, DeepSeek-R1 Free, and Llama 3.3 70B Free).
 - ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI (GPT-4o, o1, o3-mini), 9Router, Anthropic Claude, DeepSeek, or any custom OpenAI-compatible server.
-- 💻 **Live Coding Workspace Engines**: Swappable autonomous coding engines with live diff reviews, terminal execution, and Auto-Approve mode powered by **Claude Code** (via [Free Claude Code](https://github.com/alishahryar1/free-claude-code)) and **DeepSeek Harness** ([deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness.git)), selectable directly in Settings.
+- 💻 **Live Coding Workspace Engines**: Swappable Pi and DeepSeek coding harnesses with live diff reviews, terminal execution, approval prompts, and read-only mode. Harnesses reuse the provider/model configuration from Settings, including Ollama, OpenRouter, 9Router, and custom OpenAI-compatible endpoints.
 - ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
 - 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
 - 📁 **Automated Workspace Organization**: Selecting a workspace folder automatically groups chats into dedicated project workspaces to keep your chat history tidy.
@@ -125,8 +125,8 @@ Want high-end cloud models without paying for subscriptions? You can use free cl
    - `deepseek/deepseek-r1:free` (Full DeepSeek reasoning)
    - `qwen/qwen-2.5-72b-instruct:free` (Coding & math)
 
-#### B. Free Claude Code (FCC) Integration
-VanailaChat includes native integration with [Free Claude Code](https://github.com/alishahryar1/free-claude-code). Select **Claude Code (FCC)** as your engine in **Settings (⚙️) → Coding Engine** to run autonomous coding workflows.
+#### B. Coding Workspace Engines
+Open Settings (⚙️) → Coding Engine and select Pi Harness or DeepSeek Harness. The selected harness uses the provider and model configured in AI Connection; prefix a model with openrouter:, ollama:, or 9router: when you need to route a coding run explicitly. Mutating tools remain approval-gated unless Auto-Approve is enabled.
 
 ---
 
@@ -267,7 +267,7 @@ To get in touch or collaborate, connect via GitHub or email [care@vanaila.com](m
 
 ## 📜 License & Credits
 
-- **Free Claude Code (FCC)** integration powered by [@alishahryar1](https://github.com/alishahryar1/free-claude-code) (MIT License).
+- **Pi Harness** integration powered by [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
 - **DeepSeek Harness** integration powered by [DeepSeek AI](https://github.com/deepseek-ai/deepseek-harness.git) (MIT License).
 - Built with ❤️ using Tauri 2.0, Rust, React 19, TypeScript, Hono, Vite, and SQLite.
 

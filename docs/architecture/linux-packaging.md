@@ -51,13 +51,13 @@ sudo apt-get update && sudo apt-get install -y \
 ### 3.1 Debian & Ubuntu (`.deb`)
 Built directly via `pnpm desktop:build` or `cargo tauri build --bundles deb`.
 
-- **Package Name**: `vanaila-chat_0.3.0_amd64.deb`
+- **Package Name**: `vanaila-chat_0.3.1_amd64.deb`
 - **Dependencies**: `libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`, `ca-certificates`
 - **Install Command**:
   ```bash
-  sudo apt install ./vanaila-chat_0.3.0_amd64.deb
+  sudo apt install ./vanaila-chat_0.3.1_amd64.deb
   # Or
-  sudo dpkg -i vanaila-chat_0.3.0_amd64.deb && sudo apt-get install -f
+  sudo dpkg -i vanaila-chat_0.3.1_amd64.deb && sudo apt-get install -f
   ```
 
 ---
@@ -65,11 +65,11 @@ Built directly via `pnpm desktop:build` or `cargo tauri build --bundles deb`.
 ### 3.2 Fedora & RHEL (`.rpm`)
 Built directly via `pnpm desktop:build` or `cargo tauri build --bundles rpm`.
 
-- **Package Name**: `vanaila-chat-0.3.0-1.x86_64.rpm`
+- **Package Name**: `vanaila-chat-0.3.1-1.x86_64.rpm`
 - **Dependencies**: `webkit2gtk4.1`, `gtk3`, `libayatana-appindicator-gtk3`
 - **Install Command**:
   ```bash
-  sudo dnf install ./vanaila-chat-0.3.0-1.x86_64.rpm
+  sudo dnf install ./vanaila-chat-0.3.1-1.x86_64.rpm
   ```
 
 ---
@@ -80,7 +80,7 @@ File location: `packaging/arch/PKGBUILD`
 ```bash
 # Maintainer: Aswanth Manoj <contact@coderaulia.com>
 pkgname=vanaila-chat-bin
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Privacy-first, high-performance local AI chat client with multi-provider LLM support"
 arch=('x86_64')
@@ -113,11 +113,11 @@ package() {
 ### 3.4 Universal AppImage
 Built directly via `pnpm desktop:build` or `cargo tauri build --bundles appimage`.
 
-- **File**: `Vanaila-Chat-0.3.0-x86_64.AppImage`
+- **File**: `Vanaila-Chat-0.3.1-x86_64.AppImage`
 - **Execution**:
   ```bash
-  chmod +x Vanaila-Chat-0.3.0-x86_64.AppImage
-  ./Vanaila-Chat-0.3.0-x86_64.AppImage
+  chmod +x Vanaila-Chat-0.3.1-x86_64.AppImage
+  ./Vanaila-Chat-0.3.1-x86_64.AppImage
   ```
 
 ---
@@ -153,12 +153,24 @@ modules:
       - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.vanaila.chat.png
     sources:
       - type: archive
-        url: https://github.com/coderaulia/vanailachat/releases/download/v0.3.0/vanaila-chat_0.3.0_amd64.deb
+        url: https://github.com/coderaulia/vanailachat/releases/download/v0.3.1/vanaila-chat_0.3.1_amd64.deb
 ```
 
 ---
 
 ## 4. Automated Multi-Distro CI/CD Workflow
+
+### v0.3.1 release verification
+
+The release pipeline must validate the generated package metadata before publishing artifacts:
+
+```bash
+dpkg-deb -f src-tauri/target/release/bundle/deb/*.deb Package Version Architecture
+rpm -qp --queryformat '%{NAME} %{VERSION}-%{RELEASE} %{ARCH}\n' src-tauri/target/release/bundle/rpm/*.rpm
+sha256sum src-tauri/target/release/bundle/deb/*.deb src-tauri/target/release/bundle/rpm/*.rpm src-tauri/target/release/bundle/appimage/*.AppImage > SHA256SUMS.txt
+```
+
+AppImage creation requires the Tauri-downloaded `linuxdeploy` tool and its GTK plugin. If those tools are unavailable or fail on a build host, do not publish a partial “universal” release: retain the verified `.deb`/`.rpm` artifacts and rerun the AppImage job on the Ubuntu 22.04 release runner.
 
 File location: `.github/workflows/build-desktop.yml`
 

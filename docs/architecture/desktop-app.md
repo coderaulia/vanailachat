@@ -64,6 +64,12 @@ graph TB
 
 ## 3. Runtime Detection & API Abstraction
 
+### 3.0 Release parity boundary (v0.3.1)
+
+The web and native editions share the React frontend, persistence-facing API layer, and visual improvements. The web edition additionally runs the Node/Hono coding harness registry (Pi Harness and DeepSeek Harness), training-example review/export endpoints, and the web-only filesystem picker. The native edition uses its Rust/Tauri command set for chats, models, projects, settings, skills, research, and chat tool approvals; native commands are not automatically extended when a web route changes.
+
+For v0.3.1, desktop distribution includes the shared UI/provider-selector improvements and synchronized package metadata. Coding harness and training export parity remains a follow-up native-backend milestone rather than an undocumented release claim.
+
 The frontend dynamically detects its runtime environment via `__TAURI_INTERNALS__`:
 
 ```typescript

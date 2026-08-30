@@ -1,6 +1,6 @@
 [package]
 name = "vanaila-chat"
-version = "0.3.0"
+version = "0.3.1"
 description = "Privacy-first, high-performance local AI chat client with multi-provider LLM support"
 authors = ["Aulia Satrio Wibowo <care@vanaila.com>"]
 license = "MIT"

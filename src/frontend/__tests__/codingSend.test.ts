@@ -67,7 +67,7 @@ function stubFetch(codingLines: string[]) {
   return { fetchMock, calls };
 }
 
-describe('coding role routes through Claude Code', () => {
+describe('coding role routes through the coding harness', () => {
   beforeEach(() => vi.unstubAllGlobals());
 
   it('opens a workspace session and runs against it, not /api/chat', async () => {
@@ -104,7 +104,7 @@ describe('coding role routes through Claude Code', () => {
   });
 
   it('surfaces a harness error in the transcript instead of failing silently', async () => {
-    stubFetch(['{"error":"ANTHROPIC_API_KEY is required for Claude Code"}']);
+    stubFetch(['{"error":"Pi Harness is not configured"}']);
     const saveMessage = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useSendMessage(makeDeps({ saveMessage })));
 
@@ -113,7 +113,7 @@ describe('coding role routes through Claude Code', () => {
     const assistant = saveMessage.mock.calls
       .map(([, message]) => message as Message)
       .find(m => m.role === 'assistant');
-    expect(assistant?.content).toContain('ANTHROPIC_API_KEY is required');
+    expect(assistant?.content).toContain('Pi Harness is not configured');
   });
 
   it('falls back to normal chat when no workspace folder is chosen', async () => {

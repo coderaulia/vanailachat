@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { DatabaseService } from './database.js';
 import { parseCustomProvidersConfig } from './customOpenAIProvider.js';
 import { ToolService } from './tools.js';
+import { resolveHarnessProvider } from './harnessProvider.js';
 import { ApprovalService, describeToolCall, normalizeApprovalDetails } from './approvals.js';
 import type {
   CodingEvent,
@@ -114,7 +115,8 @@ const DSH_TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          command: { type: 'string', description: 'Shell command line to execute' },
+          command: { type: 'string', description: 'Command executable name or command line to execute' },
+          args: { type: 'array', description: 'Optional command arguments; prefer this for paths and flags', items: { type: 'string' } },
         },
         required: ['command'],
       },
@@ -183,6 +185,9 @@ export class DeepseekHarness implements CodingHarness {
   } {
     const modelWithPrefix = inputModel?.trim() ?? '';
     const prefixSeparator = modelWithPrefix.indexOf(':');
+    if (prefixSeparator > 0 && ['openrouter', 'ollama', '9router'].includes(modelWithPrefix.slice(0, prefixSeparator))) {
+      return resolveHarnessProvider(inputModel);
+    }
     if (prefixSeparator > 0) {
       const providerId = modelWithPrefix.slice(0, prefixSeparator);
       const customProvider = parseCustomProvidersConfig().find((p) => p.id === providerId);
@@ -283,7 +288,7 @@ export class DeepseekHarness implements CodingHarness {
       // ignore
     }
     if (!nineRouterKey) nineRouterKey = process.env.NINE_ROUTER_API_KEY?.trim() ?? '';
-    if (!nineRouterHost) nineRouterHost = process.env.NINE_ROUTER_HOST?.trim() ?? 'http://localhost:20128/v1';
+    if (!nineRouterHost) nineRouterHost = (process.env.NINE_ROUTER_BASE_URL ?? process.env.NINE_ROUTER_HOST)?.trim() ?? 'http://localhost:20128/v1';
 
     if (nineRouterKey) {
       return {
