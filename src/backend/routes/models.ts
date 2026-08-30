@@ -14,13 +14,19 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
       const providerModels = await dependencies.providerRegistry.listAllModels();
       
       // Combine and deduplicate
-      const modelMap = new Map<string, { name: string; provider: string; metadata?: Record<string, unknown> }>();
+      const modelMap = new Map<string, {
+        name: string;
+        provider: string;
+        providerLabel: string;
+        metadata?: Record<string, unknown>;
+      }>();
       
       // Add Ollama models
       for (const model of modelsWithMetadata) {
         modelMap.set(model.name, {
           name: model.name,
           provider: 'ollama',
+          providerLabel: 'Ollama',
           metadata: model as unknown as Record<string, unknown>,
         });
       }
@@ -31,6 +37,7 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
           modelMap.set(providerModel.name, {
             name: providerModel.name,
             provider: providerModel.provider,
+            providerLabel: providerModel.providerLabel,
             metadata: (providerModel.metadata as Record<string, unknown>) ?? {},
           });
         }
@@ -44,7 +51,11 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
       return context.json({
         models: models.map(m => m.name),
         metadata,
-        providers: models.map(m => ({ name: m.name, provider: m.provider })),
+        providers: models.map(m => ({
+          name: m.name,
+          provider: m.provider,
+          providerLabel: m.providerLabel,
+        })),
       });
     } catch (error) {
       const message = sanitizeError(error, 'Unknown error');

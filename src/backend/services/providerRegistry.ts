@@ -167,8 +167,9 @@ export class ProviderRegistry {
     if (customProvider instanceof CustomOpenAIProvider) {
       const customProviders = CustomOpenAIProvider.getAllProviders();
       const map = new Map<string, LLMProvider>();
+      if (this.providers.has('ollama')) map.set('ollama', this.providers.get('ollama')!);
       for (const p of registered) {
-        if (p.id !== 'custom') map.set(p.id, p);
+        if (p.id !== 'ollama' && p.id !== 'custom') map.set(p.id, p);
       }
       for (const cp of customProviders) {
         map.set(cp.id, cp);
@@ -178,25 +179,42 @@ export class ProviderRegistry {
     return registered;
   }
 
+  /** Stable selector order: Ollama, configured custom providers, remaining providers. */
+  private orderedProviderEntries(entries: Array<[string, LLMProvider]>): Array<[string, LLMProvider]> {
+    const ollama = entries.filter(([id]) => id === 'ollama');
+    const custom = entries.filter(([id]) => id !== 'ollama' && id.startsWith('custom'));
+    const others = entries.filter(([id]) => id !== 'ollama' && !id.startsWith('custom'));
+    return [...ollama, ...custom, ...others];
+  }
+
   /**
    * Gather models from all providers with provider name prefix.
    * Providers are queried concurrently — serially awaiting each one made this
    * endpoint cost the sum of every provider's latency.
    */
-  async listAllModels(): Promise<Array<{ name: string; provider: string; metadata?: Record<string, unknown> }>> {
+  async listAllModels(): Promise<Array<{
+    name: string;
+    provider: string;
+    providerLabel: string;
+    metadata?: Record<string, unknown>;
+  }>> {
     const hasCustom = this.providers.has('custom');
-    const nonCustomEntries = [...this.providers].filter(([id]) => id !== 'ollama' && id !== 'custom');
-    
-    let entries: Array<[string, LLMProvider]> = nonCustomEntries;
+    const otherEntries = [...this.providers].filter(([id]) => id !== 'ollama' && id !== 'custom');
+
+    let entries: Array<[string, LLMProvider]> = otherEntries;
+    const ollamaEntry = [...this.providers].find(([id]) => id === 'ollama');
+    if (ollamaEntry) entries = [ollamaEntry, ...entries];
     if (hasCustom) {
       const customProvider = this.providers.get('custom')!;
       if (customProvider instanceof CustomOpenAIProvider) {
         const customProviders = CustomOpenAIProvider.getAllProviders();
-        entries = [...entries, ...customProviders.map((cp): [string, LLMProvider] => [cp.id, cp])];
+        const customEntries = customProviders.map((cp): [string, LLMProvider] => [cp.id, cp]);
+        entries = [...customEntries, ...entries];
       } else {
-        entries = [...entries, ['custom', customProvider]];
+        entries = [['custom', customProvider], ...entries];
       }
     }
+    entries = this.orderedProviderEntries(entries);
 
     const settled = await Promise.allSettled(
       entries.map(async ([, provider]) => {
@@ -217,14 +235,18 @@ export class ProviderRegistry {
       // Provider unavailable — skip
       if (outcome.status !== 'fulfilled') return [];
       const id = entries[index][0];
+      const entryProvider = entries[index][1];
       return outcome.value.map((meta) => {
         const rawName = meta.name;
         const prefixedName = `${id}:${rawName}`;
         return {
           name: prefixedName,
           provider: id,
+          providerLabel: entryProvider.label,
           metadata: {
             ...meta,
+            providerLabel: entryProvider.label,
+            providerKind: entryProvider instanceof CustomOpenAIProvider ? 'custom' : id,
             name: prefixedName,
             model: prefixedName,
           },

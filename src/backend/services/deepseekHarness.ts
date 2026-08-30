@@ -9,8 +9,10 @@
  * direct DeepSeek API / custom endpoint tool execution loop with interactive approvals.
  */
 
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { DatabaseService } from './database.js';
+import { parseCustomProvidersConfig } from './customOpenAIProvider.js';
 import { ToolService } from './tools.js';
 import { ApprovalService, describeToolCall, normalizeApprovalDetails } from './approvals.js';
 import type {
@@ -132,6 +134,25 @@ const DSH_TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'git_commit',
+      description: 'Stage workspace files and create a Git commit. Requires explicit approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Conventional Commit message.' },
+          paths: {
+            type: 'array',
+            description: 'Workspace-relative paths to stage. Omit to stage all changes.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['message'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'git_diff',
       description: 'Get git diff of uncommitted changes in the workspace repository.',
       parameters: {
@@ -160,6 +181,20 @@ export class DeepseekHarness implements CodingHarness {
     baseUrl: string;
     model: string;
   } {
+    const modelWithPrefix = inputModel?.trim() ?? '';
+    const prefixSeparator = modelWithPrefix.indexOf(':');
+    if (prefixSeparator > 0) {
+      const providerId = modelWithPrefix.slice(0, prefixSeparator);
+      const customProvider = parseCustomProvidersConfig().find((p) => p.id === providerId);
+      if (customProvider?.baseUrl) {
+        return {
+          apiKey: customProvider.apiKey?.trim() || 'custom-key',
+          baseUrl: customProvider.baseUrl.trim().replace(/\/+$/, ''),
+          model: modelWithPrefix.slice(prefixSeparator + 1),
+        };
+      }
+    }
+
     // 1. Explicit DeepSeek settings
     let explicitDeepseekKey = '';
     let explicitDeepseekUrl = '';
@@ -194,7 +229,27 @@ export class DeepseekHarness implements CodingHarness {
       };
     }
 
-    // 3. Fallback to OpenRouter if connected
+    // 3. Fallback to Custom OpenAI endpoint if configured
+    let customKey = '';
+    let customBase = '';
+    try {
+      customKey = DatabaseService.getSetting('custom_openai_api_key')?.trim() ?? '';
+      customBase = DatabaseService.getSetting('custom_openai_base_url')?.trim() ?? '';
+    } catch {
+      // ignore
+    }
+    if (!customKey) customKey = process.env.CUSTOM_OPENAI_API_KEY?.trim() ?? '';
+    if (!customBase) customBase = process.env.CUSTOM_OPENAI_BASE_URL?.trim() ?? '';
+
+    if (customBase) {
+      return {
+        apiKey: customKey || 'custom-key',
+        baseUrl: customBase.replace(/\/+$/, ''),
+        model: this.cleanModel(inputModel) || explicitDeepseekModel || 'deepseek-chat',
+      };
+    }
+
+    // 4. Fallback to OpenRouter if connected
     let openrouterKey = '';
     let openrouterBase = '';
     try {
@@ -218,7 +273,7 @@ export class DeepseekHarness implements CodingHarness {
       };
     }
 
-    // 4. Fallback to 9Router if connected
+    // 5. Fallback to 9Router if connected
     let nineRouterKey = '';
     let nineRouterHost = '';
     try {
@@ -234,26 +289,6 @@ export class DeepseekHarness implements CodingHarness {
       return {
         apiKey: nineRouterKey,
         baseUrl: nineRouterHost.replace(/\/+$/, ''),
-        model: this.cleanModel(inputModel) || explicitDeepseekModel || 'deepseek-chat',
-      };
-    }
-
-    // 5. Fallback to Custom OpenAI endpoint if configured
-    let customKey = '';
-    let customBase = '';
-    try {
-      customKey = DatabaseService.getSetting('custom_openai_api_key')?.trim() ?? '';
-      customBase = DatabaseService.getSetting('custom_openai_base_url')?.trim() ?? '';
-    } catch {
-      // ignore
-    }
-    if (!customKey) customKey = process.env.CUSTOM_OPENAI_API_KEY?.trim() ?? '';
-    if (!customBase) customBase = process.env.CUSTOM_OPENAI_BASE_URL?.trim() ?? '';
-
-    if (customBase) {
-      return {
-        apiKey: customKey || 'custom-key',
-        baseUrl: customBase.replace(/\/+$/, ''),
         model: this.cleanModel(inputModel) || explicitDeepseekModel || 'deepseek-chat',
       };
     }
@@ -856,6 +891,26 @@ export class DeepseekHarness implements CodingHarness {
         { command: commandToRun, args: commandArgs },
         cwd,
       );
+    }
+
+    if (name === 'git_commit') {
+      const message = typeof args.message === 'string' ? args.message.trim() : '';
+      if (!message) throw new Error('Git commit failed: message is required');
+
+      const requestedPaths = Array.isArray(args.paths) ? args.paths.filter((p): p is string => typeof p === 'string') : [];
+      const paths = requestedPaths.length > 0 ? requestedPaths : ['.'];
+      if (paths.some((path) => !path.trim() || path.includes('..') || path.startsWith('/'))) {
+        throw new Error('Git commit failed: paths must be workspace-relative');
+      }
+
+      const execFilePromise = promisify(execFile);
+      await execFilePromise('git', ['add', '--', ...paths], { cwd, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout, stderr } = await execFilePromise(
+        'git',
+        ['commit', '-m', message],
+        { cwd, maxBuffer: 10 * 1024 * 1024 },
+      );
+      return [stdout, stderr].filter(Boolean).join('\n').trim() || 'Git commit created.';
     }
 
     return await ToolService.executeTool(name, args, cwd);

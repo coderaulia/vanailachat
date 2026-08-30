@@ -3,6 +3,10 @@ import { DeepseekHarness } from '../services/deepseekHarness.js';
 import { DatabaseService } from '../services/database.js';
 import { ToolService } from '../services/tools.js';
 import { ApprovalService } from '../services/approvals.js';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execSync } from 'child_process';
 import type { CodingEvent } from '../services/codingHarness.js';
 
 function createSSEStream(dataChunks: Array<Record<string, unknown> | string>) {
@@ -81,6 +85,51 @@ describe('DeepSeek Harness (deepseek-ai/deepseek-harness)', () => {
     expect(capturedHeaders['Authorization']).toBe('Bearer sk-or-v1-openrouter-key');
     expect(capturedBody['model']).toContain('deepseek');
     expect(events.some((e) => e.type === 'text' && e.text.includes('Working via OpenRouter'))).toBe(true);
+  });
+
+  it('uses the explicitly selected custom provider instead of OpenRouter', async () => {
+    const harness = new DeepseekHarness();
+    vi.spyOn(DatabaseService, 'getSetting').mockImplementation((key: string) => {
+      if (key === 'custom_openai_providers') {
+        return JSON.stringify([{
+          id: 'custom-atelier',
+          name: 'Atelier',
+          baseUrl: 'https://custom.example/api/v1',
+          apiKey: 'custom-secret',
+        }]);
+      }
+      if (key === 'openrouter_api_key') return 'sk-or-v1-openrouter-key';
+      return null;
+    });
+
+    let capturedUrl = '';
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: Record<string, unknown> = {};
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        capturedUrl = String(url);
+        capturedHeaders = (init?.headers ?? {}) as Record<string, string>;
+        capturedBody = JSON.parse(String(init?.body ?? '{}'));
+        return new Response(createSSEStream([{ choices: [{ delta: { content: 'Working via custom provider!' } }] }]), { status: 200 });
+      }),
+    );
+
+    const controller = new AbortController();
+    for await (const _event of harness.run({
+      prompt: 'Refactor helper',
+      cwd: process.cwd(),
+      mode: 'implement',
+      model: 'custom-atelier:gpt-5.6-luna',
+      signal: controller.signal,
+    })) {
+      void _event;
+    }
+
+    expect(capturedUrl).toBe('https://custom.example/api/v1/chat/completions');
+    expect(capturedHeaders['Authorization']).toBe('Bearer custom-secret');
+    expect(capturedBody['model']).toBe('gpt-5.6-luna');
   });
 
   it('runs autonomous agent loop and streams text and usage events', async () => {
@@ -281,5 +330,77 @@ describe('DeepSeek Harness (deepseek-ai/deepseek-harness)', () => {
       { path: 'test.txt', content: 'hello' },
       process.cwd(),
     );
+  });
+
+  it('creates an approved Git commit without permitting network Git operations', async () => {
+    const harness = new DeepseekHarness();
+    vi.spyOn(DatabaseService, 'getSetting').mockImplementation((key: string) => {
+      if (key === 'deepseek_api_key') return 'sk-test-key';
+      if (key === 'require_tool_approval') return 'true';
+      return null;
+    });
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-git-commit-'));
+    try {
+      execSync('git init -b main', { cwd: tempDir, stdio: 'ignore' });
+      execSync('git config user.email "test@vanaila.com"', { cwd: tempDir, stdio: 'ignore' });
+      execSync('git config user.name "Test"', { cwd: tempDir, stdio: 'ignore' });
+      fs.writeFileSync(path.join(tempDir, 'generated.txt'), 'approved work');
+
+      const commitToolCall = [{
+        index: 0,
+        id: 'call_commit_1',
+        type: 'function',
+        function: {
+          name: 'git_commit',
+          arguments: JSON.stringify({
+            message: 'feat: add approved work',
+            paths: ['generated.txt'],
+          }),
+        },
+      }];
+
+      const firstTurnSSE = [{
+        choices: [{ delta: { tool_calls: commitToolCall } }],
+      }];
+      const secondTurnSSE = [{
+        choices: [{ delta: { content: 'The work is committed.' } }],
+      }];
+
+      let fetchCall = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () => {
+          fetchCall++;
+          return new Response(createSSEStream(fetchCall === 1 ? firstTurnSSE : secondTurnSSE), { status: 200 });
+        }),
+      );
+
+      const controller = new AbortController();
+      let approvalRequested = false;
+      for await (const event of harness.run({
+        prompt: 'Commit the generated work',
+        cwd: tempDir,
+        mode: 'implement',
+        signal: controller.signal,
+        onApproval: (approval) => {
+          approvalRequested = true;
+          expect(approval.tool).toBe('git_commit');
+          setTimeout(() => ApprovalService.resolve(approval.id, true), 0);
+        },
+      })) {
+        void event;
+      }
+
+      const commitMessage = execSync('git log -1 --pretty=%s', {
+        cwd: tempDir,
+        encoding: 'utf8',
+      }).trim();
+
+      expect(approvalRequested).toBe(true);
+      expect(commitMessage).toBe('feat: add approved work');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

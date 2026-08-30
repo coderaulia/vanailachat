@@ -344,12 +344,19 @@ export async function apiSaveMessage(payload: {
 
 // ── Models & Settings IPC / REST ──────────────────────────────────────
 
-export async function apiFetchModels(): Promise<Array<{ name: string; provider: string; model_type?: string }>> {
+export async function apiFetchModels(): Promise<Array<{
+  name: string;
+  provider: string;
+  providerLabel?: string;
+  model_type?: string;
+}>> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
     return await invoke('get_models');
   }
-  const data = await requestApi<{ models?: Array<{ name: string; provider: string; model_type?: string }> }>('/api/models');
+  const data = await requestApi<{
+    models?: Array<{ name: string; provider: string; providerLabel?: string; model_type?: string }>;
+  }>('/api/models');
   return Array.isArray(data.models) ? data.models : [];
 }
 
@@ -615,4 +622,3 @@ export async function apiGetGitDiff(workspaceRoot: string): Promise<string> {
   const data = await res.json() as { diff?: string };
   return data.diff ?? '';
 }
-

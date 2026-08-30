@@ -1,4 +1,4 @@
-export type CodingHarnessId = 'claude-code' | 'deepseek-harness';
+export type CodingHarnessId = 'pi-harness' | 'deepseek-harness';
 
 export interface CodingHarnessStatus {
   id: CodingHarnessId;
@@ -64,6 +64,7 @@ export class CodingHarnessRegistry {
   }
 
   get(id: string): CodingHarness | null {
-    return this.harnesses.find((harness) => harness.id === id) ?? null;
+    const normalizedId = id === 'claude-code' ? 'pi-harness' : id;
+    return this.harnesses.find((harness) => harness.id === normalizedId) ?? null;
   }
 }

@@ -3,6 +3,31 @@ import { createApp } from '../app';
 import { ProviderRegistry } from '../services/providerRegistry';
 
 describe('models route', () => {
+  it('orders providers as Ollama, custom, then remaining providers with labels', async () => {
+    const registry = new ProviderRegistry();
+    const provider = (id: string, label: string) => ({
+      id,
+      label,
+      listModels: async () => [`model-${id}`],
+      getModelDetails: async () => null,
+      isModelAvailable: async () => true,
+      chatStream: async () => new Response(),
+      chat: async () => ({}),
+    });
+    registry.register(provider('openai', 'OpenAI'));
+    registry.register(provider('custom-178', 'DeepSeek'));
+    registry.register(provider('ollama', 'Ollama'));
+
+    const models = await registry.listAllModels();
+
+    expect(models.map((model) => model.provider)).toEqual([
+      'ollama',
+      'custom-178',
+      'openai',
+    ]);
+    expect(models.find((model) => model.provider === 'custom-178')?.providerLabel).toBe('DeepSeek');
+  });
+
   it('returns installed models with metadata keyed by model name', async () => {
     const app = createApp({
       // Empty registry keeps the test off the machine's configured cloud providers

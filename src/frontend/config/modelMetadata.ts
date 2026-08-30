@@ -8,6 +8,8 @@ export interface ModelInfo {
 
 export interface ModelMetadata {
   architecture?: string | null;
+  providerLabel?: string | null;
+  providerKind?: string | null;
   contextWindow?: number | null;
   parameters?: string | null;
   capabilities?: string[] | null;
@@ -134,7 +136,9 @@ const getCapabilityLabels = (metadata?: ModelMetadata): string[] => {
 };
 
 const getDescription = (metadata?: ModelMetadata, provider?: string): string => {
-  const providerInfo = getProviderDisplayInfo(provider);
+  const providerInfo = metadata?.providerLabel && metadata.providerKind === 'custom'
+    ? { ...getProviderDisplayInfo(provider), description: `${metadata.providerLabel} (OpenAI-compatible)` }
+    : getProviderDisplayInfo(provider);
   if (!metadata) {
     return providerInfo.description;
   }
@@ -237,4 +241,3 @@ export function formatTokensCompact(tokens: number): string {
   }
   return tokens.toLocaleString();
 }
-

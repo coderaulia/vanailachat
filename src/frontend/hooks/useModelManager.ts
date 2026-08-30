@@ -115,7 +115,11 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
           const { models, metadata } = normalizeModelsResponse({ models: data });
           setAvailableModels(models);
           setModelMetadata(metadata);
-          setProviders(data.map((m) => ({ name: m.name, provider: m.provider })));
+          setProviders(data.map((m) => ({
+            name: m.name,
+            provider: m.provider,
+            providerLabel: m.providerLabel,
+          })));
           return;
         }
       }
@@ -127,7 +131,7 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
         setAvailableModels(models);
         setModelMetadata(metadata);
         if (Array.isArray(resData.providers)) {
-          setProviders(resData.providers as Array<{ name: string; provider: string }>);
+          setProviders(resData.providers as Array<{ name: string; provider: string; providerLabel?: string }>);
         }
       }
     } catch (error) {

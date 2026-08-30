@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import './ModelSelector.css';
 import { getModelInfo, getProviderDisplayInfo } from '../config/modelMetadata';
 import type { ModelMetadataMap } from '../config/modelMetadata';
@@ -9,7 +9,7 @@ interface ModelSelectorProps {
   selectedModel: string;
   onSelectModel: (model: string) => void;
   onRefresh?: () => void;
-  providers?: Array<{ name: string; provider: string }>;
+  providers?: Array<{ name: string; provider: string; providerLabel?: string }>;
 }
 
 export function ModelSelector({
@@ -27,6 +27,17 @@ export function ModelSelector({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selectedProvider = providers?.find((p) => p.name === selectedModel)?.provider;
+  const providerLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const model of availableModels) {
+      const entry = providers?.find((provider) => provider.name === model);
+      if (entry) labels.set(entry.provider, entry.providerLabel || getProviderDisplayInfo(entry.provider).label);
+    }
+    return labels;
+  }, [availableModels, providers]);
+
+  const getProviderLabel = useCallback((provider: string) =>
+    providerLabels.get(provider) || getProviderDisplayInfo(provider).label, [providerLabels]);
   const selectedInfo = getModelInfo(selectedModel, modelMetadata[selectedModel], selectedProvider);
 
   // Group all available models by provider
@@ -51,7 +62,7 @@ export function ModelSelector({
       const matchedModels = models.filter((model) => {
         if (!query) return true;
         const info = getModelInfo(model, modelMetadata[model], provider);
-        const providerName = getProviderDisplayInfo(provider).label.toLowerCase();
+        const providerName = getProviderLabel(provider).toLowerCase();
         return (
           model.toLowerCase().includes(query) ||
           info.displayName.toLowerCase().includes(query) ||
@@ -66,7 +77,7 @@ export function ModelSelector({
       }
     }
     return groups;
-  }, [allGrouped, providerFilter, searchQuery, modelMetadata]);
+  }, [allGrouped, providerFilter, searchQuery, modelMetadata, getProviderLabel]);
 
   const hasMultipleProviders = allGrouped.size > 1;
 
@@ -102,7 +113,7 @@ export function ModelSelector({
           <span className="model-selector__badge-container">
             {selectedProvider && (
               <span className="model-selector__provider-tag">
-                {getProviderDisplayInfo(selectedProvider).label}
+                {getProviderLabel(selectedProvider)}
               </span>
             )}
             {selectedInfo.capabilities.map((cap) => (
@@ -165,7 +176,6 @@ export function ModelSelector({
                   All ({availableModels.length})
                 </button>
                 {Array.from(allGrouped.entries()).map(([provider, models]) => {
-                  const pInfo = getProviderDisplayInfo(provider);
                   return (
                     <button
                       key={provider}
@@ -173,7 +183,7 @@ export function ModelSelector({
                       className={`model-selector__filter-tab ${providerFilter === provider ? 'is-active' : ''}`}
                       onClick={() => setProviderFilter(provider)}
                     >
-                      <span>{pInfo.label}</span>
+                      <span>{getProviderLabel(provider)}</span>
                       <span className="model-selector__tab-count">({models.length})</span>
                     </button>
                   );
@@ -199,13 +209,12 @@ export function ModelSelector({
               </div>
             )}
             {Array.from(filteredGrouped.entries()).map(([provider, models]) => {
-              const pInfo = getProviderDisplayInfo(provider);
               return (
                 <div key={provider} className="model-selector__group">
                   {(hasMultipleProviders || providerFilter === 'all') && (
                     <div className="model-selector__group-header">
                       <span className="model-selector__group-label">
-                        {pInfo.label}
+                        {getProviderLabel(provider)}
                       </span>
                       <span className="model-selector__group-count">({models.length})</span>
                     </div>
