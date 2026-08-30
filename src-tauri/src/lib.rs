@@ -91,6 +91,7 @@ pub fn run() {
             commands::data::get_training_stats,
             commands::git::get_git_status,
             commands::git::get_git_diff,
+            commands::git::create_git_branch,
             commands::skills::get_skills,
             commands::skills::install_skill,
             commands::research::start_research,

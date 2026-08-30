@@ -721,14 +721,41 @@ export async function apiImportData(payload: Record<string, unknown>): Promise<R
 
 // ── Git & Codebase Activity ───────────────────────────────────────────
 
-export async function apiGetGitStatus(workspaceRoot: string): Promise<{ branch: string; is_clean: boolean; files: string[] }> {
+export async function apiGetGitStatus(workspaceRoot: string): Promise<{ isGit: boolean; branch: string | null; isClean: boolean; uncommittedCount: number; isMainOrMaster: boolean; files: string[] }> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
-    return await invoke('get_git_status', { workspaceRoot });
+    const result = await invoke<{ is_git: boolean; branch: string; is_clean: boolean; uncommitted_count: number; is_main_or_master: boolean; files: string[] }>('get_git_status', { workspaceRoot });
+    return { isGit: result.is_git, branch: result.branch, isClean: result.is_clean, uncommittedCount: result.uncommitted_count, isMainOrMaster: result.is_main_or_master, files: result.files };
   }
-  const res = await fetch(`/api/git/status?workspace=${encodeURIComponent(workspaceRoot)}`);
+  const res = await fetch('/api/git/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectRoot: workspaceRoot }),
+  });
   if (!res.ok) throw new Error('Failed to get git status');
-  return res.json();
+  const data = await res.json() as {
+    isGit?: boolean; branch?: string | null; isClean?: boolean;
+    uncommittedCount?: number; isMainOrMaster?: boolean; modifiedFiles?: string[]; files?: string[];
+  };
+  return {
+    isGit: data.isGit ?? false,
+    branch: data.branch ?? null,
+    isClean: data.isClean ?? true,
+    uncommittedCount: data.uncommittedCount ?? 0,
+    isMainOrMaster: data.isMainOrMaster ?? false,
+    files: data.files ?? data.modifiedFiles ?? [],
+  };
+}
+
+export async function apiCreateGitBranch(workspaceRoot: string, branchName: string): Promise<string> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<string>('create_git_branch', { workspaceRoot, branchName });
+  }
+  const res = await fetch('/api/git/branch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectRoot: workspaceRoot, branchName }) });
+  const data = await res.json() as { success?: boolean; branch?: string; error?: string };
+  if (!res.ok || !data.success || !data.branch) throw new Error(data.error ?? 'Failed to create git branch');
+  return data.branch;
 }
 
 export async function apiGetGitDiff(workspaceRoot: string): Promise<string> {

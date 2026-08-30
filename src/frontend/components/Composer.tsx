@@ -7,6 +7,7 @@ import { ABTestModal } from './ABTestModal';
 import { FolderPicker } from './FolderPicker';
 import { formatTokensCompact } from '../config/modelMetadata';
 import './Composer.css';
+import { apiCreateGitBranch, apiGetGitStatus } from '../lib/api';
 
 import { useChat } from '../context/ChatContext';
 
@@ -106,12 +107,7 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
 
   useEffect(() => {
     if (selectedRole === 'coding' && projectRoot.trim()) {
-      fetch('/api/git/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectRoot: projectRoot.trim() }),
-      })
-        .then((res) => res.json())
+      apiGetGitStatus(projectRoot.trim())
         .then((data: { isGit: boolean; branch: string | null; isClean: boolean; uncommittedCount: number; isMainOrMaster: boolean }) => {
           if (data.isGit) {
             setGitStatus(data);
@@ -128,18 +124,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
   const handleCreateGitBranch = async (branchName?: string) => {
     const defaultBranchName = (branchName || '').trim() || `feat/patch-${Date.now().toString(36)}`;
     try {
-      const res = await fetch('/api/git/branch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectRoot: projectRoot.trim(), branchName: defaultBranchName }),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as { success: boolean; branch: string };
-        if (data.success) {
-          setGitStatus((prev) => (prev ? { ...prev, branch: data.branch, isMainOrMaster: false } : null));
+      const branch = await apiCreateGitBranch(projectRoot.trim(), defaultBranchName);
+      if (branch) {
+          setGitStatus((prev) => (prev ? { ...prev, branch, isMainOrMaster: false } : null));
           setIsCreatingBranch(false);
           setNewBranchInput('');
-        }
       }
     } catch (err) {
       console.error('Failed to create branch:', err);
