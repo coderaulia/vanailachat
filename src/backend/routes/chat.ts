@@ -243,7 +243,14 @@ async function buildSystemPrompt(
   //
   // Skipped when the caller sets skipMemory (internal title generation) so
   // synthetic prompts don't pollute the store.
-  const lastUserMsg = body.skipMemory
+  const memoryEnabled = (() => {
+    try {
+      return deps.getSetting('memory_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  })();
+  const lastUserMsg = body.skipMemory || !memoryEnabled
     ? undefined
     : incomingMessages.slice().reverse().find((m) => m.role === 'user');
 
@@ -303,7 +310,7 @@ export function resolveTools(
 
   let tools = [...allTools];
 
-  // Filesystem and command execution now belong exclusively to Claude Code.
+  // Filesystem and command execution now belong exclusively to coding harnesses.
   const retiredCodingTools = new Set([
     'read_file', 'list_directory', 'search_files', 'run_command', 'write_file', 'edit_file',
   ]);

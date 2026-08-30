@@ -42,6 +42,7 @@ interface AllSettings {
   base_instructions?: string;
   require_tool_approval?: string;
   skills_inline?: string;
+  memory_enabled?: string;
   model_pricing?: string;
   onboarding_done?: string;
 }
@@ -167,6 +168,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   // Behaviour
   const [requireApproval, setRequireApproval] = useState(true);
   const [skillsInline, setSkillsInline] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [modelPricing, setModelPricing] = useState('');
   const [pricingError, setPricingError] = useState<string | null>(null);
 
@@ -190,6 +192,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [memoriesLoading, setMemoriesLoading] = useState(false);
   const [memoriesDeleting, setMemoriesDeleting] = useState<string | null>(null);
+  const [memoriesError, setMemoriesError] = useState<string | null>(null);
   const memoriesFetched = useRef(false);
 
   // Training
@@ -285,6 +288,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         // Approval defaults to on, so only an explicit 'false' turns it off.
         setRequireApproval(s.require_tool_approval !== 'false');
         setSkillsInline(s.skills_inline === 'true');
+        setMemoryEnabled(s.memory_enabled !== 'false');
         if (s.model_pricing) setModelPricing(s.model_pricing);
       })
       .catch(() => {/* best-effort */})
@@ -379,6 +383,34 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       // best-effort
     }
     setMemoriesDeleting(null);
+  };
+
+  const addMemory = async () => {
+    const content = window.prompt('What should the assistant remember?');
+    if (!content?.trim()) return;
+    try {
+      const response = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content.trim(), type: 'manual' }),
+      });
+      if (!response.ok) throw new Error('Could not save memory');
+      const data = await response.json() as { memory?: MemoryEntry };
+      if (data.memory) setMemories((prev) => [data.memory!, ...prev.filter((m) => m.id !== data.memory!.id)]);
+    } catch {
+      setMemoriesError('Could not save memory');
+    }
+  };
+
+  const forgetAllMemories = async () => {
+    if (!window.confirm('Forget all saved memories? Your chats will not be deleted.')) return;
+    try {
+      const response = await fetch('/api/memory', { method: 'DELETE' });
+      if (!response.ok) throw new Error('Could not delete memories');
+      setMemories([]);
+    } catch {
+      setMemoriesError('Could not delete memories');
+    }
   };
 
   // Close on Escape
@@ -580,6 +612,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     },
     [persist],
   );
+
+  const toggleMemoryEnabled = useCallback((next: boolean) => {
+    setMemoryEnabled(next);
+    void persist([['memory_enabled', next ? 'true' : 'false']]);
+  }, [persist]);
 
   // Saved only when it parses, so a half-typed object cannot break cost display.
   const saveModelPricing = useCallback(() => {
@@ -1372,8 +1409,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               {/* ── Memories ── */}
               {activeTab === 'memories' && (
                 <div className="settings-section">
+                  <div className="settings-field">
+                    <label className="settings-toggle">
+                      <input type="checkbox" checked={memoryEnabled} onChange={(e) => toggleMemoryEnabled(e.target.checked)} />
+                      <span>Use saved memories in chats</span>
+                    </label>
+                    <p className="settings-hint">
+                      When enabled, relevant saved details may be added to new conversations. Turning
+                      this off pauses recall and automatic saving; it does not delete existing memories.
+                    </p>
+                  </div>
                   <p className="settings-hint" style={{ marginBottom: 12 }}>
-                    Vector memories are automatically extracted from your conversations. They are used to give the AI context about you across different chats.
+                    Saved details help the assistant give more relevant answers across chats. You can
+                    add, inspect, or remove them here. Chats are not deleted when memories are removed.
                   </p>
 
                   <div className="memories-header">
@@ -1388,7 +1436,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     >
                       {memoriesLoading ? '⏳ Refreshing…' : '🔄 Refresh'}
                     </button>
+                    <div className="settings-button-row">
+                      <button type="button" className="settings-secondary-btn" onClick={addMemory}>Add memory</button>
+                      <button type="button" className="settings-secondary-btn" onClick={forgetAllMemories} disabled={memories.length === 0}>Forget all</button>
+                    </div>
                   </div>
+
+                  {memoriesError && <p className="settings-error">{memoriesError}</p>}
 
                   {memoriesLoading && memories.length === 0 ? (
                     <div className="memories-empty">

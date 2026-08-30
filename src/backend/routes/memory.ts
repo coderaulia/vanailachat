@@ -58,6 +58,16 @@ export function memoryRouter(dependencies: AppDependencies): Hono {
     return context.json({ deleted });
   });
 
+  /** Delete all memories without deleting the source chats. */
+  app.delete('/', (context) => {
+    const memories = dependencies.getAllMemoryEntries();
+    let deleted = 0;
+    for (const memory of memories) {
+      if (dependencies.deleteMemory(memory.id)) deleted++;
+    }
+    return context.json({ deleted });
+  });
+
   /** Index an existing chat's messages as vector memories */
   app.post('/index-chat/:chatId', async (context) => {
     const { chatId } = context.req.param();
