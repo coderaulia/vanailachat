@@ -495,6 +495,19 @@ mod tests {
         let msgs = db.list_messages("c1", None).expect("list messages failed");
         assert_eq!(msgs.len(), 2);
 
+        let session = CodingSessionRecord {
+            chat_id: "c1".to_string(),
+            harness: "pi-harness".to_string(),
+            harness_session_id: None,
+            workspace_path: "/tmp".to_string(),
+            status: "ready".to_string(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        let saved = db.upsert_coding_session(&session).expect("save coding session failed");
+        assert_eq!(saved.harness, "pi-harness");
+        assert_eq!(db.get_coding_session("c1").expect("load coding session failed").unwrap().workspace_path, "/tmp");
+
         let search_res = db.search_messages("Desktop", None).expect("FTS5 search failed");
         assert_eq!(search_res.len(), 1);
         assert_eq!(search_res[0].id, "m1");
