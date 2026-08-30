@@ -66,9 +66,9 @@ graph TB
 
 ### 3.0 Release parity boundary (v0.3.1)
 
-The web and native editions share the React frontend, persistence-facing API layer, and visual improvements. The web edition additionally runs the Node/Hono coding harness registry (Pi Harness and DeepSeek Harness), training-example review/export endpoints, and the web-only filesystem picker. The native edition uses its Rust/Tauri command set for chats, models, projects, settings, skills, research, and chat tool approvals; native commands are not automatically extended when a web route changes.
+The web and native editions share the React frontend, persistence-facing API layer, and visual improvements. For v0.3.1, the native command set covers chats, messages, projects, settings, models/model pulls, backup/restore, training-example review/export, coding sessions, coding-provider streaming, Git status/diff/branch controls, skills, research, and chat tool approvals. The web edition continues to provide the Node/Hono route implementations and the in-app filesystem browser. Native commands are not automatically extended when a web route changes, so each parity change is verified independently.
 
-For v0.3.1, desktop distribution includes the shared UI/provider-selector improvements and synchronized package metadata. Coding harness and training export parity remains a follow-up native-backend milestone rather than an undocumented release claim.
+The v0.3.1 desktop release is build-ready for Debian and RPM artifacts. AppImage generation remains an environment-dependent packaging job and must pass on the Ubuntu 22.04 release runner before publishing a universal artifact.
 
 The frontend dynamically detects its runtime environment via `__TAURI_INTERNALS__`:
 
@@ -84,7 +84,7 @@ Standard asynchronous data fetching is mapped cleanly between HTTP REST and Rust
 | :--- | :--- | :--- | :--- |
 | `/api/chats` | `GET` | `get_chats` | Retrieve all chat sessions |
 | `/api/chats` | `POST` | `create_chat` | Create / upsert a chat |
-| `/api/chats/:id` | `PATCH` | `update_chat` | Update title, pinned, system prompt |
+| `/api/chats/:id` | `PATCH` | Frontend persistence fallback | Update title, pinned, system prompt |
 | `/api/chats/:id` | `DELETE` | `delete_chat` | Delete chat and cascade messages |
 | `/api/messages` | `GET` | `get_messages` | Retrieve messages for chat |
 | `/api/messages` | `POST` | `save_message` | Save message record |
@@ -94,6 +94,9 @@ Standard asynchronous data fetching is mapped cleanly between HTTP REST and Rust
 | `/api/settings/:key` | `PUT` | `update_setting` | Save setting & invalidate model cache |
 | `/api/projects` | `GET` / `POST` | `get_projects` / `create_project` | Workspace project management |
 | `/api/skills` | `GET` / `POST` | `get_skills` / `install_skill` | Skills catalog & installations |
+| `/api/training/*` | `GET` / `POST` | `get_training_examples` / `get_training_stats` / `export_training_data` | Training review and export |
+| `/api/coding/sessions` | `GET` / `POST` | `get_coding_session` / `create_coding_session` / `update_coding_session` | Coding workspace sessions |
+| `/api/git/*` | `POST` | `get_git_status` / `get_git_diff` / `create_git_branch` | Workspace Git controls |
 
 ### 3.2 Real-Time Event Streaming
 For chat completions and deep research, Tauri's native event streaming provides lower latency than HTTP chunked transfers:
