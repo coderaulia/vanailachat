@@ -62,6 +62,7 @@
       }
     },
     "category": "Utility",
+    "homepage": "https://github.com/coderaulia/vanailachat",
     "shortDescription": "Privacy-first, high-performance local AI chat client with multi-provider LLM support",
     "longDescription": "Vanaila Chat is a privacy-focused, local-first AI chat client supporting Ollama, OpenAI, Anthropic, OpenRouter, and custom endpoints. Features include agent tools, vector memory/RAG, skill plugins, personas, deep research, and A/B testing."
   }

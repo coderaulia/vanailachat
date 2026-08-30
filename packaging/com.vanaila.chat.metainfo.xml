@@ -21,7 +21,8 @@
   <releases>
     <release version="0.3.1" date="2026-08-30">
       <description>
-        <p>Improved coding harness provider resolution, safer tool execution, training example review/export, and responsive desktop settings navigation.</p>
+        <p>Vanaila Chat 0.3.1 brings the latest web improvements to the native Linux desktop app: native coding workspace sessions and provider streaming, training example review and export, Git status/diff/branch controls, improved provider configuration, memory and settings controls, responsive workspace UI, clipboard image paste, and multimodal custom-model support.</p>
+        <p>This release also includes updated Vanaila branding, synchronized desktop/web API routing, expanded regression coverage, and fixes for chat history timestamps, test database isolation, and legacy product references.</p>
       </description>
     </release>
     <release version="0.3.0" date="2026-08-26">

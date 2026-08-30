@@ -52,6 +52,8 @@ sudo apt-get update && sudo apt-get install -y \
 Built directly via `pnpm desktop:build` or `cargo tauri build --bundles deb`.
 
 - **Package Name**: `vanaila-chat_0.3.1_amd64.deb`
+- **Project Website**: https://github.com/coderaulia/vanailachat
+- **Release Details**: See the AppStream metadata in `packaging/com.vanaila.chat.metainfo.xml`.
 - **Dependencies**: `libwebkit2gtk-4.1-0`, `libgtk-3-0`, `libayatana-appindicator3-1`, `ca-certificates`
 - **Install Command**:
   ```bash
@@ -66,6 +68,8 @@ Built directly via `pnpm desktop:build` or `cargo tauri build --bundles deb`.
 Built directly via `pnpm desktop:build` or `cargo tauri build --bundles rpm`.
 
 - **Package Name**: `vanaila-chat-0.3.1-1.x86_64.rpm`
+- **Project Website**: https://github.com/coderaulia/vanailachat
+- **Release Details**: See the AppStream metadata in `packaging/com.vanaila.chat.metainfo.xml`.
 - **Dependencies**: `webkit2gtk4.1`, `gtk3`, `libayatana-appindicator-gtk3`
 - **Install Command**:
   ```bash

@@ -125,12 +125,12 @@ This audit evaluates the current implementation against desktop software enginee
 | **Fedora / RHEL Package** | `.rpm` configured | **Fedora Copr repository hosting** for automatic updates via `dnf` | `P2` |
 | **Arch Linux Package** | Manual build | **`PKGBUILD` published to Arch User Repository (AUR)** (`vanaila-chat-bin`) | `P1` |
 | **Flatpak / Flathub** | Documentation guide | **Official `com.vanaila.chat.json` manifest** submitted to Flathub | `P1` |
-| **Seamless Auto-Updater** | None | **`tauri-plugin-updater` with GitHub Releases metadata** | `P0` |
+| **Seamless Auto-Updater** | Deferred for a signed update endpoint | Configure only after signing keys and update metadata are available | `P0` |
 
 ### 🛠️ Actionable Improvement Plan (Packaging):
-1. **Auto-Updater Integration (`tauri-plugin-updater`)**:
-   - Configure updater in `tauri.conf.json` pointing to `https://github.com/coderaulia/vanailachat/releases/latest/download/latest.json`.
-   - Show non-intrusive "Update Available (v0.3.1)" banner with "Restart to Apply".
+1. **Auto-Updater (future release)**:
+   - Add the updater only with signed artifacts, a valid public key, and a tested `latest.json` endpoint.
+   - Do not initialize the plugin with an empty configuration.
 2. **Flathub Manifest**:
    - Create `com.vanaila.chat.yml` with sandboxed network access to `localhost:11434` for Ollama and required Wayland/X11 sockets.
 

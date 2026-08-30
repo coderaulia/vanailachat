@@ -5,6 +5,7 @@ description = "Privacy-first, high-performance local AI chat client with multi-p
 authors = ["Aulia Satrio Wibowo <care@vanaila.com>"]
 license = "MIT"
 repository = "https://github.com/coderaulia/vanailachat"
+homepage = "https://github.com/coderaulia/vanailachat"
 edition = "2021"
 
 [lib]
@@ -21,7 +22,6 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-updater = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
