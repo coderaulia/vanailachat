@@ -29,7 +29,7 @@ backups/
 # Dev server logs
 *.log
 
-# Claude Code / Agent data
+# Local agent data
 .claude
 .claude/
 GEMINI.md
