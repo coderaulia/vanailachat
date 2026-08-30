@@ -67,7 +67,7 @@ const getSuggestedRole = (p: string, hasImage: boolean): ModelRole | null => {
 export function useModelManager(prompt: string, hasImageAttachment: boolean = false) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [modelMetadata, setModelMetadata] = useState<ModelMetadataMap>({});
-  const [providers, setProviders] = useState<Array<{ name: string; provider: string }>>([]);
+  const [providers, setProviders] = useState<Array<{ name: string; provider: string; providerLabel?: string }>>([]);
   const [selectedModel, setSelectedModelState] = useState('');
   const [selectedRole, setSelectedRole] = useState<ModelRole>(DEFAULT_MODEL_ROLE);
   const [dismissedSuggestionPrompt, setDismissedSuggestionPrompt] = useState<string | null>(null);

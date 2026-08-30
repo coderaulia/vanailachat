@@ -1,5 +1,6 @@
 import './ChatHeader.css';
 import { useChat } from '../context/ChatContext';
+import { getProviderDisplayInfo } from '../config/modelMetadata';
 
 interface ChatHeaderProps {
   showTokens: boolean;
@@ -7,6 +8,7 @@ interface ChatHeaderProps {
   onToggleShowTokens: () => void;
   isCodebasePanelOpen?: boolean;
   onToggleCodebasePanel?: () => void;
+  responseStats?: { latencyMs: number; tokensPerSecond: number; completionTokens: number } | null;
 }
 
 export function ChatHeader({
@@ -15,16 +17,27 @@ export function ChatHeader({
   onToggleShowTokens,
   isCodebasePanelOpen,
   onToggleCodebasePanel,
+  responseStats,
 }: ChatHeaderProps) {
   const {
     isCurrentChatSending,
     selectedModel,
+    modelMetadata,
+    providers,
     statusText,
     isAutoApprove,
     toggleAutoApprove,
     toggleSidebar: onToggleSidebar,
     toggleTheme: onToggleTheme,
   } = useChat();
+
+  const selectedProvider = providers.find((provider) => provider.name === selectedModel);
+  const modelProvider = selectedProvider?.provider
+    || modelMetadata[selectedModel]?.providerKind
+    || selectedModel.split(':')[0];
+  const providerLabel = modelMetadata[selectedModel]?.providerLabel
+    || selectedProvider?.providerLabel
+    || getProviderDisplayInfo(modelProvider).label;
 
   return (
     <header className="app-header" data-tauri-drag-region="true">
@@ -52,7 +65,7 @@ export function ChatHeader({
               <span className="status-pill__value">{selectedModel || 'Not selected'}</span>
             </div>
             <div className="status-pill">
-              <span className="status-pill__label">Ollama</span>
+              <span className="status-pill__label">{providerLabel}</span>
               <span className="status-pill__value">
                 {statusText === 'Ready' ? 'Connected' : statusText}
                 {isCurrentChatSending ? (
@@ -62,6 +75,12 @@ export function ChatHeader({
                 ) : null}
               </span>
             </div>
+            {responseStats && (
+              <div className="status-pill response-stats" title="Latest completed response">
+                <span>{responseStats.tokensPerSecond.toFixed(1)} tok/s</span>
+                <span>{responseStats.latencyMs >= 1000 ? `${(responseStats.latencyMs / 1000).toFixed(1)}s` : `${responseStats.latencyMs}ms`}</span>
+              </div>
+            )}
           </div>
 
           <button

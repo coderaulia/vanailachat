@@ -77,6 +77,17 @@ const AppShell = () => {
     setViewMode,
   } = useChat();
 
+  const responseStats = useMemo(() => {
+    const assistantIndex = conversation.map((message) => message.role).lastIndexOf('assistant');
+    if (assistantIndex < 1) return null;
+    const assistant = conversation[assistantIndex];
+    const user = conversation.slice(0, assistantIndex).reverse().find((message) => message.role === 'user');
+    if (!user || !assistant.completionTokens || assistant.completionTokens <= 0) return null;
+    const latencyMs = Math.max(0, assistant.timestamp - user.timestamp);
+    const seconds = Math.max(latencyMs / 1000, 0.001);
+    return { latencyMs, completionTokens: assistant.completionTokens, tokensPerSecond: assistant.completionTokens / seconds };
+  }, [conversation]);
+
   const [isCodebasePanelOpen, setIsCodebasePanelOpen] = useState(false);
 
   // Auto-open codebase panel when tool approval is requested
@@ -178,6 +189,7 @@ const AppShell = () => {
               showTokens={showTokens}
               thinkingSeconds={thinkingSeconds}
               onToggleShowTokens={handleToggleTokens}
+              responseStats={responseStats}
               isCodebasePanelOpen={isCodebasePanelOpen}
               onToggleCodebasePanel={() => setIsCodebasePanelOpen((prev) => !prev)}
             />

@@ -815,10 +815,55 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+.settings-setup-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 0 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-setup-toggle:hover {
+  background: var(--bg-surface-hover, var(--bg-surface-strong));
+  color: var(--text-primary);
+}
+
 .settings-subfields {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.settings-info-card {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.settings-info-card p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-subsection-title {
+  margin: 18px 0 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .settings-subfield {

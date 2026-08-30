@@ -23,9 +23,15 @@ interface AllSettings {
   custom_openai_base_url?: string;
   custom_openai_api_key?: string;
   custom_openai_models?: string;
-  anthropic_api_key?: string;
-  fcc_server_url?: string;
   coding_harness?: string;
+  pi_agent_dir?: string;
+  pi_api_key?: string;
+  pi_base_url?: string;
+  pi_model?: string;
+  pi_provider?: string;
+  pi_system_prompt?: string;
+  pi_thinking_level?: string;
+  pi_tool_policy?: string;
   deepseek_api_key?: string;
   deepseek_base_url?: string;
   deepseek_model?: string;
@@ -50,7 +56,7 @@ interface MemoryEntry {
   createdAt: number;
 }
 
-type Tab = 'ai' | 'profile' | 'instructions' | 'behaviour' | 'appearance' | 'memories' | 'training' | 'about';
+type Tab = 'ai' | 'personalization' | 'behaviour' | 'appearance' | 'memories' | 'training' | 'about';
 
 interface TrainingStats {
   pairs: number;
@@ -139,9 +145,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [userRole, setUserRole] = useState('');
 
   // Coding Workspace Engine
-  const [codingHarness, setCodingHarness] = useState<'claude-code' | 'deepseek-harness'>('claude-code');
-  const [anthropicKey, setAnthropicKey] = useState('');
-  const [fccServerUrl, setFccServerUrl] = useState('');
+  const [codingHarness, setCodingHarness] = useState<'pi-harness' | 'deepseek-harness'>('pi-harness');
+  const [codingSetupExpanded, setCodingSetupExpanded] = useState(false);
+  const [piAgentDir, setPiAgentDir] = useState('');
+  const [piApiKey, setPiApiKey] = useState('');
+  const [piBaseUrl, setPiBaseUrl] = useState('');
+  const [piModel, setPiModel] = useState('');
+  const [piProvider, setPiProvider] = useState('');
+  const [piSystemPrompt, setPiSystemPrompt] = useState('');
+  const [piThinkingLevel, setPiThinkingLevel] = useState('medium');
+  const [piToolPolicy, setPiToolPolicy] = useState('approval');
   const [deepseekApiKey, setDeepseekApiKey] = useState('');
   const [deepseekBaseUrl, setDeepseekBaseUrl] = useState('');
   const [deepseekModel, setDeepseekModel] = useState('');
@@ -248,11 +261,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.openai_api_key && !s.openai_base_url?.includes('openrouter')) setOpenaiKey(s.openai_api_key);
         if (s.nine_router_host) setNineRouterHost(s.nine_router_host);
         if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
-        if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'claude-code') {
+        if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'pi-harness') {
           setCodingHarness(s.coding_harness);
+        } else if (s.coding_harness === 'claude-code') {
+          setCodingHarness('pi-harness');
         }
-        if (s.anthropic_api_key) setAnthropicKey(s.anthropic_api_key);
-        if (s.fcc_server_url) setFccServerUrl(s.fcc_server_url);
+        if (s.pi_agent_dir) setPiAgentDir(s.pi_agent_dir);
+        if (s.pi_api_key) setPiApiKey(s.pi_api_key);
+        if (s.pi_base_url) setPiBaseUrl(s.pi_base_url);
+        if (s.pi_model) setPiModel(s.pi_model);
+        if (s.pi_provider) setPiProvider(s.pi_provider);
+        if (s.pi_system_prompt) setPiSystemPrompt(s.pi_system_prompt);
+        if (s.pi_thinking_level) setPiThinkingLevel(s.pi_thinking_level);
+        if (s.pi_tool_policy) setPiToolPolicy(s.pi_tool_policy);
         if (s.deepseek_api_key) setDeepseekApiKey(s.deepseek_api_key);
         if (s.deepseek_base_url) setDeepseekBaseUrl(s.deepseek_base_url);
         if (s.deepseek_model) setDeepseekModel(s.deepseek_model);
@@ -449,18 +470,54 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     saveCustomProviders(updated);
   };
 
-  const saveAnthropicKey = useCallback(
-    () => persist([['anthropic_api_key', anthropicKey.trim()]]),
-    [persist, anthropicKey],
+  const savePiAgentDir = useCallback(
+    () => persist([['pi_agent_dir', piAgentDir.trim()]]),
+    [persist, piAgentDir],
   );
 
-  const saveFccServerUrl = useCallback(
-    () => persist([['fcc_server_url', fccServerUrl.trim()]]),
-    [persist, fccServerUrl],
+  const savePiApiKey = useCallback(
+    () => persist([['pi_api_key', piApiKey.trim()]]),
+    [persist, piApiKey],
+  );
+
+  const savePiBaseUrl = useCallback(
+    () => persist([['pi_base_url', piBaseUrl.trim()]]),
+    [persist, piBaseUrl],
+  );
+
+  const savePiModel = useCallback(
+    () => persist([['pi_model', piModel.trim()]]),
+    [persist, piModel],
+  );
+
+  const savePiProvider = useCallback(
+    () => persist([['pi_provider', piProvider.trim()]]),
+    [persist, piProvider],
+  );
+
+  const savePiSystemPrompt = useCallback(
+    () => persist([['pi_system_prompt', piSystemPrompt]]),
+    [persist, piSystemPrompt],
+  );
+
+  const savePiThinkingLevel = useCallback(
+    (level: string) => {
+      setPiThinkingLevel(level);
+      return persist([['pi_thinking_level', level]]);
+    },
+    [persist],
+  );
+
+  const savePiToolPolicy = useCallback(
+    (policy: string) => {
+      setPiToolPolicy(policy);
+      return persist([['pi_tool_policy', policy]]);
+    },
+    [persist],
   );
 
   const selectCodingHarness = useCallback(
-    (harness: 'claude-code' | 'deepseek-harness') => {
+    (harness: 'pi-harness' | 'deepseek-harness') => {
       setCodingHarness(harness);
       void persist([['coding_harness', harness]]);
     },
@@ -549,8 +606,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useAutosave(openrouterKey, saveOpenrouterKey, ready);
   useAutosave(nineRouterHost, saveNineRouterConfig, ready);
   useAutosave(nineRouterKey, saveNineRouterConfig, ready);
-  useAutosave(anthropicKey, saveAnthropicKey, ready);
-  useAutosave(fccServerUrl, saveFccServerUrl, ready);
+  useAutosave(piAgentDir, savePiAgentDir, ready);
+  useAutosave(piApiKey, savePiApiKey, ready);
+  useAutosave(piBaseUrl, savePiBaseUrl, ready);
+  useAutosave(piModel, savePiModel, ready);
+  useAutosave(piProvider, savePiProvider, ready);
+  useAutosave(piSystemPrompt, savePiSystemPrompt, ready);
   useAutosave(deepseekApiKey, saveDeepseekApiKey, ready);
   useAutosave(deepseekBaseUrl, saveDeepseekBaseUrl, ready);
   useAutosave(deepseekModel, saveDeepseekModel, ready);
@@ -603,24 +664,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       ),
     },
     {
-      id: 'profile',
-      label: 'Profile',
+      id: 'personalization',
+      label: 'Personalization',
       icon: (
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
           <circle cx="12" cy="7" r="4" />
-        </svg>
-      ),
-    },
-    {
-      id: 'instructions',
-      label: 'Instructions',
-      icon: (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
       ),
     },
@@ -942,9 +991,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   <div className="settings-field settings-field--fcc">
                     <div className="settings-fcc-badge-row">
                       <label className="settings-label">Coding Workspace Engine</label>
-                      {codingHarness === 'claude-code' ? (
+                      {codingHarness === 'pi-harness' ? (
                         <span className="settings-fcc-badge">
-                          ⚡ Powered by <a href="https://github.com/alishahryar1/free-claude-code" target="_blank" rel="noreferrer">Free Claude Code</a>
+                          🧭 Powered by <a href="https://github.com/earendil-works/pi" target="_blank" rel="noreferrer">Pi</a>
                         </span>
                       ) : (
                         <span className="settings-fcc-badge settings-dsh-badge">
@@ -956,10 +1005,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     <div className="settings-harness-selector">
                       <button
                         type="button"
-                        className={`settings-harness-btn ${codingHarness === 'claude-code' ? 'is-active' : ''}`}
-                        onClick={() => selectCodingHarness('claude-code')}
+                        className={`settings-harness-btn ${codingHarness === 'pi-harness' ? 'is-active' : ''}`}
+                        onClick={() => selectCodingHarness('pi-harness')}
                       >
-                        ⚡ Claude Code (SDK / FCC)
+                        🧭 Pi Harness
                       </button>
                       <button
                         type="button"
@@ -970,36 +1019,120 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       </button>
                     </div>
 
-                    {codingHarness === 'claude-code' ? (
+                    <button
+                      type="button"
+                      className="settings-setup-toggle"
+                      onClick={() => setCodingSetupExpanded((expanded) => !expanded)}
+                      aria-expanded={codingSetupExpanded}
+                    >
+                      <span>{codingSetupExpanded ? 'Hide setup' : 'Configure setup'}</span>
+                      <span aria-hidden="true">{codingSetupExpanded ? '▴' : '▾'}</span>
+                    </button>
+
+                    {codingSetupExpanded && (codingHarness === 'pi-harness' ? (
                       <>
                         <p className="settings-hint" style={{ marginTop: '2px', marginBottom: '8px' }}>
-                          Claude Code runs directly in the browser using your connected providers (Ollama, OpenRouter, 9Router, Custom) with zero extra setup.
+                          <a href="https://github.com/earendil-works/pi" target="_blank" rel="noreferrer">Pi</a> runs through its official coding-agent SDK with read, edit, write, search, and shell tools.
                         </p>
 
                         <div className="settings-subfields">
                           <div className="settings-subfield">
-                            <label className="settings-sublabel">Direct Anthropic API Key <span className="settings-optional">(optional)</span></label>
+                            <label className="settings-sublabel">Pi Provider</label>
                             <input
                               className="settings-input"
-                              type="password"
-                              value={anthropicKey}
-                              onChange={(e) => setAnthropicKey(e.target.value)}
-                              onBlur={saveAnthropicKey}
-                              placeholder="sk-ant-... (leave blank to use Free Claude Code)"
+                              value={piProvider}
+                              onChange={(e) => setPiProvider(e.target.value)}
+                              onBlur={savePiProvider}
+                              placeholder="anthropic, openai, google, or custom-id"
                             />
-                            <p className="settings-subhint">Leave blank to route Claude Code through your active provider.</p>
+                            <p className="settings-subhint">Use a built-in Pi provider ID, or the provider ID from your Pi <code>models.json</code>.</p>
                           </div>
 
                           <div className="settings-subfield" style={{ marginTop: '8px' }}>
-                            <label className="settings-sublabel">External FCC Server URL <span className="settings-optional">(optional)</span></label>
+                            <label className="settings-sublabel">Pi Model</label>
                             <input
                               className="settings-input"
-                              value={fccServerUrl}
-                              onChange={(e) => setFccServerUrl(e.target.value)}
-                              onBlur={saveFccServerUrl}
-                              placeholder="http://127.0.0.1:8082 (leave blank to use built-in FCC proxy)"
+                              value={piModel}
+                              onChange={(e) => setPiModel(e.target.value)}
+                              onBlur={savePiModel}
+                              placeholder="claude-sonnet-4-5 or gpt-5.2"
                             />
-                            <p className="settings-subhint">Only needed if running a standalone <code>fcc-server</code> daemon.</p>
+                            <p className="settings-subhint">The model ID without provider prefix; <code>provider/model</code> is also accepted when Provider is set.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Pi API Key <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              type="password"
+                              value={piApiKey}
+                              onChange={(e) => setPiApiKey(e.target.value)}
+                              onBlur={savePiApiKey}
+                              placeholder="Leave blank to use Pi auth.json or environment"
+                            />
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Custom Base URL <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={piBaseUrl}
+                              onChange={(e) => setPiBaseUrl(e.target.value)}
+                              onBlur={savePiBaseUrl}
+                              placeholder="https://openrouter.ai/api/v1"
+                            />
+                            <p className="settings-subhint">Adds a temporary OpenAI-compatible Pi provider. Leave blank for built-in providers.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Thinking Level</label>
+                            <select
+                              className="settings-input"
+                              value={piThinkingLevel}
+                              onChange={(e) => void savePiThinkingLevel(e.target.value)}
+                            >
+                              {['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((level) => (
+                                <option key={level} value={level}>{level}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Tool Policy</label>
+                            <select
+                              className="settings-input"
+                              value={piToolPolicy}
+                              onChange={(e) => void savePiToolPolicy(e.target.value)}
+                            >
+                              <option value="approval">Approval for writes and commands</option>
+                              <option value="readonly">Read-only mode</option>
+                              <option value="autonomous">Autonomous coding</option>
+                            </select>
+                            <p className="settings-subhint">Approval is recommended. Read-only disables Pi’s edit, write, and shell tools.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Pi Agent Directory <span className="settings-optional">(optional)</span></label>
+                            <input
+                              className="settings-input"
+                              value={piAgentDir}
+                              onChange={(e) => setPiAgentDir(e.target.value)}
+                              onBlur={savePiAgentDir}
+                              placeholder="~/.pi/agent"
+                            />
+                            <p className="settings-subhint">Used for Pi settings, auth, custom models, skills, and catalogs.</p>
+                          </div>
+
+                          <div className="settings-subfield" style={{ marginTop: '8px' }}>
+                            <label className="settings-sublabel">Pi System Prompt <span className="settings-optional">(optional)</span></label>
+                            <textarea
+                              className="settings-input"
+                              rows={4}
+                              value={piSystemPrompt}
+                              onChange={(e) => setPiSystemPrompt(e.target.value)}
+                              onBlur={savePiSystemPrompt}
+                              placeholder="Leave blank to use Pi’s default coding prompt"
+                            />
                           </div>
                         </div>
                       </>
@@ -1070,7 +1203,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           </div>
                         </div>
                       </>
-                    )}
+                    ))}
                   </div>
 
                   <button
@@ -1088,7 +1221,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
 
               {/* ── Profile ── */}
-              {activeTab === 'profile' && (
+              {activeTab === 'personalization' && (
                 <div className="settings-section">
                   <div className="settings-field">
                     <label className="settings-label">Your Name <span className="settings-optional">(optional)</span></label>
@@ -1111,12 +1244,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     />
                     <p className="settings-hint">Helps the AI tailor responses to your background.</p>
                   </div>
-                </div>
-              )}
-
-              {/* ── Instructions ── */}
-              {activeTab === 'instructions' && (
-                <div className="settings-section">
                   <div className="settings-field">
                     <label className="settings-label">
                       Base Instructions <span className="settings-optional">(optional)</span>
@@ -1137,6 +1264,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               {/* ── Behaviour ── */}
               {activeTab === 'behaviour' && (
                 <div className="settings-section">
+                  <div className="settings-info-card">
+                    <strong>How the assistant behaves</strong>
+                    <p>
+                      These options control safety checks, how optional instructions are loaded,
+                      and how usage costs are displayed. They do not change your saved chats.
+                    </p>
+                  </div>
+
+                  <h3 className="settings-subsection-title">Safety</h3>
                   <div className="settings-field">
                     <label className="settings-toggle">
                       <input
@@ -1144,13 +1280,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         checked={requireApproval}
                         onChange={(e) => toggleApproval(e.target.checked)}
                       />
-                      <span>Ask before the AI writes files or runs commands (Require Confirmation)</span>
+                      <span>Ask before making changes</span>
                     </label>
                     <p className="settings-hint">
-                      When enabled, mutating actions (file edits, writes, and terminal commands) will show an approval dialog with diffs and commands. When disabled (Auto-Approve mode), coding tools and Claude Code execute mutating operations automatically without stopping.
+                      When enabled, the assistant pauses before editing files, writing files, running
+                      commands, or changing Git state. Turn this off only when you trust the request
+                      and want coding actions to run without confirmation.
                     </p>
                   </div>
 
+                  <h3 className="settings-subsection-title">Instructions</h3>
                   <div className="settings-field">
                     <label className="settings-toggle">
                       <input
@@ -1158,15 +1297,16 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         checked={skillsInline}
                         onChange={(e) => toggleSkillsInline(e.target.checked)}
                       />
-                      <span>Send full skill text with every message</span>
+                      <span>Always include full skill instructions</span>
                     </label>
                     <p className="settings-hint">
-                      Off by default: skills are listed by name and the model loads the full text
-                      only when it needs it. Turning this on costs the whole skill body in every
-                      request — reasonable on a local model, expensive on a metered one.
+                      Off: the assistant sees skill names and loads the full instructions only when
+                      relevant. On: every request includes every enabled skill, which can use more
+                      context and cost more with metered models.
                     </p>
                   </div>
 
+                  <h3 className="settings-subsection-title">Usage display</h3>
                   <div className="settings-field">
                     <label className="settings-label">
                       Model pricing <span className="settings-optional">(optional)</span>
@@ -1182,9 +1322,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                     />
                     {pricingError && <p className="settings-error">Not saved — {pricingError}</p>}
                     <p className="settings-hint">
-                      USD per 1M tokens, keyed by model id without the provider prefix. Needed for
-                      models a built-in price list cannot know; without a rate the app shows token
-                      counts only rather than guessing a cost.
+                      Optional: enter USD per 1M tokens, keyed by model id without the provider
+                      prefix. This only affects cost estimates in the interface; it never changes
+                      the provider billing or request itself.
                     </p>
                   </div>
                 </div>
