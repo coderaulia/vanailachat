@@ -68,7 +68,7 @@ graph TB
 
 The web and native editions share the React frontend, persistence-facing API layer, and visual improvements. For v0.3.1, the native command set covers chats, messages, projects, settings, models/model pulls, backup/restore, training-example review/export, coding sessions, coding-provider streaming, Git status/diff/branch controls, skills, research, and chat tool approvals. The web edition continues to provide the Node/Hono route implementations and the in-app filesystem browser. Native commands are not automatically extended when a web route changes, so each parity change is verified independently.
 
-The v0.3.1 desktop release is build-ready for Debian and RPM artifacts. AppImage generation remains an environment-dependent packaging job and must pass on the Ubuntu 22.04 release runner before publishing a universal artifact.
+The v0.3.1-fix desktop release is build-ready for Debian, RPM, and AppImage artifacts. It is a startup hotfix that removes the invalid updater initialization and includes the Vanaila branding and project metadata.
 
 The frontend dynamically detects its runtime environment via `__TAURI_INTERNALS__`:
 

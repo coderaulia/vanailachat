@@ -19,10 +19,10 @@
   </provides>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="0.3.1" date="2026-08-30">
+    <release version="0.3.1-fix" date="2026-08-30">
       <description>
-        <p>Vanaila Chat 0.3.1 brings the latest web improvements to the native Linux desktop app: native coding workspace sessions and provider streaming, training example review and export, Git status/diff/branch controls, improved provider configuration, memory and settings controls, responsive workspace UI, clipboard image paste, and multimodal custom-model support.</p>
-        <p>This release also includes updated Vanaila branding, synchronized desktop/web API routing, expanded regression coverage, and fixes for chat history timestamps, test database isolation, and legacy product references.</p>
+        <p>Vanaila Chat 0.3.1-fix is a startup hotfix for the native Linux desktop app. It removes the invalid updater initialization that caused the application to abort before opening, retains the updated Vanaila branding, and adds the project website and detailed release metadata.</p>
+        <p>The release includes the 0.3.1 desktop parity improvements: native coding workspace sessions and provider streaming, training review/export, Git workspace controls, improved provider configuration, memory and settings controls, responsive UI, clipboard image paste, and multimodal custom-model support.</p>
       </description>
     </release>
     <release version="0.3.0" date="2026-08-26">

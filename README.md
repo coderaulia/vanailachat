@@ -35,8 +35,8 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 
 | Distro / Platform | Package Format | Direct Download Link | Quick Installation |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.1_amd64.deb` |
-| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.1-1.x86_64.rpm` |
+| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.1-fix_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.1-fix-1.x86_64.rpm` |
 | **Universal Linux (Any Distro)** | `.AppImage` | [**Download `.AppImage`**](https://github.com/coderaulia/vanailachat/releases/latest) | `chmod +x *.AppImage && ./*.AppImage` |
 | **Arch Linux / Manjaro** | AUR | [**AUR Package**](DOWNLOADS.md) | `yay -S vanaila-chat-bin` |
 | **1-Click Web App (Linux/Mac/Win)** | Script | `start.sh` / `start.bat` | `./start.sh` (Linux/macOS) or `start.bat` (Win) |

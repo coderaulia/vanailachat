@@ -1,6 +1,6 @@
 # Maintainer: Aulia Satrio Wibowo <care@vanaila.com>
 pkgname=vanaila-chat-bin
-pkgver=0.3.1
+pkgver=0.3.1.fix
 pkgrel=1
 pkgdesc="Privacy-first, high-performance local AI chat client with multi-provider LLM support"
 arch=('x86_64')
@@ -12,7 +12,7 @@ optdepends=(
 )
 provides=('vanaila-chat')
 conflicts=('vanaila-chat')
-source=("${pkgname}-${pkgver}.deb::https://github.com/coderaulia/vanailachat/releases/download/v${pkgver}/vanaila-chat_${pkgver}_amd64.deb")
+source=("${pkgname}-${pkgver}.deb::https://github.com/coderaulia/vanailachat/releases/download/v0.3.1-fix/vanaila-chat_0.3.1-fix_amd64.deb")
 sha256sums=('SKIP')
 
 package() {
