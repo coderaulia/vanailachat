@@ -1,8 +1,25 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createApp } from '../app';
 import { DatabaseService } from '../services/database';
 
 describe('A/B route', () => {
+  let dbDir: string | null = null;
+
+  afterEach(() => {
+    if (dbDir) {
+      (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
+      (DatabaseService as unknown as { db: unknown }).db = null;
+      try {
+        if (fs.existsSync(dbDir)) fs.rmSync(dbDir, { recursive: true, force: true });
+      } catch {
+        // best-effort
+      }
+      dbDir = null;
+    }
+  });
   it('POST /api/ab executes comparison between modelA and modelB', async () => {
     const mockProvider = {
       chat: vi.fn().mockImplementation(async (params: { model: string }) => {
@@ -156,6 +173,12 @@ describe('A/B route', () => {
   });
 
   it('DatabaseService.recordAbPick creates chat and training pair with default project safely', () => {
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-ab-test-'));
+    const testDbPath = path.join(dbDir, 'test.sqlite');
+    (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
+    (DatabaseService as unknown as { db: unknown }).db = null;
+    DatabaseService.initialize(testDbPath);
+
     const result = DatabaseService.recordAbPick({
       userContent: 'test query',
       assistantContent: 'test winner output',

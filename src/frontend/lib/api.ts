@@ -63,29 +63,43 @@ export interface ApiProjectDto {
   memory?: string | null;
   pinned?: boolean;
   created_at?: number;
+  createdAt?: number;
   updated_at?: number;
+  updatedAt?: number;
 }
 
 export interface ApiChatDto {
   id: string;
   title: string;
   project_id?: string | null;
+  projectId?: string | null;
   project_root?: string | null;
+  projectRoot?: string | null;
   system_prompt?: string | null;
+  systemPrompt?: string | null;
   model?: string | null;
   role?: string | null;
   created_at?: number;
+  createdAt?: number;
   updated_at?: number;
+  updatedAt?: number;
   pinned?: boolean | number;
   usage?: number;
 }
 
 export interface ApiMessageDto {
   id: string;
-  chat_id: string;
+  chat_id?: string;
+  chatId?: string;
   role: string;
   content: string;
+  prompt_tokens?: number | null;
+  promptTokens?: number | null;
+  completion_tokens?: number | null;
+  completionTokens?: number | null;
   created_at?: number;
+  createdAt?: number;
+  timestamp?: number;
 }
 
 // ── Dynamic Tauri API Loader ──────────────────────────────────────────
@@ -218,19 +232,48 @@ export async function apiCreateChat(payload: {
   id: string;
   title: string;
   project_id?: string | null;
+  projectId?: string | null;
   project_root?: string | null;
+  projectRoot?: string | null;
   system_prompt?: string | null;
+  systemPrompt?: string | null;
   model?: string | null;
   role?: string | null;
+  created_at?: number;
+  createdAt?: number;
+  updated_at?: number;
+  updatedAt?: number;
+  pinned?: boolean;
 }): Promise<ApiChatDto> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
-    return await invoke<ApiChatDto>('create_chat', { payload });
+    return await invoke<ApiChatDto>('create_chat', {
+      payload: {
+        id: payload.id,
+        title: payload.title,
+        project_id: payload.project_id ?? payload.projectId ?? null,
+        project_root: payload.project_root ?? payload.projectRoot ?? null,
+        system_prompt: payload.system_prompt ?? payload.systemPrompt ?? null,
+        model: payload.model ?? null,
+        role: payload.role ?? null,
+      },
+    });
   }
   const data = await requestApi<{ chat?: ApiChatDto }>('/api/chats', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      id: payload.id,
+      title: payload.title,
+      projectId: payload.projectId ?? payload.project_id ?? null,
+      projectRoot: payload.projectRoot ?? payload.project_root ?? null,
+      systemPrompt: payload.systemPrompt ?? payload.system_prompt ?? null,
+      model: payload.model ?? null,
+      role: payload.role ?? null,
+      createdAt: payload.createdAt ?? payload.created_at,
+      updatedAt: payload.updatedAt ?? payload.updated_at,
+      pinned: payload.pinned,
+    }),
   });
   return data.chat ?? (payload as ApiChatDto);
 }
@@ -251,31 +294,52 @@ export async function apiFetchMessages(chatId: string): Promise<ApiMessageDto[]>
     const { invoke } = await getTauriCore();
     return await invoke<ApiMessageDto[]>('get_messages', { chatId });
   }
-  const data = await requestApi<{ messages?: ApiMessageDto[] }>(`/api/messages/${encodeURIComponent(chatId)}`);
+  const data = await requestApi<{ messages?: ApiMessageDto[] }>(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
   return Array.isArray(data.messages) ? data.messages : [];
 }
 
 export async function apiSaveMessage(payload: {
   id: string;
-  chat_id: string;
+  chat_id?: string;
+  chatId?: string;
   role: string;
   content: string;
+  prompt_tokens?: number | null;
+  promptTokens?: number | null;
+  completion_tokens?: number | null;
+  completionTokens?: number | null;
+  created_at?: number;
+  createdAt?: number;
+  timestamp?: number;
 }): Promise<ApiMessageDto> {
+  const chatId = payload.chatId ?? payload.chat_id ?? '';
+  const createdAt = payload.createdAt ?? payload.created_at ?? payload.timestamp ?? Date.now();
   if (isTauri) {
     const { invoke } = await getTauriCore();
-    return await invoke<ApiMessageDto>('save_message', { payload });
+    return await invoke<ApiMessageDto>('save_message', {
+      payload: {
+        id: payload.id,
+        chat_id: chatId,
+        role: payload.role,
+        content: payload.content,
+        created_at: createdAt,
+      },
+    });
   }
   const data = await requestApi<{ message?: ApiMessageDto }>('/api/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       id: payload.id,
-      chatId: payload.chat_id,
+      chatId,
       role: payload.role,
       content: payload.content,
+      promptTokens: payload.promptTokens ?? payload.prompt_tokens ?? null,
+      completionTokens: payload.completionTokens ?? payload.completion_tokens ?? null,
+      createdAt,
     }),
   });
-  return data.message ?? payload;
+  return data.message ?? (payload as ApiMessageDto);
 }
 
 // ── Models & Settings IPC / REST ──────────────────────────────────────

@@ -106,6 +106,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
+    setupFiles: ['./src/test-setup.ts'],
     coverage: {
       reporter: ['text', 'html'],
     },

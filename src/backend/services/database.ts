@@ -671,7 +671,7 @@ export class DatabaseService {
       pinned: input.pinned ?? existing?.pinned ?? false,
       role: input.role ?? existing?.role ?? null,
       created_at: normalizeTimestamp(input.createdAt ?? existing?.createdAt),
-      updated_at: normalizeTimestamp(input.updatedAt),
+      updated_at: normalizeTimestamp(input.updatedAt ?? existing?.updatedAt),
     };
 
     db.prepare(

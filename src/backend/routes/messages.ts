@@ -54,18 +54,25 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
       const body = (await context.req.json()) as {
         id?: unknown;
         chatId?: unknown;
+        chat_id?: unknown;
         role?: unknown;
         content?: unknown;
         promptTokens?: unknown;
+        prompt_tokens?: unknown;
         completionTokens?: unknown;
+        completion_tokens?: unknown;
         createdAt?: unknown;
+        created_at?: unknown;
+        timestamp?: unknown;
       };
 
-      if (typeof body.chatId !== 'string' || !body.chatId.trim()) {
+      const chatId = typeof body.chatId === 'string' ? body.chatId : typeof body.chat_id === 'string' ? body.chat_id : '';
+      if (!chatId.trim()) {
         return context.json({ error: 'chatId is required' }, 400);
       }
 
-      if (typeof body.role !== 'string' || !body.role.trim()) {
+      const role = typeof body.role === 'string' ? body.role : '';
+      if (!role.trim()) {
         return context.json({ error: 'role is required' }, 400);
       }
 
@@ -75,12 +82,12 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
 
       const message = dependencies.insertMessage({
         id: typeof body.id === 'string' ? body.id : undefined,
-        chatId: body.chatId,
-        role: body.role,
+        chatId,
+        role,
         content: body.content,
-        promptTokens: toOptionalNumber(body.promptTokens),
-        completionTokens: toOptionalNumber(body.completionTokens),
-        createdAt: toOptionalNumber(body.createdAt),
+        promptTokens: toOptionalNumber(body.promptTokens ?? body.prompt_tokens),
+        completionTokens: toOptionalNumber(body.completionTokens ?? body.completion_tokens),
+        createdAt: toOptionalNumber(body.createdAt ?? body.created_at ?? body.timestamp),
       });
 
       return context.json({ message }, 201);

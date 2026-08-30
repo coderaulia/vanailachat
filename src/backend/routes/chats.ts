@@ -32,33 +32,32 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
       const body = (await context.req.json()) as {
         id?: unknown;
         projectId?: unknown;
+        project_id?: unknown;
         title?: unknown;
         model?: unknown;
         projectRoot?: unknown;
+        project_root?: unknown;
         systemPrompt?: unknown;
+        system_prompt?: unknown;
         pinned?: unknown;
         role?: unknown;
         createdAt?: unknown;
+        created_at?: unknown;
         updatedAt?: unknown;
+        updated_at?: unknown;
       };
+
+      const projectId = typeof body.projectId === 'string' ? body.projectId : typeof body.project_id === 'string' ? body.project_id : undefined;
+      const projectRoot = typeof body.projectRoot === 'string' ? body.projectRoot : typeof body.project_root === 'string' ? body.project_root : body.projectRoot === null || body.project_root === null ? null : undefined;
+      const systemPrompt = typeof body.systemPrompt === 'string' ? body.systemPrompt : typeof body.system_prompt === 'string' ? body.system_prompt : body.systemPrompt === null || body.system_prompt === null ? null : undefined;
 
       const chat = dependencies.upsertChat({
         id: typeof body.id === 'string' ? body.id : undefined,
-        projectId: typeof body.projectId === 'string' ? body.projectId : undefined,
+        projectId,
         title: typeof body.title === 'string' ? body.title : undefined,
         model: typeof body.model === 'string' ? body.model : body.model === null ? null : undefined,
-        projectRoot:
-          typeof body.projectRoot === 'string'
-            ? body.projectRoot
-            : body.projectRoot === null
-              ? null
-              : undefined,
-        systemPrompt:
-          typeof body.systemPrompt === 'string'
-            ? body.systemPrompt
-            : body.systemPrompt === null
-              ? null
-              : undefined,
+        projectRoot,
+        systemPrompt,
         pinned:
           typeof body.pinned === 'boolean'
             ? body.pinned
@@ -66,8 +65,8 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
               ? body.pinned === 1
               : undefined,
         role: typeof body.role === 'string' ? body.role : body.role === null ? null : undefined,
-        createdAt: toOptionalNumber(body.createdAt),
-        updatedAt: toOptionalNumber(body.updatedAt),
+        createdAt: toOptionalNumber(body.createdAt ?? body.created_at),
+        updatedAt: toOptionalNumber(body.updatedAt ?? body.updated_at),
       });
 
       return context.json({ chat }, 201);
@@ -110,32 +109,32 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
 
       const body = (await context.req.json()) as {
         projectId?: unknown;
+        project_id?: unknown;
         title?: unknown;
         model?: unknown;
         projectRoot?: unknown;
+        project_root?: unknown;
         systemPrompt?: unknown;
+        system_prompt?: unknown;
         pinned?: unknown;
         role?: unknown;
+        createdAt?: unknown;
+        created_at?: unknown;
         updatedAt?: unknown;
+        updated_at?: unknown;
       };
+
+      const projectId = typeof body.projectId === 'string' ? body.projectId : typeof body.project_id === 'string' ? body.project_id : existingChat.projectId;
+      const projectRoot = typeof body.projectRoot === 'string' ? body.projectRoot : typeof body.project_root === 'string' ? body.project_root : body.projectRoot === null || body.project_root === null ? null : existingChat.projectRoot;
+      const systemPrompt = typeof body.systemPrompt === 'string' ? body.systemPrompt : typeof body.system_prompt === 'string' ? body.system_prompt : body.systemPrompt === null || body.system_prompt === null ? null : existingChat.systemPrompt;
 
       const chat = dependencies.upsertChat({
         id,
-        projectId: typeof body.projectId === 'string' ? body.projectId : existingChat.projectId,
+        projectId,
         title: typeof body.title === 'string' ? body.title : existingChat.title,
         model: typeof body.model === 'string' ? body.model : body.model === null ? null : existingChat.model,
-        projectRoot:
-          typeof body.projectRoot === 'string'
-            ? body.projectRoot
-            : body.projectRoot === null
-              ? null
-              : existingChat.projectRoot,
-        systemPrompt:
-          typeof body.systemPrompt === 'string'
-            ? body.systemPrompt
-            : body.systemPrompt === null
-              ? null
-              : existingChat.systemPrompt,
+        projectRoot,
+        systemPrompt,
         pinned:
           typeof body.pinned === 'boolean'
             ? body.pinned
@@ -143,8 +142,8 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
               ? body.pinned === 1
               : existingChat.pinned,
         role: typeof body.role === 'string' ? body.role : body.role === null ? null : existingChat.role,
-        createdAt: existingChat.createdAt,
-        updatedAt: toOptionalNumber(body.updatedAt) ?? Date.now(),
+        createdAt: toOptionalNumber(body.createdAt ?? body.created_at) ?? existingChat.createdAt,
+        updatedAt: toOptionalNumber(body.updatedAt ?? body.updated_at) ?? Date.now(),
       });
 
       return context.json({ chat });

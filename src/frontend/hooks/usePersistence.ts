@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { Chat, ApiChat, ApiMessage, ApiProject, Message, MessageRole } from '../types/chat';
+import type { Chat, ApiChat, ApiProject, Message, MessageRole } from '../types/chat';
 import {
   apiFetchProjects,
   apiFetchChats,
@@ -9,6 +9,7 @@ import {
   apiFetchMessages,
   apiUpdateProject,
 } from '../lib/api';
+import type { ApiChatDto, ApiMessageDto, ApiProjectDto } from '../lib/api';
 
 function toMessageRole(role: string): MessageRole {
   if (role === 'user' || role === 'assistant' || role === 'system') {
@@ -40,17 +41,26 @@ export function usePersistence() {
         instructions: p.instructions ?? null,
         memory: p.memory ?? null,
         pinned: Boolean(p.pinned),
-        createdAt: p.created_at ?? Date.now(),
+        createdAt: p.createdAt ?? p.created_at ?? Date.now(),
       }));
       setProjects(mapped);
       return mapped;
     } catch {
       const response = await fetch('/api/projects');
       if (!response.ok) throw new Error(await response.text());
-      const data = await response.json() as { projects?: ApiProject[] };
+      const data = (await response.json()) as { projects?: ApiProjectDto[] };
       const loadedProjects = Array.isArray(data.projects) ? data.projects : [];
-      setProjects(loadedProjects);
-      return loadedProjects;
+      const mapped: ApiProject[] = loadedProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description ?? null,
+        instructions: p.instructions ?? null,
+        memory: p.memory ?? null,
+        pinned: Boolean(p.pinned),
+        createdAt: p.createdAt ?? p.created_at ?? Date.now(),
+      }));
+      setProjects(mapped);
+      return mapped;
     }
   };
 
@@ -59,21 +69,35 @@ export function usePersistence() {
       const loadedChats = await apiFetchChats();
       return loadedChats.map((c) => ({
         id: c.id,
-        projectId: c.project_id ?? undefined,
+        projectId: c.projectId ?? c.project_id ?? undefined,
         title: c.title,
         model: c.model ?? undefined,
-        projectRoot: c.project_root ?? undefined,
-        systemPrompt: c.system_prompt ?? undefined,
+        projectRoot: c.projectRoot ?? c.project_root ?? undefined,
+        systemPrompt: c.systemPrompt ?? c.system_prompt ?? undefined,
         pinned: Boolean(c.pinned),
         role: c.role ?? undefined,
-        createdAt: c.created_at ?? Date.now(),
-        updatedAt: c.updated_at ?? Date.now(),
+        createdAt: c.createdAt ?? c.created_at ?? Date.now(),
+        updatedAt: c.updatedAt ?? c.updated_at ?? Date.now(),
+        usage: typeof c.usage === 'number' ? c.usage : 0,
       }));
     } catch {
       const response = await fetch('/api/chats');
       if (!response.ok) throw new Error(await response.text());
-      const data = await response.json() as { chats?: ApiChat[] };
-      return Array.isArray(data.chats) ? data.chats : [];
+      const data = (await response.json()) as { chats?: ApiChatDto[] };
+      const loadedChats = Array.isArray(data.chats) ? data.chats : [];
+      return loadedChats.map((c) => ({
+        id: c.id,
+        projectId: c.projectId ?? c.project_id ?? undefined,
+        title: c.title,
+        model: c.model ?? undefined,
+        projectRoot: c.projectRoot ?? c.project_root ?? undefined,
+        systemPrompt: c.systemPrompt ?? c.system_prompt ?? undefined,
+        pinned: Boolean(c.pinned),
+        role: c.role ?? undefined,
+        createdAt: c.createdAt ?? c.created_at ?? Date.now(),
+        updatedAt: c.updatedAt ?? c.updated_at ?? Date.now(),
+        usage: typeof c.usage === 'number' ? c.usage : 0,
+      }));
     }
   };
 
@@ -82,11 +106,14 @@ export function usePersistence() {
       await apiCreateChat({
         id: chat.id,
         title: chat.title,
-        project_id: chat.projectId,
-        project_root: chat.projectRoot,
-        system_prompt: chat.systemPrompt,
+        projectId: chat.projectId,
+        projectRoot: chat.projectRoot,
+        systemPrompt: chat.systemPrompt,
         model: chat.model,
         role: chat.role,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        pinned: chat.pinned,
       });
     } catch {
       const response = await fetch('/api/chats', {
@@ -105,7 +132,7 @@ export function usePersistence() {
       body: JSON.stringify(updates),
     });
     if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { chat?: ApiChat };
+    const data = (await response.json()) as { chat?: ApiChat };
     if (!data.chat) throw new Error('Missing chat in response');
     return data.chat;
   };
@@ -121,13 +148,20 @@ export function usePersistence() {
     }
   };
 
-  const saveMessage = async (chatId: string, message: Message, options?: { promptTokens?: number; completionTokens?: number }) => {
+  const saveMessage = async (
+    chatId: string,
+    message: Message,
+    options?: { promptTokens?: number; completionTokens?: number },
+  ) => {
     try {
       await apiSaveMessage({
         id: message.id,
-        chat_id: chatId,
+        chatId,
         role: message.role,
         content: message.content,
+        promptTokens: options?.promptTokens,
+        completionTokens: options?.completionTokens,
+        createdAt: message.timestamp,
       });
     } catch {
       const response = await fetch('/api/messages', {
@@ -164,7 +198,7 @@ export function usePersistence() {
           instructions: updated.instructions ?? null,
           memory: updated.memory ?? null,
           pinned: Boolean(updated.pinned),
-          createdAt: updated.created_at ?? Date.now(),
+          createdAt: updated.createdAt ?? updated.created_at ?? Date.now(),
         };
         setProjects((prev) => prev.map((p) => (p.id === id ? mapped : p)));
         return mapped;
@@ -179,11 +213,21 @@ export function usePersistence() {
       body: JSON.stringify(updates),
     });
     if (!response.ok) throw new Error(await response.text());
-    const data = await response.json() as { project?: ApiProject };
+    const data = (await response.json()) as { project?: ApiProjectDto };
     if (!data.project) throw new Error('Missing project in response');
-    
-    setProjects((prev) => prev.map((p) => (p.id === id ? data.project! : p)));
-    return data.project;
+
+    const mapped: ApiProject = {
+      id: data.project.id,
+      name: data.project.name,
+      description: data.project.description ?? null,
+      instructions: data.project.instructions ?? null,
+      memory: data.project.memory ?? null,
+      pinned: Boolean(data.project.pinned),
+      createdAt: data.project.createdAt ?? data.project.created_at ?? Date.now(),
+    };
+
+    setProjects((prev) => prev.map((p) => (p.id === id ? mapped : p)));
+    return mapped;
   };
 
   const loadMessages = async (chatId: string): Promise<Message[]> => {
@@ -193,22 +237,22 @@ export function usePersistence() {
         id: m.id,
         role: toMessageRole(m.role),
         content: m.content,
-        promptTokens: null,
-        completionTokens: null,
-        timestamp: m.created_at ?? Date.now(),
+        promptTokens: m.promptTokens ?? m.prompt_tokens ?? null,
+        completionTokens: m.completionTokens ?? m.completion_tokens ?? null,
+        timestamp: m.createdAt ?? m.created_at ?? m.timestamp ?? Date.now(),
       }));
     } catch {
       const response = await fetch(`/api/messages?chatId=${encodeURIComponent(chatId)}`);
       if (!response.ok) throw new Error(await response.text());
-      const data = await response.json() as { messages?: ApiMessage[] };
+      const data = (await response.json()) as { messages?: ApiMessageDto[] };
       const messages = Array.isArray(data.messages) ? data.messages : [];
       return messages.map((m) => ({
         id: m.id,
         role: toMessageRole(m.role),
         content: m.content,
-        promptTokens: m.promptTokens ?? null,
-        completionTokens: m.completionTokens ?? null,
-        timestamp: m.createdAt,
+        promptTokens: m.promptTokens ?? m.prompt_tokens ?? null,
+        completionTokens: m.completionTokens ?? m.completion_tokens ?? null,
+        timestamp: m.createdAt ?? m.created_at ?? m.timestamp ?? Date.now(),
       }));
     }
   };
