@@ -413,6 +413,72 @@ export async function apiUpdateSetting(key: string, value: string): Promise<void
   });
 }
 
+
+
+
+
+
+export interface TrainingExampleDto {
+  id: string;
+  chat_id?: string;
+  chatId?: string;
+  chat_title?: string;
+  chatTitle?: string;
+  user_content?: string;
+  userContent?: string;
+  assistant_content?: string;
+  assistantContent?: string;
+  rating: number;
+  edited: boolean;
+  created_at?: number;
+  createdAt?: number;
+}
+
+export interface TrainingStatsDto {
+  pairs: number;
+  explicit: number;
+  edited: number;
+  implicit: number;
+  distillation: number;
+  topChats: number;
+  oldest: number | null;
+  newest: number | null;
+}
+
+export async function apiFetchTrainingExamples(): Promise<TrainingExampleDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<TrainingExampleDto[]>('get_training_examples');
+  }
+  const data = await requestApi<{ examples?: TrainingExampleDto[] }>('/api/training/examples');
+  return data.examples ?? [];
+}
+
+export async function apiFetchTrainingStats(): Promise<TrainingStatsDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<TrainingStatsDto>('get_training_stats');
+  }
+  return await requestApi<TrainingStatsDto>('/api/training/stats');
+}
+
+export async function apiExportTrainingData(request: {
+  format: 'sharegpt' | 'alpaca';
+  selectedIds: string[];
+}): Promise<{ path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke('export_training_data', {
+      request: { format: request.format, selected_ids: request.selectedIds },
+    });
+  }
+  return await requestApi('/api/training/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ format: request.format, selectedIds: request.selectedIds }),
+  });
+}
+
 // ── Streaming Chat Completions ────────────────────────────────────────
 
 export async function streamChatCompletion(

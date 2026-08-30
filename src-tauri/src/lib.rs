@@ -87,6 +87,8 @@ pub fn run() {
             commands::settings::update_setting,
             commands::data::export_data,
             commands::data::import_data,
+            commands::data::get_training_examples,
+            commands::data::get_training_stats,
             commands::git::get_git_status,
             commands::git::get_git_diff,
             commands::skills::get_skills,

@@ -1,4 +1,4 @@
-use crate::db::models::{ChatRecord, MessageRecord, ProjectRecord};
+use crate::db::models::{ChatRecord, MessageRecord, ProjectRecord, TrainingExample};
 use crate::error::AppResult;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,33 @@ pub struct ImportResult {
     pub imported_chats: usize,
     pub skipped_chats: usize,
     pub imported_messages: usize,
+}
+
+#[derive(Serialize)]
+pub struct TrainingStats {
+    pub pairs: usize,
+    pub explicit: usize,
+    pub edited: usize,
+    pub implicit: usize,
+    pub distillation: usize,
+    pub top_chats: usize,
+    pub oldest: Option<i64>,
+    pub newest: Option<i64>,
+}
+
+#[derive(Deserialize)]
+pub struct TrainingExportRequest {
+    pub format: Option<String>,
+    pub selected_ids: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct TrainingExportResult {
+    pub path: String,
+    pub pairs: usize,
+    pub explicit: usize,
+    pub distilled: usize,
+    pub format: String,
 }
 
 #[tauri::command]
@@ -122,5 +149,27 @@ pub async fn import_data(
         imported_chats,
         skipped_chats,
         imported_messages,
+    })
+}
+
+#[tauri::command]
+pub async fn get_training_examples(state: State<'_, AppState>) -> AppResult<Vec<TrainingExample>> {
+    let db = state.db.lock();
+    db.list_training_examples()
+}
+
+#[tauri::command]
+pub async fn get_training_stats(state: State<'_, AppState>) -> AppResult<TrainingStats> {
+    let db = state.db.lock();
+    let examples = db.list_training_examples()?;
+    Ok(TrainingStats {
+        pairs: examples.len(),
+        explicit: examples.iter().filter(|e| !e.edited).count(),
+        edited: examples.iter().filter(|e| e.edited).count(),
+        implicit: 0,
+        distillation: 0,
+        top_chats: 0,
+        oldest: examples.first().map(|e| e.created_at),
+        newest: examples.last().map(|e| e.created_at),
     })
 }

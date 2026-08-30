@@ -403,6 +403,42 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn list_training_examples(&self) -> AppResult<Vec<TrainingExample>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT f.message_id, m.chat_id, c.title, previous.content,
+                    COALESCE(f.edited_content, m.content), f.rating,
+                    f.edited_content IS NOT NULL, f.created_at
+             FROM message_feedback f
+             JOIN messages m ON m.id = f.message_id
+             JOIN chats c ON c.id = m.chat_id
+             JOIN messages previous ON previous.chat_id = m.chat_id
+               AND previous.role = 'user'
+               AND previous.created_at < m.created_at
+             WHERE f.rating > 0
+               AND previous.created_at = (
+                 SELECT MAX(candidate.created_at) FROM messages candidate
+                 WHERE candidate.chat_id = m.chat_id
+                   AND candidate.role = 'user'
+                   AND candidate.created_at < m.created_at
+               )
+             ORDER BY f.created_at ASC"
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TrainingExample {
+                id: row.get(0)?,
+                chat_id: row.get(1)?,
+                chat_title: row.get(2)?,
+                user_content: row.get(3)?,
+                assistant_content: row.get(4)?,
+                rating: row.get(5)?,
+                edited: row.get::<_, i32>(6)? != 0,
+                created_at: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
 }
 
 #[cfg(test)]
@@ -444,4 +480,3 @@ mod tests {
         assert_eq!(theme.as_deref(), Some("dark"));
     }
 }
-

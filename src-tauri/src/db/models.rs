@@ -72,3 +72,16 @@ pub struct FeedbackRecord {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingExample {
+    pub id: String,
+    pub chat_id: String,
+    pub chat_title: String,
+    pub user_content: String,
+    pub assistant_content: String,
+    pub rating: i32,
+    pub edited: bool,
+    pub created_at: i64,
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { COLOR_SCHEME_STORAGE_KEY } from '../config/constants';
 import type { ColorScheme } from '../config/constants';
+import { apiExportTrainingData, apiFetchSettings, apiFetchTrainingExamples, apiFetchTrainingStats, apiUpdateSetting, isTauri } from '../lib/api';
 import './SettingsModal.css';
 
 interface CustomProviderConfig {
@@ -93,6 +94,10 @@ const COLOR_SCHEMES: { id: ColorScheme; label: string; swatches: string[] }[] = 
 ];
 
 async function saveSetting(key: string, value: string) {
+  if (isTauri) {
+    await apiUpdateSetting(key, value);
+    return;
+  }
   const response = await fetch(`/api/settings/${key}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -225,10 +230,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
   // Load all settings at once on open
   useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((data: { settings?: AllSettings }) => {
-        const s = data.settings ?? {};
+    apiFetchSettings()
+      .then((s: AllSettings) => {
         if (s.ollama_host) setOllamaHost(s.ollama_host);
 
         // Load custom providers
@@ -326,12 +329,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (activeTab !== 'training' || trainingFetched.current) return;
     setTrainingLoading(true);
-    Promise.all([fetch('/api/training/stats'), fetch('/api/training/examples')])
-      .then(async ([statsResponse, examplesResponse]) => {
-        const data = await statsResponse.json() as TrainingStats;
-        const examples = await examplesResponse.json() as { examples?: TrainingExample[] };
+    Promise.all([apiFetchTrainingStats(), apiFetchTrainingExamples()])
+      .then(([data, examples]) => {
         setTrainingStats(data);
-        const nextExamples = examples.examples ?? [];
+        const nextExamples = examples.map((example) => ({
+          id: example.id,
+          chatId: example.chatId ?? example.chat_id ?? '',
+          chatTitle: example.chatTitle ?? example.chat_title ?? '',
+          userContent: example.userContent ?? example.user_content ?? '',
+          assistantContent: example.assistantContent ?? example.assistant_content ?? '',
+          rating: example.rating,
+          edited: example.edited,
+          createdAt: example.createdAt ?? example.created_at ?? 0,
+        }));
         setTrainingExamples(nextExamples);
         setSelectedTrainingIds(new Set(nextExamples.map((example) => example.id)));
       })
@@ -346,11 +356,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setTrainingLoading(true);
     setTrainingError(null);
     try {
-      const [statsResponse, examplesResponse] = await Promise.all([fetch('/api/training/stats'), fetch('/api/training/examples')]);
-      const data = (await statsResponse.json()) as TrainingStats;
-      const examples = (await examplesResponse.json()) as { examples?: TrainingExample[] };
+      const [data, examples] = await Promise.all([apiFetchTrainingStats(), apiFetchTrainingExamples()]);
       setTrainingStats(data);
-      const nextExamples = examples.examples ?? [];
+      const nextExamples = examples.map((example) => ({
+        id: example.id,
+        chatId: example.chatId ?? example.chat_id ?? '',
+        chatTitle: example.chatTitle ?? example.chat_title ?? '',
+        userContent: example.userContent ?? example.user_content ?? '',
+        assistantContent: example.assistantContent ?? example.assistant_content ?? '',
+        rating: example.rating,
+        edited: example.edited,
+        createdAt: example.createdAt ?? example.created_at ?? 0,
+      }));
       setTrainingExamples(nextExamples);
       setSelectedTrainingIds(new Set(nextExamples.map((example) => example.id)));
     } catch {
@@ -365,14 +382,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setTrainingError(null);
     setTrainingResult(null);
     try {
-      const response = await fetch('/api/training/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: exportFormat, includeDistillation, selectedIds: [...selectedTrainingIds] }),
-      });
-      const data = (await response.json()) as { path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string };
-      if (!response.ok || data.error) {
-        setTrainingError(data.error ?? `Export failed (HTTP ${response.status})`);
+      const data = await apiExportTrainingData({ format: exportFormat, selectedIds: [...selectedTrainingIds] }) as { path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string };
+      if (data.error) {
+        setTrainingError(data.error);
         return;
       }
       if (data.path && typeof data.pairs === 'number' && data.format) {
