@@ -97,6 +97,9 @@ pub fn run() {
             commands::chat::start_chat,
             commands::chat::cancel_chat,
             commands::chat::approve_tool,
+            commands::coding::get_coding_session,
+            commands::coding::create_coding_session,
+            commands::coding::update_coding_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vanaila chat tauri application");

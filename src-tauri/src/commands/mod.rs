@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod coding;
 pub mod chats;
 pub mod data;
 pub mod git;

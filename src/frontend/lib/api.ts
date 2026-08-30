@@ -479,6 +479,38 @@ export async function apiExportTrainingData(request: {
   });
 }
 
+export interface CodingSessionDto {
+  chat_id: string;
+  harness: string;
+  harness_session_id?: string | null;
+  workspace_path: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export async function apiGetCodingSession(chatId: string): Promise<CodingSessionDto | null> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<CodingSessionDto | null>('get_coding_session', { chatId });
+  }
+  const data = await requestApi<{ session?: CodingSessionDto }>(`/api/coding/sessions/${encodeURIComponent(chatId)}`);
+  return data.session ?? null;
+}
+
+export async function apiCreateCodingSession(request: { chatId: string; harness: string; workspacePath: string }): Promise<CodingSessionDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<CodingSessionDto>('create_coding_session', {
+      request: { chat_id: request.chatId, harness: request.harness, workspace_path: request.workspacePath },
+    });
+  }
+  const data = await requestApi<{ session: CodingSessionDto }>('/api/coding/sessions', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+  return data.session;
+}
+
 // ── Streaming Chat Completions ────────────────────────────────────────
 
 export async function streamChatCompletion(

@@ -4,6 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
+import { apiCreateCodingSession, apiFetchSettings, isTauri } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -271,25 +272,27 @@ export function useSendMessage(deps: SendMessageDeps) {
         } as Parameters<typeof upsertChat>[0]);
 
         try {
-          const harnessRes = await fetch('/api/settings/coding_harness');
-          if (harnessRes.ok) {
-            const hData = (await harnessRes.json()) as { value?: string };
-            if (hData.value && (hData.value === 'deepseek-harness' || hData.value === 'pi-harness')) {
-              chosenHarness = hData.value;
-            }
+          const settings = isTauri ? await apiFetchSettings() : null;
+          const configuredHarness = settings?.coding_harness;
+          if (configuredHarness === 'deepseek-harness' || configuredHarness === 'pi-harness') chosenHarness = configuredHarness;
+          else if (!isTauri) {
+            const harnessRes = await fetch('/api/settings/coding_harness');
+            const hData = harnessRes.ok ? await harnessRes.json() as { value?: string } : {};
+            if (hData.value === 'deepseek-harness' || hData.value === 'pi-harness') chosenHarness = hData.value;
           }
-        } catch {
-          // fallback to default 'pi-harness'
-        }
+        } catch { /* default to Pi Harness */ }
 
-        const sessionResponse = await fetch('/api/coding/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId, harness: chosenHarness, workspacePath }),
-        });
-        if (!sessionResponse.ok) {
-          const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
-          throw new Error(detail?.error ?? 'Could not open the coding workspace');
+        if (isTauri) {
+          await apiCreateCodingSession({ chatId, harness: chosenHarness, workspacePath });
+        } else {
+          const sessionResponse = await fetch('/api/coding/sessions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId, harness: chosenHarness, workspacePath }),
+          });
+          if (!sessionResponse.ok) {
+            const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
+            throw new Error(detail?.error ?? 'Could not open the coding workspace');
+          }
         }
       }
 

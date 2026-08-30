@@ -85,3 +85,14 @@ pub struct TrainingExample {
     pub edited: bool,
     pub created_at: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodingSessionRecord {
+    pub chat_id: String,
+    pub harness: String,
+    pub harness_session_id: Option<String>,
+    pub workspace_path: String,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}

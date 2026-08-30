@@ -439,6 +439,31 @@ impl Database {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    pub fn get_coding_session(&self, chat_id: &str) -> AppResult<Option<CodingSessionRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT chat_id, harness, harness_session_id, workspace_path, status, created_at, updated_at
+             FROM coding_sessions WHERE chat_id = ?1"
+        )?;
+        let mut rows = stmt.query_map(params![chat_id], |row| Ok(CodingSessionRecord {
+            chat_id: row.get(0)?, harness: row.get(1)?, harness_session_id: row.get(2)?,
+            workspace_path: row.get(3)?, status: row.get(4)?, created_at: row.get(5)?, updated_at: row.get(6)?,
+        }))?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    pub fn upsert_coding_session(&self, session: &CodingSessionRecord) -> AppResult<CodingSessionRecord> {
+        let now = chrono::Utc::now().timestamp_millis();
+        self.conn.execute(
+            "INSERT INTO coding_sessions (chat_id, harness, harness_session_id, workspace_path, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+             ON CONFLICT(chat_id) DO UPDATE SET harness = excluded.harness,
+               harness_session_id = COALESCE(excluded.harness_session_id, coding_sessions.harness_session_id),
+               workspace_path = excluded.workspace_path, status = excluded.status, updated_at = excluded.updated_at",
+            params![session.chat_id, session.harness, session.harness_session_id, session.workspace_path, session.status, now],
+        )?;
+        self.get_coding_session(&session.chat_id)?.ok_or_else(|| crate::error::AppError::NotFound("Coding session was not saved".into()))
+    }
+
 }
 
 #[cfg(test)]
