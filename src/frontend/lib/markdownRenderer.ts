@@ -45,9 +45,9 @@ function preprocessMessageContent(content: string): string {
   // Separate glued step transitions (e.g. "Laravel:Jelas", "`backend/`:Terungkap")
   result = result.replace(/([:—])([A-ZÀ-ÖØ-öø-ÿ])/g, '$1\n\n$2');
 
-  // Convert raw Claude Code error lines into structured Alert callouts
+  // Convert raw harness error lines into structured Alert callouts
   result = result.replace(
-    /(?:^\s*|\n\s*)(?:\*{0,2}(?:Claude Code|Pi Harness) error:\*{0,2}|(?:Claude Code|Pi Harness) error:)\s*(.*)/gi,
+    /(?:^\s*|\n\s*)(?:\*{0,2}Pi Harness error:\*{0,2}|Pi Harness error:)\s*(.*)/gi,
     '\n\n> [!WARNING]\n> **Pi Harness Notice**\n> $1\n\n'
   );
 

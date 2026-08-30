@@ -112,7 +112,7 @@ describe('load_skill availability', () => {
 
   it('survives a persona tool allowlist that omits it', () => {
     // read_url stands in for "a tool the persona does allow". The filesystem
-    // and command tools are no longer offered here at all — Claude Code owns
+    // and command tools are no longer offered here at all — coding harnesses own
     // that surface now — so they cannot be used to make this assertion.
     const tools = resolveTools(allTools(), true, ['read_url'], false, true);
     expect(names(tools)).toContain('load_skill');

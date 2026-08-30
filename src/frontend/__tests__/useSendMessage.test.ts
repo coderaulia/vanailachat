@@ -150,4 +150,13 @@ describe('handleEditAndResend', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('resends unchanged text after an interrupted response', async () => {
+    const fetchMock = stubChatFetch();
+    const { result } = renderHook(() => useSendMessage(makeDeps()));
+
+    await result.current.handleEditAndResend('u2', 'and for secondary caregivers?');
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
 });

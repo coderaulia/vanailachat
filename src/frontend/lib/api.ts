@@ -511,6 +511,27 @@ export async function apiCreateCodingSession(request: { chatId: string; harness:
   return data.session;
 }
 
+export async function runNativeCoding(
+  request: { chatId: string; prompt: string; model: string; systemPrompt?: string },
+  onChunk: (chunk: StreamChunk) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!isTauri) throw new Error('Native coding is only available in Tauri');
+  const { invoke } = await getTauriCore();
+  const { listen } = await getTauriEvent();
+  let unlisten: (() => void) | null = await listen<StreamChunk>('chat-stream', (event) => onChunk(event.payload));
+  const abortHandler = () => { void invoke('cancel_chat'); };
+  signal?.addEventListener('abort', abortHandler, { once: true });
+  try {
+    await invoke('run_coding', { request: {
+      chat_id: request.chatId, prompt: request.prompt, model: request.model, system_prompt: request.systemPrompt ?? null,
+    } });
+  } finally {
+    unlisten?.(); unlisten = null;
+    signal?.removeEventListener('abort', abortHandler);
+  }
+}
+
 // ── Streaming Chat Completions ────────────────────────────────────────
 
 export async function streamChatCompletion(

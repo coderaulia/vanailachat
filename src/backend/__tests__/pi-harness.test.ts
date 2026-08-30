@@ -83,9 +83,9 @@ describe('Pi Harness', () => {
     expect(configured).toMatchObject({ available: true, id: 'pi-harness' });
   });
 
-  it('maps legacy Claude Code sessions to Pi', () => {
+  it('returns the configured Pi harness', () => {
     const registry = new CodingHarnessRegistry([new PiHarness()]);
-    expect(registry.get('claude-code')?.id).toBe('pi-harness');
+    expect(registry.get('pi-harness')?.id).toBe('pi-harness');
   });
 
   it('creates an approved mutating Pi tool and streams its completion', async () => {

@@ -89,7 +89,7 @@ describe('approval helpers', () => {
     expect(describeToolCall('run_command', { command: 'git', args: ['diff'] })).toBe('Run git diff');
   });
 
-  it('normalizes approval details for Claude Code and Agent tools', () => {
+  it('normalizes approval details for coding-agent tools', () => {
     const bashNorm = normalizeApprovalDetails('Bash', { command: 'npm test' });
     expect(bashNorm.category).toBe('command');
     expect(bashNorm.command).toBe('npm test');

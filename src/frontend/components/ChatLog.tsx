@@ -116,7 +116,7 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
 
   const submitEdit = () => {
     setIsEditing(false);
-    if (draft.trim() && draft !== message.content) onEdit(message.id, draft);
+    if (draft.trim()) onEdit(message.id, draft);
   };
 
   // null for local models and for any id without a known rate — better to show

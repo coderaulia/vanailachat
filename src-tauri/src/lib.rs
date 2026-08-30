@@ -100,6 +100,7 @@ pub fn run() {
             commands::coding::get_coding_session,
             commands::coding::create_coding_session,
             commands::coding::update_coding_session,
+            commands::coding::run_coding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vanaila chat tauri application");

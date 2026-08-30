@@ -5,6 +5,7 @@ import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
 import { apiCreateCodingSession, apiFetchSettings, isTauri } from '../lib/api';
+import { runNativeCoding } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -297,7 +298,7 @@ export function useSendMessage(deps: SendMessageDeps) {
       }
 
       const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
-      const response = useCodingHarness
+      const response = useCodingHarness && isTauri ? null : useCodingHarness
         ? await fetch('/api/coding/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -328,7 +329,8 @@ export function useSendMessage(deps: SendMessageDeps) {
         }),
       });
 
-      if (!response.ok) throw new Error(await response.text());
+      if (response && !response.ok) throw new Error(await response.text());
+      if (response) {
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader');
 
@@ -546,7 +548,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         }
 
         if (!contentChunk && !data.done && !generatedFileAdded) return;
-        syncUIAndHistory();
+        setContextWindow(prev => ({ ...prev, current: finalUsage }));
       };
 
       while (true) {
@@ -560,6 +562,21 @@ export function useSendMessage(deps: SendMessageDeps) {
       streamBuffer += decoder.decode();
       if (streamBuffer.trim()) applyEvent(parseStreamLine(streamBuffer));
       assistantContentForSave = fullContent;
+      }
+
+      if (useCodingHarness && isTauri) {
+        await runNativeCoding({ chatId, prompt: finalPrompt, model: resolvedModel, systemPrompt }, (chunk) => {
+          const native = chunk as ReturnType<typeof parseStreamLine>;
+          const coding = (native as unknown as { coding_event?: { type?: string; text?: string } }).coding_event;
+          if (coding?.type === 'text' && coding.text) {
+            fullContent += coding.text;
+            assistantContentForSave = fullContent;
+          }
+        }, abortController.signal);
+        assistantContentForSave = fullContent;
+        setContextWindow(prev => ({ ...prev, current: finalUsage }));
+        finalUsage = finalUsage || Math.max(1, Math.ceil((finalPrompt.length + fullContent.length) / 4));
+      }
 
       if (finalUsage === 0) {
         const est = Math.max(1, Math.ceil(((messageContent?.length ?? 0) + fullContent.length) / 4));

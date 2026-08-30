@@ -64,7 +64,6 @@ export class CodingHarnessRegistry {
   }
 
   get(id: string): CodingHarness | null {
-    const normalizedId = id === 'claude-code' ? 'pi-harness' : id;
-    return this.harnesses.find((harness) => harness.id === normalizedId) ?? null;
+    return this.harnesses.find((harness) => harness.id === id) ?? null;
   }
 }

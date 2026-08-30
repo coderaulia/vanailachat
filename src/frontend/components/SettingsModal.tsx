@@ -282,8 +282,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         if (s.nine_router_api_key) setNineRouterKey(s.nine_router_api_key);
         if (s.coding_harness === 'deepseek-harness' || s.coding_harness === 'pi-harness') {
           setCodingHarness(s.coding_harness);
-        } else if (s.coding_harness === 'claude-code') {
-          setCodingHarness('pi-harness');
         }
         if (s.pi_agent_dir) setPiAgentDir(s.pi_agent_dir);
         if (s.pi_api_key) setPiApiKey(s.pi_api_key);
@@ -1073,15 +1071,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   )}
 
                   {/* Coding Workspace Engine Selection */}
-                  <div className="settings-field settings-field--fcc">
-                    <div className="settings-fcc-badge-row">
+                  <div className="settings-field settings-field--harness">
+                    <div className="settings-harness-badge-row">
                       <label className="settings-label">Coding Workspace Engine</label>
                       {codingHarness === 'pi-harness' ? (
-                        <span className="settings-fcc-badge">
+                        <span className="settings-harness-badge">
                           🧭 Powered by <a href="https://github.com/earendil-works/pi" target="_blank" rel="noreferrer">Pi</a>
                         </span>
                       ) : (
-                        <span className="settings-fcc-badge settings-dsh-badge">
+                        <span className="settings-harness-badge settings-dsh-badge">
                           🐋 Powered by <a href="https://github.com/deepseek-ai/deepseek-harness.git" target="_blank" rel="noreferrer">DeepSeek Harness</a>
                         </span>
                       )}
