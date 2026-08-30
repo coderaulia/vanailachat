@@ -768,6 +768,34 @@ export class DatabaseService {
       }));
   }
 
+  /** Return positive examples with stable message ids and chat context for review/export selection. */
+  static listTrainingExamples(): Array<{
+    id: string; chatId: string; chatTitle: string; userContent: string; assistantContent: string;
+    rating: number; edited: boolean; createdAt: number;
+  }> {
+    const db = this.getDb();
+    const rows = db.prepare(
+      `SELECT m.id AS assistant_id, m.chat_id, COALESCE(c.title, 'Untitled chat') AS chat_title,
+              m.content AS assistant_content, m.created_at, f.rating, f.edited_content,
+              (SELECT u.content FROM messages u WHERE u.chat_id = m.chat_id AND u.role = 'user'
+               AND u.created_at < m.created_at ORDER BY u.created_at DESC LIMIT 1) AS user_content
+       FROM messages m
+       JOIN message_feedback f ON f.message_id = m.id
+       LEFT JOIN chats c ON c.id = m.chat_id
+       WHERE m.role = 'assistant' AND f.rating = 1
+       ORDER BY m.created_at ASC`,
+    ).all() as Array<{
+      assistant_id: string; chat_id: string; chat_title: string; assistant_content: string;
+      created_at: number; rating: number; edited_content: string | null; user_content: string | null;
+    }>;
+    return rows.filter((row) => row.user_content?.trim()).map((row) => ({
+      id: row.assistant_id, chatId: row.chat_id, chatTitle: row.chat_title,
+      userContent: row.user_content as string,
+      assistantContent: row.edited_content?.trim() ? row.edited_content : row.assistant_content,
+      rating: row.rating, edited: Boolean(row.edited_content?.trim()), createdAt: row.created_at,
+    }));
+  }
+
   static getMessage(id: string): MessageRecord | null {
     const db = this.getDb();
     const row = db.prepare(

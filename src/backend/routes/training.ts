@@ -56,28 +56,44 @@ export function trainingRouter(dependencies: AppDependencies): Hono {
     }
   });
 
+  app.get('/examples', (context) => {
+    try {
+      return context.json({ examples: dependencies.listTrainingExamples() });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'examples failed') }, 500);
+    }
+  });
+
   app.post('/export', async (context) => {
     let format: 'sharegpt' | 'alpaca' = 'sharegpt';
     let includeDistillation = false;
     let distillationRatio = 0.3;
+    let selectedIds: string[] | undefined;
 
     try {
       const body = (await context.req.json().catch(() => ({}))) as {
         format?: 'sharegpt' | 'alpaca';
         includeDistillation?: boolean;
         distillationRatio?: number;
+        selectedIds?: string[];
       };
       if (body.format === 'alpaca' || body.format === 'sharegpt') format = body.format;
       if (typeof body.includeDistillation === 'boolean') includeDistillation = body.includeDistillation;
       if (typeof body.distillationRatio === 'number' && body.distillationRatio > 0 && body.distillationRatio < 1) {
         distillationRatio = body.distillationRatio;
       }
+      if (Array.isArray(body.selectedIds)) selectedIds = body.selectedIds.filter((id): id is string => typeof id === 'string');
     } catch {
       // empty body is fine
     }
 
     try {
-      const explicitPairs = dependencies.listTrainingPairs();
+      const allExplicitPairs = dependencies.listTrainingPairs();
+      const explicitPairs = selectedIds
+        ? dependencies.listTrainingExamples()
+            .filter((example) => selectedIds?.includes(example.id))
+            .map(({ id: _id, chatTitle: _title, ...pair }) => pair)
+        : allExplicitPairs;
       if (explicitPairs.length === 0) {
         return context.json(
           { error: 'No positive-rated training pairs found. Rate some assistant messages with thumbs-up first.' },

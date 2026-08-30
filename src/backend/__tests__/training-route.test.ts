@@ -11,6 +11,11 @@ const pair = {
   edited: false,
   createdAt: 1_700_000_000_000,
 };
+const example = {
+  id: 'msg_1',
+  ...pair,
+  chatTitle: 'Science chat',
+};
 
 const exportRoot = path.resolve(process.cwd(), 'data', 'training');
 const stamps: string[] = [];
@@ -24,6 +29,14 @@ afterEach(async () => {
 });
 
 describe('training route', () => {
+  it('GET /api/training/examples returns review metadata', async () => {
+    const app = createApp({ listTrainingExamples: vi.fn().mockReturnValue([example]) });
+
+    const response = await app.request('/api/training/examples');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ examples: [example] });
+  });
+
   it('GET /api/training/stats returns counts', async () => {
     const listTrainingPairs = vi.fn().mockReturnValue([pair, { ...pair, edited: true, createdAt: pair.createdAt + 1000 }]);
     const app = createApp({ listTrainingPairs });
@@ -95,6 +108,21 @@ describe('training route', () => {
       input: '',
       output: pair.assistantContent,
     });
+  });
+
+  it('POST /api/training/export honors selected example ids', async () => {
+    const listTrainingPairs = vi.fn().mockReturnValue([pair]);
+    const listTrainingExamples = vi.fn().mockReturnValue([example]);
+    const app = createApp({ listTrainingPairs, listTrainingExamples });
+
+    const response = await app.request('/api/training/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedIds: [] }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(listTrainingExamples).toHaveBeenCalled();
   });
 
   it('POST /api/training/export 400 when no pairs available', async () => {

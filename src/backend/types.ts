@@ -80,6 +80,16 @@ export interface AppDependencies {
     edited: boolean;
     createdAt: number;
   }>;
+  listTrainingExamples: () => Array<{
+    id: string;
+    chatId: string;
+    chatTitle: string;
+    userContent: string;
+    assistantContent: string;
+    rating: number;
+    edited: boolean;
+    createdAt: number;
+  }>;
   autoPositiveForChat: (chatId: string, minTokens?: number) => { messageId: string; content: string; chatId: string } | null;
   listHighScoringChats: (limit?: number, minRate?: number, minRated?: number) => string[];
   listDistillationPairs: (chatIds: string[]) => Array<{
