@@ -42,7 +42,12 @@ export interface StreamChunk {
 }
 
 export interface ChatStreamRequest {
-  messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }>;
+  messages: Array<{
+    role: string;
+    content: string | Array<string | { text?: string }>;
+    tool_calls?: unknown[];
+    tool_call_id?: string;
+  }>;
   model?: string;
   provider?: string;
   persona?: string;
@@ -543,6 +548,18 @@ export async function streamChatCompletion(
     try {
       const { invoke } = await getTauriCore();
       const { listen } = await getTauriEvent();
+      const { systemPrompt, maxTokens, ...nativeRequest } = body;
+      const nativeBody = {
+        ...nativeRequest,
+        messages: body.messages.map((message) => ({
+          ...message,
+          content: typeof message.content === 'string' ? message.content : Array.isArray(message.content)
+            ? message.content.map((part: unknown) => typeof part === 'string' ? part : (part as { text?: string }).text ?? '').join('')
+            : String(message.content),
+        })),
+        system_prompt: systemPrompt,
+        max_tokens: maxTokens,
+      };
 
       let unlisten: (() => void) | null = null;
       unlisten = await listen<StreamChunk>('chat-stream', (event) => {
@@ -560,7 +577,7 @@ export async function streamChatCompletion(
       signal?.addEventListener('abort', abortHandler, { once: true });
 
       try {
-        await invoke('start_chat', { request: body });
+        await invoke('start_chat', { request: nativeBody });
       } finally {
         if (unlisten) {
           unlisten();
@@ -569,7 +586,8 @@ export async function streamChatCompletion(
       }
       return;
     } catch (err) {
-      console.warn('[api] Tauri IPC chat stream failed or command not ready, falling back to HTTP:', err);
+      console.error('[api] Tauri IPC chat stream failed:', err);
+      throw err;
     }
   }
 

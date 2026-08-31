@@ -16,6 +16,36 @@
   --color-info: #3874cb;
   --color-purple: #8b5cf6;
   --accent-rgb: 36, 78, 120;
+
+  /* Vanaila Origin light palette. Keep these defaults on :root because the
+     origin scheme deliberately removes data-color-scheme. */
+  --bg-app: #f7faff;
+  --bg-surface: #ffffff;
+  --bg-surface-strong: #f0f4f8;
+  --bg-surface-hover: #e9eff5;
+  --bg-surface-subtle: #f6f9fc;
+  --bg-sidebar: #172333;
+  --bg-sidebar-soft: #203249;
+  --bg-accent: #244e78;
+  --bg-accent-strong: #1b3d60;
+  --bg-accent-soft: #e6eff8;
+  --bg-muted: #edf3f9;
+  --bg-glass: rgba(255, 255, 255, 0.92);
+  --bg-elevated: #ffffff;
+  --text-main: #172333;
+  --text-primary: #172333;
+  --text-secondary: #52677d;
+  --text-tertiary: #6f8193;
+  --text-muted: #8798a8;
+  --text-inverse: #ffffff;
+  --text-muted-inverse: rgba(255, 255, 255, 0.72);
+  --text-on-accent: #ffffff;
+  --border-soft: rgba(36, 78, 120, 0.12);
+  --border-medium: rgba(36, 78, 120, 0.2);
+  --border-strong: rgba(36, 78, 120, 0.3);
+  --border-inverse: rgba(255, 255, 255, 0.12);
+  --shadow-soft: 0 16px 48px rgba(23, 35, 51, 0.12);
+  --shadow-strong: 0 20px 50px rgba(23, 35, 51, 0.2);
 }
 
 [data-theme="dark"] {
