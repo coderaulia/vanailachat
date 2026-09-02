@@ -113,11 +113,11 @@ export function ProjectDetail() {
       {/* Header */}
       <header className="project-detail__header">
         <div className="project-detail__breadcrumb">
-          <button className="btn-back" type="button" onClick={onBack} title="Back to Workspaces Overview">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <button className="btn btn-secondary btn-sm btn-back" type="button" onClick={onBack} title="Back to Workspaces Overview">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            Workspaces
+            <span>Workspaces</span>
           </button>
           <span className="project-detail__breadcrumb-sep">/</span>
           {isEditingName ? (
@@ -148,7 +148,7 @@ export function ProjectDetail() {
             </span>
           )}
           <button
-            className="btn-back-chat"
+            className="btn btn-secondary btn-sm btn-back-chat"
             type="button"
             onClick={onGoToChat}
             title="Return to Chat"

@@ -4,8 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiCreateCodingSession, apiFetchSettings, isTauri } from '../lib/api';
-import { runNativeCoding } from '../lib/api';
+import { apiCreateCodingSession, apiFetchSettings, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -297,46 +296,6 @@ export function useSendMessage(deps: SendMessageDeps) {
         }
       }
 
-      const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
-      const response = useCodingHarness && isTauri ? null : useCodingHarness
-        ? await fetch('/api/coding/run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: abortController.signal,
-            body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement', model: resolvedModel }),
-          })
-        : await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          model: resolvedModel,
-          chatId,
-          // Lets the server persist the reply itself if this tab dies mid-stream.
-          // Same id as the client's own save, which upserts onto the same row.
-          assistantMessageId: assistantMessage.id,
-          projectId: activeProjectId,
-          // A new chat is persisted only after the stream finishes. Send the
-          // selected root now so coding tools use it on the very first turn.
-          projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
-          messages: [
-            ...recentConversation.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: messageContent },
-          ],
-          stream: true,
-          search: isSearchEnabled,
-          persona: personaId || 'general',
-        }),
-      });
-
-      if (response && !response.ok) throw new Error(await response.text());
-      if (response) {
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No reader');
-
-      const decoder = new TextDecoder();
-      let streamBuffer = '';
-
       const syncUIAndHistory = () => {
         if (rafId !== null) return;
         rafId = requestAnimationFrame(() => {
@@ -403,9 +362,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           return;
         }
 
-        // Coding harnesses speak their own envelope: prose arrives as text events and
-        // each tool use is announced separately, so the transcript shows what
-        // it did rather than going silent between edits.
+        // Coding harnesses speak their own envelope
         const coding = (data as unknown as {
           coding_event?: {
             type?: string;
@@ -443,7 +400,6 @@ export function useSendMessage(deps: SendMessageDeps) {
             } else {
               currentToolActivities.push(activity);
             }
-
           } else if (coding.type === 'usage' && (coding as unknown as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage) {
             const u = (coding as unknown as { usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage;
             if (typeof u.prompt_tokens === 'number') promptTokens = u.prompt_tokens;
@@ -458,8 +414,7 @@ export function useSendMessage(deps: SendMessageDeps) {
           return;
         }
 
-        // The harness reports failures inline rather than as an HTTP status,
-        // because the stream has already started by then.
+        // The harness reports failures inline
         const codingError = (data as unknown as { error?: string }).error;
         if (codingError) {
           const harnessLabel = chosenHarness === 'deepseek-harness' ? 'DeepSeek Harness' : 'Pi Harness';
@@ -551,20 +506,32 @@ export function useSendMessage(deps: SendMessageDeps) {
         setContextWindow(prev => ({ ...prev, current: finalUsage }));
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        streamBuffer += decoder.decode(value, { stream: true });
-        const lines = streamBuffer.split('\n');
-        streamBuffer = lines.pop() ?? '';
-        for (const line of lines) applyEvent(parseStreamLine(line));
-      }
-      streamBuffer += decoder.decode();
-      if (streamBuffer.trim()) applyEvent(parseStreamLine(streamBuffer));
-      assistantContentForSave = fullContent;
-      }
+      const recentConversation = conversation.slice(-MAX_CONVERSATION_HISTORY);
 
-      if (useCodingHarness && isTauri) {
+      if (isTauri && !useCodingHarness) {
+        await streamChatCompletion(
+          {
+            model: resolvedModel,
+            chatId,
+            assistantMessageId: assistantMessage.id,
+            projectId: activeProjectId,
+            projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
+            messages: [
+              ...recentConversation.map(m => ({ role: m.role, content: m.content })),
+              { role: 'user', content: messageContent },
+            ],
+            stream: true,
+            search: isSearchEnabled,
+            persona: personaId || 'general',
+            systemPrompt: systemPrompt || undefined,
+          },
+          (chunk) => {
+            applyEvent(chunk as unknown as ReturnType<typeof parseStreamLine>);
+          },
+          abortController.signal
+        );
+        assistantContentForSave = fullContent;
+      } else if (useCodingHarness && isTauri) {
         await runNativeCoding({ chatId, prompt: finalPrompt, model: resolvedModel, systemPrompt }, (chunk) => {
           const native = chunk as ReturnType<typeof parseStreamLine>;
           const coding = (native as unknown as { coding_event?: { type?: string; text?: string } }).coding_event;
@@ -576,6 +543,52 @@ export function useSendMessage(deps: SendMessageDeps) {
         assistantContentForSave = fullContent;
         setContextWindow(prev => ({ ...prev, current: finalUsage }));
         finalUsage = finalUsage || Math.max(1, Math.ceil((finalPrompt.length + fullContent.length) / 4));
+      } else {
+        const response = useCodingHarness
+          ? await fetch('/api/coding/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortController.signal,
+              body: JSON.stringify({ chatId, prompt: finalPrompt, mode: 'implement', model: resolvedModel }),
+            })
+          : await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortController.signal,
+              body: JSON.stringify({
+                model: resolvedModel,
+                chatId,
+                assistantMessageId: assistantMessage.id,
+                projectId: activeProjectId,
+                projectRoot: existingChat?.projectRoot ?? (projectRoot.trim() || null),
+                messages: [
+                  ...recentConversation.map(m => ({ role: m.role, content: m.content })),
+                  { role: 'user', content: messageContent },
+                ],
+                stream: true,
+                search: isSearchEnabled,
+                persona: personaId || 'general',
+              }),
+            });
+
+        if (!response.ok) throw new Error(await response.text());
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No reader');
+
+        const decoder = new TextDecoder();
+        let streamBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split('\n');
+          streamBuffer = lines.pop() ?? '';
+          for (const line of lines) applyEvent(parseStreamLine(line));
+        }
+        streamBuffer += decoder.decode();
+        if (streamBuffer.trim()) applyEvent(parseStreamLine(streamBuffer));
+        assistantContentForSave = fullContent;
       }
 
       if (finalUsage === 0) {

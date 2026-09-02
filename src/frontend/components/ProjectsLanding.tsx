@@ -182,43 +182,25 @@ export function ProjectsLanding() {
     setDeletingProject(null);
   };
 
-  // Helper for avatar gradient
-  const getProjectGradient = (id: string) => {
-    const gradients = [
-      'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-      'linear-gradient(135deg, #3b82f6 0%, #2dd4bf 100%)',
-      'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
-      'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)',
-      'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
-      'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)',
-    ];
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-      hash = id.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash) % gradients.length;
-    return gradients[index];
-  };
-
   return (
     <div className="projects-landing" onClick={() => setActiveMenuId(null)}>
       {/* Header Banner */}
       <header className="projects-landing__header">
         <div className="projects-landing__top-bar">
           <button
-            className="btn-back-to-chat"
+            className="btn btn-secondary btn-back-to-chat"
             type="button"
             onClick={() => setViewMode('chat')}
             title="Return to chat"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
             </svg>
             <span>Back to Chat</span>
           </button>
 
           <button
-            className="btn-primary btn-create-top"
+            className="btn btn-primary btn-create-top"
             type="button"
             onClick={() => {
               setIsCreateModalOpen(true);
@@ -226,7 +208,7 @@ export function ProjectsLanding() {
               setNewProjectDesc('');
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -236,8 +218,8 @@ export function ProjectsLanding() {
 
         <div className="projects-landing__hero">
           <div className="projects-landing__title-wrap">
-            <div className="projects-landing__icon-badge">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <div className="projects-landing__icon-badge" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 2H2v10h10V2z" />
                 <path d="M22 12h-10v10h10V12z" />
                 <path d="M12 12H2v10h10V12z" />
@@ -402,11 +384,10 @@ export function ProjectsLanding() {
               >
                 {/* Top Row: Avatar, Title, Star & Menu */}
                 <div className="project-card__top">
-                  <div
-                    className="project-card__avatar"
-                    style={{ background: getProjectGradient(project.id) }}
-                  >
-                    {project.name.charAt(0).toUpperCase()}
+                  <div className="project-card__avatar" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
                   </div>
 
                   <div className="project-card__title-area">
@@ -441,13 +422,13 @@ export function ProjectsLanding() {
                   <div className="project-card__top-actions" onClick={(e) => e.stopPropagation()}>
                     {/* Star Favorite */}
                     <button
-                      className={`btn-star ${project.pinned ? 'is-starred' : ''}`}
+                      className={`icon-btn btn-star ${project.pinned ? 'is-starred' : ''}`}
                       type="button"
                       aria-label={project.pinned ? 'Remove favorite' : 'Add to favorites'}
                       title={project.pinned ? 'Remove favorite' : 'Add to favorites'}
                       onClick={(e) => handleTogglePin(project.id, Boolean(project.pinned), e)}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill={project.pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill={project.pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                       </svg>
                     </button>
@@ -455,7 +436,7 @@ export function ProjectsLanding() {
                     {/* Context Menu Toggle */}
                     <div className="project-card__menu-wrap">
                       <button
-                        className="btn-card-menu"
+                        className="icon-btn btn-card-menu"
                         type="button"
                         aria-label="Workspace options"
                         onClick={(e) => {
@@ -463,7 +444,7 @@ export function ProjectsLanding() {
                           setActiveMenuId(isMenuOpen ? null : project.id);
                         }}
                       >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="12" cy="5" r="1.5" fill="currentColor" />
                           <circle cx="12" cy="12" r="1.5" fill="currentColor" />
                           <circle cx="12" cy="19" r="1.5" fill="currentColor" />
@@ -525,9 +506,11 @@ export function ProjectsLanding() {
                 </div>
 
                 {/* Description */}
-                <p className={`project-card__desc ${!project.description ? 'is-empty' : ''}`}>
-                  {project.description || 'No description provided yet.'}
-                </p>
+                {project.description ? (
+                  <p className="project-card__desc">
+                    {project.description}
+                  </p>
+                ) : null}
 
                 {/* Capability Badges */}
                 <div className="project-card__badges">
@@ -584,12 +567,12 @@ export function ProjectsLanding() {
                   <div className="project-card__cta" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      className="btn-open-workspace"
+                      className="btn btn-secondary btn-sm btn-open-workspace"
                       onClick={() => handleOpenProject(project.id)}
-                      title="Open workspace landing view"
+                      title="Open workspace"
                     >
                       <span>Open</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <polyline points="9 18 15 12 9 6" />
                       </svg>
                     </button>
@@ -604,7 +587,7 @@ export function ProjectsLanding() {
         {filteredProjects.length === 0 && (
           <div className="projects-empty-state">
             <div className="empty-state-icon">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M12 2H2v10h10V2z" />
                 <path d="M22 12h-10v10h10V12z" />
                 <path d="M12 12H2v10h10V12z" />
@@ -617,7 +600,7 @@ export function ProjectsLanding() {
                 <p>No projects match your search for "<strong>{searchQuery}</strong>".</p>
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn btn-secondary"
                   onClick={() => setSearchQuery('')}
                 >
                   Clear Search Filter
@@ -629,7 +612,7 @@ export function ProjectsLanding() {
                 <p>You haven't starred any workspaces yet. Click the star icon on any card to add it to favorites.</p>
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn btn-secondary"
                   onClick={() => setFilterTab('all')}
                 >
                   View All Workspaces
@@ -641,7 +624,7 @@ export function ProjectsLanding() {
                 <p>Create your first workspace to organize project chats, context memory, and prompts.</p>
                 <button
                   type="button"
-                  className="btn-primary"
+                  className="btn btn-primary"
                   onClick={() => {
                     setIsCreateModalOpen(true);
                     setNewProjectName('');
@@ -664,7 +647,7 @@ export function ProjectsLanding() {
               <h2 className="modal-title">Create New Workspace</h2>
               <button
                 type="button"
-                className="btn-modal-close"
+                className="icon-btn btn-modal-close"
                 onClick={() => setIsCreateModalOpen(false)}
                 aria-label="Close modal"
               >
@@ -701,14 +684,14 @@ export function ProjectsLanding() {
               <div className="modal-actions">
                 <button
                   type="button"
-                  className="btn-modal-cancel"
+                  className="btn btn-secondary btn-modal-cancel"
                   onClick={() => setIsCreateModalOpen(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary btn-modal-submit"
+                  className="btn btn-primary btn-modal-submit"
                   disabled={!newProjectName.trim() || isSubmittingCreate}
                 >
                   {isSubmittingCreate ? 'Creating…' : 'Create Workspace'}
@@ -727,7 +710,7 @@ export function ProjectsLanding() {
               <h2 className="modal-title">Delete Workspace</h2>
               <button
                 type="button"
-                className="btn-modal-close"
+                className="icon-btn btn-modal-close"
                 onClick={() => setDeletingProject(null)}
                 aria-label="Close modal"
               >
@@ -745,14 +728,14 @@ export function ProjectsLanding() {
             <div className="modal-actions">
               <button
                 type="button"
-                className="btn-modal-cancel"
+                className="btn btn-secondary btn-modal-cancel"
                 onClick={() => setDeletingProject(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn-modal-delete"
+                className="btn btn-danger btn-modal-delete"
                 onClick={handleConfirmDelete}
               >
                 Delete Workspace

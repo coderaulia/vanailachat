@@ -55,7 +55,10 @@ export interface ChatStreamRequest {
   projectRoot?: string | null;
   projectId?: string | null;
   tools?: string[];
-  skills?: string[];
+  chatId?: string;
+  assistantMessageId?: string;
+  stream?: boolean;
+  search?: boolean;
   temperature?: number;
   maxTokens?: number;
 }
