@@ -53,6 +53,8 @@
   --bg-app: #121820;
   --bg-surface: rgba(24, 32, 44, 0.78);
   --bg-surface-strong: #1c2635;
+  --bg-surface-hover: rgba(255, 255, 255, 0.06);
+  --bg-surface-subtle: rgba(255, 255, 255, 0.025);
   --bg-sidebar: #0d1219;
   --bg-sidebar-soft: #141c27;
   --bg-accent: #487fae;
