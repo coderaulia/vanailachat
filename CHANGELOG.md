@@ -2,17 +2,17 @@
 
 All notable changes to Vanaila Chat are documented here.
 
-## [0.3.2] - 2026-08-31
+## [0.3.2] - 2026-09-02
 
 ### Fixed
 
-- Fixed native desktop message sending by normalizing the frontend chat payload for Rust Tauri IPC.
-- Desktop IPC errors are now surfaced instead of silently falling back to the web-only HTTP endpoint.
+- Fixed native desktop message streaming by bridging `useSendMessage` directly through native Tauri IPC `start_chat` without web server dependency.
+- Desktop IPC errors and streaming chunks are now surfaced in real-time.
 
 ### Added
 
-- Added an in-app Application Log panel in the desktop header.
-- The log captures console output, runtime errors, and unhandled promise failures for desktop sessions launched without a terminal.
+- Added an in-app Application Log panel (`AppLogPanel`) in the desktop header for runtime diagnostics.
+- Added a dedicated Dark/Light visual theme selector in **Settings → Appearance** and the frosted sidebar footer.
 - Added Linux runtime-library and AppImage FUSE installation notes to the distribution documentation.
 
 ### Verified

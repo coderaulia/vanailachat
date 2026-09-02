@@ -19,7 +19,7 @@
   </provides>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="0.3.2" date="2026-08-31">
+    <release version="0.3.2" date="2026-09-02">
       <description>
         <p>Vanaila Chat 0.3.2 improves native desktop chat reliability by fixing the Tauri IPC payload used when sending messages, adding an in-app application log for diagnosing desktop launches without a terminal, and documenting Linux runtime-library requirements.</p>
         <p>The release also verifies the native binary and Debian, RPM, and AppImage bundles. AppImage users must have FUSE 2 compatibility installed on systems that do not provide libfuse.so.2 by default.</p>
