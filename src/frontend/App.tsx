@@ -11,6 +11,8 @@ import { ChatProvider, useChat } from './context/ChatContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { OnboardingWizard, useOnboarding } from './components/OnboardingWizard';
 import { setPricingOverrides } from './config/modelPricing';
+import { AppLogPanel } from './components/AppLogPanel';
+import { installAppLogCapture } from './lib/appLog';
 
 // Rendered only on demand, so they are kept out of the initial bundle.
 // OnboardingWizard stays eager: useOnboarding runs on every load.
@@ -47,6 +49,9 @@ const AppShell = () => {
     });
   }, []);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isLogOpen, setIsLogOpen] = useState(false);
+
+  useEffect(() => { installAppLogCapture(); }, []);
 
   // Per-model rates the built-in table cannot know — a gateway serves its own
   // model names at its own prices. Stored as JSON in the model_pricing setting.
@@ -192,7 +197,10 @@ const AppShell = () => {
               responseStats={responseStats}
               isCodebasePanelOpen={isCodebasePanelOpen}
               onToggleCodebasePanel={() => setIsCodebasePanelOpen((prev) => !prev)}
+              onToggleLog={() => setIsLogOpen((prev) => !prev)}
+              isLogOpen={isLogOpen}
             />
+            {isLogOpen && <AppLogPanel onClose={() => setIsLogOpen(false)} />}
 
             <div className="chat-and-panel-wrapper">
               <div className="chat-column">

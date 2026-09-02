@@ -35,8 +35,8 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 
 | Distro / Platform | Package Format | Direct Download Link | Quick Installation |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.1-fix_amd64.deb` |
-| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanailachat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.1-fix-1.x86_64.rpm` |
+| **Ubuntu / Debian / Mint / Pop!_OS** | `.deb` (x86_64) | [**Download `.deb`**](https://github.com/coderaulia/vanaila-chat/releases/latest) | `sudo apt install ./vanaila-chat_0.3.2_amd64.deb` |
+| **Fedora / RHEL / openSUSE** | `.rpm` (x86_64) | [**Download `.rpm`**](https://github.com/coderaulia/vanaila-chat/releases/latest) | `sudo dnf install ./vanaila-chat-0.3.2-1.x86_64.rpm` |
 | **Universal Linux (Any Distro)** | `.AppImage` | [**Download `.AppImage`**](https://github.com/coderaulia/vanailachat/releases/latest) | `chmod +x *.AppImage && ./*.AppImage` |
 | **Arch Linux / Manjaro** | AUR | [**AUR Package**](DOWNLOADS.md) | `yay -S vanaila-chat-bin` |
 | **1-Click Web App (Linux/Mac/Win)** | Script | `start.sh` / `start.bat` | `./start.sh` (Linux/macOS) or `start.bat` (Win) |
@@ -62,6 +62,8 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 - 🔍 **Deep Web Research**: Search the live web, fetch articles, and generate cited summaries.
 
 ---
+
+> **Linux runtime note:** AppImage users must install the desktop runtime libraries if their distribution does not provide them. Fedora/RHEL users should install `gtk3 webkit2gtk4.1 libayatana-appindicator-gtk3 fuse-libs`; Debian/Ubuntu users should install `libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libfuse2`.
 
 ## 🔌 Comprehensive AI Providers & Setup Guide
 

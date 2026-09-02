@@ -33,6 +33,8 @@ The native Linux desktop edition (`com.vanaila.chat`) runs as a dedicated, high-
 - **Debian/Ubuntu**: `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
 - **Arch Linux**: `sudo pacman -S webkit2gtk-4.1 gtk3 libayatana-appindicator`
 
+For running the portable AppImage, install the corresponding runtime libraries. Fedora/RHEL users may also need FUSE 2 compatibility: `sudo dnf install gtk3 webkit2gtk4.1 libayatana-appindicator-gtk3 fuse-libs`. Debian/Ubuntu users may need: `sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libfuse2`.
+
 ### 2. Running in Desktop Dev Mode
 
 ```bash
@@ -46,4 +48,3 @@ pnpm desktop:dev
 pnpm desktop:build
 ```
 The compiled Linux bundles will be generated in `src-tauri/target/release/bundle/`.
-

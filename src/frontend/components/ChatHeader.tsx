@@ -9,6 +9,8 @@ interface ChatHeaderProps {
   isCodebasePanelOpen?: boolean;
   onToggleCodebasePanel?: () => void;
   responseStats?: { latencyMs: number; tokensPerSecond: number; completionTokens: number } | null;
+  isLogOpen?: boolean;
+  onToggleLog?: () => void;
 }
 
 export function ChatHeader({
@@ -18,6 +20,8 @@ export function ChatHeader({
   isCodebasePanelOpen,
   onToggleCodebasePanel,
   responseStats,
+  isLogOpen,
+  onToggleLog,
 }: ChatHeaderProps) {
   const {
     isCurrentChatSending,
@@ -122,6 +126,20 @@ export function ChatHeader({
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="16 18 22 12 16 6"></polyline>
                 <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </button>
+          )}
+
+          {onToggleLog && (
+            <button
+              className={'icon-btn ' + (isLogOpen ? 'is-active' : '')}
+              type="button"
+              aria-label="Toggle application log"
+              title="Open application log"
+              onClick={onToggleLog}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 5h16v14H4z" /><path d="M7 9h10M7 12h7M7 15h5" />
               </svg>
             </button>
           )}
