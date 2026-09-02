@@ -403,7 +403,7 @@ export function ProjectDetail() {
               <div className="project-card__actions">
                 <span className="badge-lock">Private</span>
                 <button
-                  className="icon-btn-edit"
+                  className="icon-btn icon-btn-edit"
                   type="button"
                   onClick={() => setIsEditingMemory(!isEditingMemory)}
                   title="Edit memory"
@@ -451,7 +451,7 @@ export function ProjectDetail() {
                 Instructions
               </h3>
               <button
-                className="icon-btn-edit"
+                className="icon-btn icon-btn-edit"
                 type="button"
                 onClick={() => setIsEditingInstructions(!isEditingInstructions)}
                 title="Edit instructions"
@@ -496,7 +496,7 @@ export function ProjectDetail() {
             </div>
             <div className="project-quick-actions">
               <button
-                className="project-quick-action"
+                className="btn btn-secondary project-quick-action"
                 type="button"
                 onClick={() => { setViewMode('chat'); }}
               >
@@ -504,10 +504,10 @@ export function ProjectDetail() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
-                New conversation
+                <span>New conversation</span>
               </button>
               <button
-                className="project-quick-action"
+                className="btn btn-secondary project-quick-action"
                 type="button"
                 onClick={() => { setIsEditingMemory(true); }}
               >
@@ -516,7 +516,7 @@ export function ProjectDetail() {
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                Update memory
+                <span>Update memory</span>
               </button>
             </div>
           </div>

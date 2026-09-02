@@ -36,46 +36,14 @@
 }
 
 .btn-back {
-  display: inline-flex;
-  align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-full, 99px);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-back:hover {
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
-  border-color: var(--bg-accent);
+  padding: 0 10px;
 }
 
 .btn-back-chat {
   margin-left: auto;
-  display: inline-flex;
-  align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-full, 99px);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-back-chat:hover {
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
-  border-color: var(--bg-accent);
+  padding: 0 10px;
 }
 
 .project-detail__breadcrumb-sep {
@@ -607,23 +575,11 @@
 }
 
 .icon-btn-edit {
-  background: none;
-  border: none;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  border-radius: 6px;
   color: var(--text-secondary);
-  cursor: pointer;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
-  transition: all 0.12s ease;
-  padding: 0;
-}
-
-.icon-btn-edit:hover {
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
 }
 
 .project-card__text {
@@ -662,7 +618,7 @@
 .badge-lock {
   font-size: 9.5px;
   font-weight: 600;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-surface-strong);
   border: 1px solid var(--border-soft);
   color: var(--text-secondary);
   padding: 1px 6px;
@@ -678,28 +634,16 @@
 .project-quick-actions {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .project-quick-action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-soft);
-  color: var(--text-secondary);
+  width: 100%;
+  justify-content: flex-start;
   font-size: 12px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  text-align: left;
-}
-
-.project-quick-action:hover {
-  background: var(--bg-surface-strong);
-  color: var(--text-primary);
-  border-color: rgba(var(--accent-rgb), 0.3);
+  padding: 0 10px;
+  min-height: 32px;
+  height: 32px;
 }
 
 /* Dropdown Menu */

@@ -546,7 +546,7 @@
 /* Mac-Style Frosted Footer */
 .sidebar-footer {
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: auto auto 1fr 1fr;
   gap: 4px;
   padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -572,7 +572,8 @@
   color: #ffffff;
 }
 
-.sidebar-settings-btn {
+.sidebar-settings-btn,
+.sidebar-theme-btn {
   width: 28px;
   height: 28px;
   min-height: 28px;
@@ -585,7 +586,8 @@
   flex-shrink: 0;
 }
 
-.sidebar-settings-btn:hover {
+.sidebar-settings-btn:hover,
+.sidebar-theme-btn:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.18);

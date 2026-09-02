@@ -14,6 +14,8 @@ import { setPricingOverrides } from './config/modelPricing';
 import { AppLogPanel } from './components/AppLogPanel';
 import { installAppLogCapture } from './lib/appLog';
 
+import { apiFetchSettings } from './lib/api';
+
 // Rendered only on demand, so they are kept out of the initial bundle.
 // OnboardingWizard stays eager: useOnboarding runs on every load.
 const SettingsModal = lazy(() =>
@@ -56,10 +58,9 @@ const AppShell = () => {
   // Per-model rates the built-in table cannot know — a gateway serves its own
   // model names at its own prices. Stored as JSON in the model_pricing setting.
   useEffect(() => {
-    fetch('/api/settings/model_pricing')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        const raw = (data as { value?: string } | null)?.value;
+    apiFetchSettings()
+      .then((settings) => {
+        const raw = settings['model_pricing'];
         if (raw) setPricingOverrides(JSON.parse(raw));
       })
       .catch(() => {
