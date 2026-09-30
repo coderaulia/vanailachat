@@ -1,7 +1,16 @@
 use rusqlite_migration::{Migrations, M};
 
 pub fn get_migrations() -> Migrations<'static> {
-    Migrations::new(vec![
+    Migrations::new(migration_list())
+}
+
+/// Schema version after every migration has run (rusqlite_migration stores it in `user_version`).
+pub fn latest_version() -> usize {
+    migration_list().len()
+}
+
+fn migration_list() -> Vec<M<'static>> {
+    vec![
         // V1: initial_schema
         M::up("
             CREATE TABLE IF NOT EXISTS projects (
@@ -138,5 +147,5 @@ pub fn get_migrations() -> Migrations<'static> {
             INSERT OR IGNORE INTO settings (key, value, updated_at)
             SELECT 'openrouter_api_key', value, updated_at FROM settings WHERE key = 'openai_api_key' AND value LIKE 'sk-or-%';
         "),
-    ])
+    ]
 }

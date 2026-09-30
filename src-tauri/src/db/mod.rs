@@ -4,7 +4,45 @@ pub mod models;
 use crate::error::AppResult;
 use models::*;
 use rusqlite::{params, Connection};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+const MAX_MIGRATION_BACKUPS: usize = 5;
+
+/// Snapshots an existing database before pending migrations run, keeping the
+/// newest few. A failed backup is logged rather than blocking startup.
+pub fn backup_before_migrations(conn: &Connection, db_path: &Path, target_version: usize) -> Option<PathBuf> {
+    let dir = db_path.parent()?.join("backups");
+    let stem = db_path.file_stem()?.to_string_lossy().to_string();
+    let stamp = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S-%3fZ");
+    let backup = dir.join(format!("{stem}-pre-v{target_version}-{stamp}.sqlite"));
+
+    let result = std::fs::create_dir_all(&dir)
+        .map_err(|e| e.to_string())
+        .and_then(|_| {
+            conn.execute("VACUUM INTO ?1", [backup.to_string_lossy()])
+                .map_err(|e| e.to_string())
+        });
+    if let Err(e) = result {
+        eprintln!("[warn] Pre-migration backup failed; continuing without one: {e}");
+        return None;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        let mut snapshots: Vec<(std::time::SystemTime, PathBuf)> = entries
+            .flatten()
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                name.contains("-pre-v") && name.ends_with(".sqlite")
+            })
+            .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
+            .collect();
+        snapshots.sort_by(|a, b| b.0.cmp(&a.0));
+        for (_, old) in snapshots.into_iter().skip(MAX_MIGRATION_BACKUPS) {
+            let _ = std::fs::remove_file(old);
+        }
+    }
+    Some(backup)
+}
 
 pub struct Database {
     conn: Connection,
@@ -12,14 +50,19 @@ pub struct Database {
 
 impl Database {
     pub fn new<P: AsRef<Path>>(path: P) -> AppResult<Self> {
-        let mut conn = Connection::open(path)?;
+        let mut conn = Connection::open(path.as_ref())?;
         
         // WAL mode & foreign keys for high performance and integrity
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
 
-        // Run migrations
+        // Run migrations, snapshotting existing data first when any are pending
         let migs = migrations::get_migrations();
+        let current: usize = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let latest = migrations::latest_version();
+        if current > 0 && current < latest {
+            backup_before_migrations(&conn, path.as_ref(), latest);
+        }
         migs.to_latest(&mut conn)?;
 
         Ok(Self { conn })
@@ -516,5 +559,39 @@ mod tests {
         db.set_setting("theme", "dark").expect("set setting failed");
         let theme = db.get_setting("theme").expect("get setting failed");
         assert_eq!(theme.as_deref(), Some("dark"));
+    }
+
+    #[test]
+    fn test_backup_before_pending_migrations() {
+        let dir = std::env::temp_dir().join(format!("vanaila-mig-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("vanaila.sqlite");
+
+        // Brand-new database: nothing to back up.
+        Database::new(&db_path).expect("fresh db failed").set_setting("user_name", "Alex").unwrap();
+        assert!(!dir.join("backups").exists());
+
+        // Roll the recorded version back one step; the final migration is idempotent.
+        let conn = Connection::open(&db_path).unwrap();
+        let latest = migrations::latest_version();
+        conn.pragma_update(None, "user_version", latest - 1).unwrap();
+        drop(conn);
+
+        Database::new(&db_path).expect("reopen failed");
+        let backups: Vec<_> = std::fs::read_dir(dir.join("backups")).unwrap().flatten().collect();
+        assert_eq!(backups.len(), 1);
+        let snapshot = Connection::open(backups[0].path()).unwrap();
+        let name: String = snapshot
+            .query_row("SELECT value FROM settings WHERE key = 'user_name'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(name, "Alex");
+
+        // Pruning keeps the newest five.
+        let conn = Connection::open(&db_path).unwrap();
+        for version in 1..=7 {
+            backup_before_migrations(&conn, &db_path, version);
+        }
+        assert_eq!(std::fs::read_dir(dir.join("backups")).unwrap().count(), MAX_MIGRATION_BACKUPS);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
