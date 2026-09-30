@@ -92,6 +92,7 @@ export interface ApiChatDto {
   updated_at?: number;
   updatedAt?: number;
   pinned?: boolean | number;
+  archived?: boolean | number;
   usage?: number;
 }
 
@@ -108,6 +109,10 @@ export interface ApiMessageDto {
   created_at?: number;
   createdAt?: number;
   timestamp?: number;
+  versionOf?: string | null;
+  version_of?: string | null;
+  versionCount?: number;
+  version_count?: number;
 }
 
 // ── Dynamic Tauri API Loader ──────────────────────────────────────────
@@ -286,6 +291,36 @@ export async function apiCreateChat(payload: {
   return data.chat ?? (payload as ApiChatDto);
 }
 
+/** Partial chat update: rename, pin, archive, prompt, root, model, role. */
+export async function apiPatchChat(
+  id: string,
+  updates: {
+    title?: string;
+    projectId?: string | null;
+    projectRoot?: string | null;
+    systemPrompt?: string | null;
+    model?: string | null;
+    role?: string | null;
+    pinned?: boolean;
+    archived?: boolean;
+    updatedAt?: number;
+  },
+): Promise<ApiChatDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const chat = await invoke<ApiChatDto | null>('update_chat', { id, patch: updates });
+    if (!chat) throw new Error(`Chat ${id} not found`);
+    return chat;
+  }
+  const data = await requestApi<{ chat?: ApiChatDto }>(`/api/chats/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!data.chat) throw new Error('Missing chat in response');
+  return data.chat;
+}
+
 export async function apiDeleteChat(id: string): Promise<boolean> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -306,6 +341,68 @@ export async function apiFetchMessages(chatId: string): Promise<ApiMessageDto[]>
   return Array.isArray(data.messages) ? data.messages : [];
 }
 
+/** Answers a parked tool-call approval request. */
+export async function apiRespondToApproval(id: string, approved: boolean): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('approve_tool', { id, approved });
+    return;
+  }
+  await requestApi('/api/chat/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, approved }),
+  });
+}
+
+/** One message-body hit from full-text search; same shape on web and desktop. */
+export interface MessageSearchHit {
+  chatId: string;
+  chatTitle: string;
+  projectId?: string | null;
+  messageId: string;
+  role: string;
+  snippet: string;
+  createdAt: number;
+}
+
+export async function apiSearchMessages(query: string, projectId?: string, signal?: AbortSignal): Promise<MessageSearchHit[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MessageSearchHit[]>('search_messages', { query, projectId: projectId ?? null });
+  }
+  const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : '';
+  const data = await requestApi<{ results?: MessageSearchHit[] }>(
+    `/api/messages/search?q=${encodeURIComponent(query)}${scope}`,
+    { signal },
+  );
+  return data.results ?? [];
+}
+
+/** Current rating for a message: 1, -1, 0, or null when never rated. */
+export async function apiGetFeedback(messageId: string): Promise<number | null> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const feedback = await invoke<{ rating: number } | null>('get_feedback', { messageId });
+    return feedback?.rating ?? null;
+  }
+  const data = await requestApi<{ feedback: { rating: number } | null }>(`/api/messages/${encodeURIComponent(messageId)}/feedback`);
+  return data.feedback?.rating ?? null;
+}
+
+export async function apiSetFeedback(messageId: string, rating: number): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('set_feedback', { payload: { message_id: messageId, rating } });
+    return;
+  }
+  await requestApi(`/api/messages/${encodeURIComponent(messageId)}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+}
+
 export async function apiSaveMessage(payload: {
   id: string;
   chat_id?: string;
@@ -319,6 +416,7 @@ export async function apiSaveMessage(payload: {
   created_at?: number;
   createdAt?: number;
   timestamp?: number;
+  versionOf?: string | null;
 }): Promise<ApiMessageDto> {
   const chatId = payload.chatId ?? payload.chat_id ?? '';
   const createdAt = payload.createdAt ?? payload.created_at ?? payload.timestamp ?? Date.now();
@@ -331,6 +429,7 @@ export async function apiSaveMessage(payload: {
         role: payload.role,
         content: payload.content,
         created_at: createdAt,
+        version_of: payload.versionOf ?? null,
       },
     });
   }
@@ -345,9 +444,41 @@ export async function apiSaveMessage(payload: {
       promptTokens: payload.promptTokens ?? payload.prompt_tokens ?? null,
       completionTokens: payload.completionTokens ?? payload.completion_tokens ?? null,
       createdAt,
+      versionOf: payload.versionOf ?? null,
     }),
   });
   return data.message ?? (payload as ApiMessageDto);
+}
+
+/** Hides a message and everything after it, before a regenerate or edit re-sends. */
+export async function apiSupersedeMessages(chatId: string, fromMessageId: string): Promise<number> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<number>('supersede_messages', { chatId, fromMessageId });
+  }
+  const data = await requestApi<{ superseded: number }>('/api/messages/supersede', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatId, fromMessageId }),
+  });
+  return data.superseded;
+}
+
+export interface MessageVersionDto {
+  id: string;
+  content: string;
+  createdAt: number;
+  current: boolean;
+}
+
+/** Every answer in a message's regenerate group, oldest first. */
+export async function apiFetchMessageVersions(messageId: string): Promise<MessageVersionDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MessageVersionDto[]>('get_message_versions', { messageId });
+  }
+  const data = await requestApi<{ versions?: MessageVersionDto[] }>(`/api/messages/${encodeURIComponent(messageId)}/versions`);
+  return data.versions ?? [];
 }
 
 // ── Models & Settings IPC / REST ──────────────────────────────────────
@@ -368,9 +499,23 @@ export async function apiFetchModels(): Promise<Array<{
   return Array.isArray(data.models) ? data.models : [];
 }
 
+/** One line of Ollama's pull progress. */
+export interface PullProgress {
+  status?: string;
+  digest?: string;
+  completed?: number;
+  total?: number;
+  error?: string;
+}
+
+/**
+ * Downloads an Ollama model, reporting Ollama's progress lines as they
+ * arrive. Rejects on an `error` line, so a bad name does not look like success.
+ */
 export async function apiPullModel(
   name: string,
-  onProgress?: (progress: { status?: string; completed?: number; total?: number }) => void
+  onProgress?: (progress: PullProgress) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -379,7 +524,7 @@ export async function apiPullModel(
     let unlisten: (() => void) | null = null;
     if (onProgress) {
       unlisten = await listen('ollama-pull-progress', (event) => {
-        onProgress(event.payload as { status?: string; completed?: number; total?: number });
+        onProgress(event.payload as PullProgress);
       });
     }
 
@@ -391,12 +536,40 @@ export async function apiPullModel(
     return;
   }
 
-  // Web fallback:
-  await requestApi('/api/models/pull', {
+  const response = await fetch('/api/models/pull', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+    signal,
   });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || `Pull failed (HTTP ${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    let progress: PullProgress;
+    try {
+      progress = JSON.parse(line) as PullProgress;
+    } catch {
+      return;
+    }
+    if (progress.error) throw new Error(progress.error);
+    onProgress?.(progress);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    lines.forEach(handleLine);
+  }
+  handleLine(buffer);
 }
 
 export async function apiFetchSettings(): Promise<Record<string, string>> {
@@ -473,6 +646,7 @@ export async function apiFetchTrainingStats(): Promise<TrainingStatsDto> {
 export async function apiExportTrainingData(request: {
   format: 'sharegpt' | 'alpaca';
   selectedIds: string[];
+  includeDistillation?: boolean;
 }): Promise<{ path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string }> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -483,18 +657,22 @@ export async function apiExportTrainingData(request: {
   return await requestApi('/api/training/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ format: request.format, selectedIds: request.selectedIds }),
+    body: JSON.stringify({
+      format: request.format,
+      selectedIds: request.selectedIds,
+      includeDistillation: request.includeDistillation ?? false,
+    }),
   });
 }
 
 export interface CodingSessionDto {
-  chat_id: string;
+  chatId: string;
   harness: string;
-  harness_session_id?: string | null;
-  workspace_path: string;
+  harnessSessionId?: string | null;
+  workspacePath: string;
   status: string;
-  created_at: number;
-  updated_at: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export async function apiGetCodingSession(chatId: string): Promise<CodingSessionDto | null> {
@@ -788,4 +966,37 @@ export async function apiGetGitDiff(workspaceRoot: string): Promise<string> {
   if (!res.ok) throw new Error('Failed to get git diff');
   const data = await res.json() as { diff?: string };
   return data.diff ?? '';
+}
+
+// ── Desktop integration ───────────────────────────────────────────────
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  url: string;
+}
+
+/** Desktop only: compares this build with the latest GitHub release. */
+export async function apiCheckForUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri) return null;
+  const { invoke } = await getTauriCore();
+  return await invoke<UpdateInfo>('check_for_update');
+}
+
+/** Opens a link in the system browser (desktop) or a new tab (web). */
+export async function apiOpenExternal(url: string): Promise<void> {
+  if (isTauri) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/** Desktop only: runs `handler` when the tray menu asks for a new chat. Returns an unsubscribe. */
+export async function onDesktopNewChat(handler: () => void): Promise<() => void> {
+  if (!isTauri) return () => {};
+  const { listen } = await getTauriEvent();
+  return await listen('vanaila://new-chat', handler);
 }

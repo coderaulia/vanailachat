@@ -56,6 +56,28 @@ describe('data route', () => {
     expect(insertMessage).toHaveBeenCalledOnce();
   });
 
+  it('POST /api/import accepts snake_case desktop exports', async () => {
+    const upsertChat = vi.fn();
+    const insertMessage = vi.fn();
+    const createProject = vi.fn().mockImplementation((p) => p);
+    const app = createApp({ listProjects: () => [], listChats: () => [], createProject, upsertChat, insertMessage });
+
+    const response = await app.request('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projects: [{ id: 'p1', name: 'P', created_at: 5, updated_at: 6 }],
+        chats: [{ id: 'c1', project_id: 'p1', title: 'T', system_prompt: 'be brief', created_at: 5, updated_at: 6 }],
+        messages: [{ id: 'm1', chat_id: 'c1', role: 'user', content: 'hi', created_at: 7 }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', createdAt: 5 }));
+    expect(upsertChat).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p1', systemPrompt: 'be brief', updatedAt: 6 }));
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ chatId: 'c1', createdAt: 7 }));
+  });
+
   it('POST /api/pick-directory returns selected path', async () => {
     const pickDirectory = vi.fn().mockResolvedValue('/home/user/project');
     const app = createApp({ pickDirectory });

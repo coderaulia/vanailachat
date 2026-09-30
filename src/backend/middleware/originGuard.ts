@@ -17,9 +17,16 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * with neither header are not browser-initiated — curl, the test suite, a native
  * client — and are allowed through, since a browser cannot suppress both.
  */
-export function originGuard(): MiddlewareHandler {
+export function originGuard(options: { trustSameOrigin?: boolean } = {}): MiddlewareHandler {
   return async function originGuardMiddleware(context, next) {
     if (SAFE_METHODS.has(context.req.method)) {
+      return next();
+    }
+
+    // With an access token configured the app may be served from a LAN
+    // address, so its own same-origin requests carry a non-loopback Origin.
+    // Browsers set Sec-Fetch-Site themselves; a cross-site page cannot forge it.
+    if (options.trustSameOrigin && context.req.header('sec-fetch-site') === 'same-origin') {
       return next();
     }
 

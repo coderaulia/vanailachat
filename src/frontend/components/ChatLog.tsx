@@ -2,6 +2,8 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
+import { apiFetchMessageVersions, apiGetFeedback, apiSetFeedback } from '../lib/api';
+import type { MessageVersionDto } from '../lib/api';
 import type { Message, ToolActivity } from '../types/chat';
 import { useChat } from '../context/ChatContext';
 import { estimateCost, formatCost } from '../config/modelPricing';
@@ -104,8 +106,51 @@ function ToolActivityPanel({ activities }: { activities: ToolActivity[] }) {
   );
 }
 
+/**
+ * Steps through the earlier answers of a regenerated message. Versions load
+ * on first use; viewing one does not change the conversation.
+ */
+function useAnswerVersions(message: Message) {
+  const [versions, setVersions] = useState<MessageVersionDto[] | null>(null);
+  const [index, setIndex] = useState<number | null>(null);
+  const total = message.versionCount ?? 1;
+
+  // A new answer (regenerate, reload) starts back on the live version.
+  useEffect(() => {
+    setVersions(null);
+    setIndex(null);
+  }, [message.id, total]);
+
+  const step = async (delta: number) => {
+    let list = versions;
+    if (!list) {
+      try {
+        list = await apiFetchMessageVersions(message.id);
+      } catch (error) {
+        console.error('Failed to load earlier answers', error);
+        return;
+      }
+      setVersions(list);
+    }
+    if (list.length === 0) return;
+    const current = index ?? Math.max(0, list.findIndex((version) => version.id === message.id));
+    setIndex(Math.min(list.length - 1, Math.max(0, current + delta)));
+  };
+
+  const shown = versions && index !== null ? versions[index] : null;
+  const isLive = !shown || shown.id === message.id;
+  return {
+    total: versions?.length ?? total,
+    position: (index ?? (versions ? versions.findIndex((v) => v.id === message.id) : total - 1)) + 1,
+    content: isLive ? message.content : shown.content,
+    isLive,
+    step,
+  };
+}
+
 const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, isCopied, rating, pendingFeedback, renderMarkdown, onCopy, onRate, onRegenerate, onEdit, isBusy, model }: MessageItemProps) {
-  const html = useMemo(() => renderMarkdown(message.content), [renderMarkdown, message.content]);
+  const answer = useAnswerVersions(message);
+  const html = useMemo(() => renderMarkdown(answer.content), [renderMarkdown, answer.content]);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
 
@@ -253,6 +298,26 @@ const MessageItem = memo(function MessageItem({ message, isTyping, showTokens, i
             {message.role === 'assistant' && message.toolActivities && message.toolActivities.length > 0 && (
               <ToolActivityPanel activities={message.toolActivities} />
             )}
+            {message.role === 'assistant' && answer.total > 1 && (
+              <div className="message__versions" aria-label="Answer versions">
+                <button
+                  type="button"
+                  className="message__action-btn"
+                  aria-label="Previous answer"
+                  disabled={answer.position <= 1}
+                  onClick={() => void answer.step(-1)}
+                >‹</button>
+                <span className="message__versions-count">{answer.position} / {answer.total}</span>
+                <button
+                  type="button"
+                  className="message__action-btn"
+                  aria-label="Next answer"
+                  disabled={answer.position >= answer.total}
+                  onClick={() => void answer.step(1)}
+                >›</button>
+                {!answer.isLive && <span className="message__versions-note">Earlier answer — not part of the conversation</span>}
+              </div>
+            )}
             <div className="message__prose" dangerouslySetInnerHTML={{ __html: html }} />
           </>
         )}
@@ -298,10 +363,8 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
       const updates: Record<string, number> = {};
       await Promise.all(assistantIds.map(async (id) => {
         try {
-          const response = await fetch(`/api/messages/${id}/feedback`);
-          if (!response.ok) return;
-          const data = await response.json() as { feedback: { rating: number } | null };
-          if (data.feedback) updates[id] = data.feedback.rating;
+          const rating = await apiGetFeedback(id);
+          if (rating !== null) updates[id] = rating;
         } catch {
           // ignore network errors
         }
@@ -322,12 +385,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
     setFeedbackRatings(prev => ({ ...prev, [id]: rating }));
 
     try {
-      const response = await fetch(`/api/messages/${id}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await apiSetFeedback(id, rating);
     } catch (error) {
       console.error('Failed to save feedback', error);
       // Roll back — refetch on next conversation change

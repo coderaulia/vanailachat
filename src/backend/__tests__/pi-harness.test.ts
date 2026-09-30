@@ -53,8 +53,7 @@ function freshDb() {
 }
 
 function resetDatabase() {
-  (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
-  (DatabaseService as unknown as { db: unknown }).db = null;
+  DatabaseService.close();
 }
 
 describe('Pi Harness', () => {

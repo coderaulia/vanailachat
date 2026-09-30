@@ -132,3 +132,24 @@ export function formatCost(usd: number): string {
   if (usd < 1) return `$${usd.toFixed(3)}`;
   return `$${usd.toFixed(2)}`;
 }
+
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  /** null when the model has no known price (local models, unknown ids). */
+  cost: number | null;
+}
+
+/** Token totals and estimated cost for the messages currently in a chat. */
+export function summarizeChatUsage(
+  messages: Array<{ promptTokens?: number | null; completionTokens?: number | null }>,
+  model: string | null | undefined,
+): ChatUsage {
+  let promptTokens = 0;
+  let completionTokens = 0;
+  for (const message of messages) {
+    promptTokens += message.promptTokens ?? 0;
+    completionTokens += message.completionTokens ?? 0;
+  }
+  return { promptTokens, completionTokens, cost: estimateCost(model, promptTokens, completionTokens) };
+}

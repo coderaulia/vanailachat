@@ -1,4 +1,4 @@
-use crate::db::models::ChatRecord;
+use crate::db::models::{ChatPatch, ChatRecord};
 use crate::error::AppResult;
 use crate::state::AppState;
 use serde::Deserialize;
@@ -40,6 +40,17 @@ pub async fn create_chat(
         payload.model.as_deref(),
         payload.role.as_deref(),
     )
+}
+
+/// Partial update (rename, pin, archive, prompt, ...), like `PATCH /api/chats/:id`.
+#[tauri::command]
+pub async fn update_chat(
+    state: State<'_, AppState>,
+    id: String,
+    patch: ChatPatch,
+) -> AppResult<Option<ChatRecord>> {
+    let db = state.db.lock();
+    db.patch_chat(&id, &patch)
 }
 
 #[tauri::command]

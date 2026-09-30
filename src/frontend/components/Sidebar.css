@@ -450,7 +450,8 @@
 
 .history-item__pin,
 .history-item__delete,
-.history-item__rename {
+.history-item__rename,
+.history-item__archive {
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.55);
@@ -471,7 +472,8 @@
 }
 
 .history-item__pin:hover,
-.history-item__rename:hover {
+.history-item__rename:hover,
+.history-item__archive:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -632,4 +634,25 @@
   .sidebar-brand {
     display: none;
   }
+}
+
+.section-heading .section-title {
+  margin-right: auto;
+}
+
+.section-toggle {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.section-toggle:hover,
+.section-toggle[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }

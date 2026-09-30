@@ -87,6 +87,7 @@ export function useChatApp() {
             createdAt: chat.createdAt,
             updatedAt: chat.updatedAt,
             pinned: Boolean(chat.pinned),
+            archived: Boolean(chat.archived),
             role: chat.role || DEFAULT_MODEL_ROLE,
             model: chat.model ?? null,
             projectRoot: chat.projectRoot || null,
@@ -280,6 +281,20 @@ export function useChatApp() {
       });
   };
 
+  const handleToggleArchive = (id: string) => {
+    const chat = chatHistories[id];
+    if (!chat) return;
+    const nextArchived = !chat.archived;
+    updateHistories(prev => ({ ...prev, [id]: { ...prev[id], archived: nextArchived } }));
+    // updatedAt is left alone so a restored chat returns to its old place.
+    void patchChat(id, { archived: nextArchived, updatedAt: chat.updatedAt })
+      .catch(err => {
+        console.error(err);
+        setStatusText(nextArchived ? 'Failed to archive chat' : 'Failed to restore chat');
+        updateHistories(prev => ({ ...prev, [id]: { ...prev[id], archived: chat.archived } }));
+      });
+  };
+
   const handleRenameChat = (id: string, nextTitle: string) => {
     const chat = chatHistories[id];
     if (!chat) return;
@@ -363,6 +378,7 @@ export function useChatApp() {
     handleDeleteProject,
     handleDeleteChat,
     handleTogglePin,
+    handleToggleArchive,
     handleRenameChat,
     handleExportData,
     handleImportData,

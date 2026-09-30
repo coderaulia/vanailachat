@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useSendMessage, type SendMessageDeps } from '../hooks/useSendMessage';
 import type { Message } from '../types/chat';
+import * as api from '../lib/api';
 
 function message(id: string, role: 'user' | 'assistant', content: string): Message {
   return { id, role, content, timestamp: Date.now() };
@@ -68,6 +69,11 @@ function sentMessages(fetchMock: ReturnType<typeof stubChatFetch>) {
   };
   return body.messages;
 }
+
+// Stored-history calls are asserted in their own block below.
+beforeEach(() => {
+  vi.spyOn(api, 'apiSupersedeMessages').mockResolvedValue(0);
+});
 
 describe('handleRegenerate', () => {
   beforeEach(() => vi.unstubAllGlobals());
@@ -158,5 +164,45 @@ describe('handleEditAndResend', () => {
     await result.current.handleEditAndResend('u2', 'and for secondary caregivers?');
 
     expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+describe('stored history after regenerate / edit', () => {
+  beforeEach(() => vi.unstubAllGlobals());
+
+  it('regenerate hides the old turn in storage first and links the new answer to the old one', async () => {
+    const fetchMock = stubChatFetch();
+    const supersede = vi.spyOn(api, 'apiSupersedeMessages').mockResolvedValue(2);
+    const saveMessage = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useSendMessage(makeDeps({ saveMessage })));
+
+    await result.current.handleRegenerate('a2');
+
+    expect(supersede).toHaveBeenCalledWith('chat_1', 'u2');
+    const chatCall = fetchMock.mock.invocationCallOrder[fetchMock.mock.calls.findIndex(([url]) => String(url).includes('/api/chat'))];
+    expect(supersede.mock.invocationCallOrder[0]).toBeLessThan(chatCall);
+    const saved = saveMessage.mock.calls.map(([, m]) => m as Message);
+    expect(saved.find((m) => m.role === 'assistant')?.versionOf).toBe('a2');
+  });
+
+  it('edit hides the original question onward without linking versions', async () => {
+    stubChatFetch();
+    const supersede = vi.spyOn(api, 'apiSupersedeMessages').mockResolvedValue(2);
+    const saveMessage = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useSendMessage(makeDeps({ saveMessage })));
+
+    await result.current.handleEditAndResend('u2', 'and what about adoption leave?');
+
+    expect(supersede).toHaveBeenCalledWith('chat_1', 'u2');
+    const saved = saveMessage.mock.calls.map(([, m]) => m as Message);
+    expect(saved.find((m) => m.role === 'assistant')?.versionOf ?? null).toBeNull();
+  });
+
+  it('a normal send does not touch stored history', async () => {
+    stubChatFetch();
+    const supersede = vi.spyOn(api, 'apiSupersedeMessages').mockResolvedValue(0);
+    const { result } = renderHook(() => useSendMessage(makeDeps({ prompt: 'new question' })));
+    await result.current.handleSend();
+    expect(supersede).not.toHaveBeenCalled();
   });
 });

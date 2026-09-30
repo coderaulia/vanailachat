@@ -24,6 +24,8 @@ Vanaila Chat operates on a unified codebase serving two targets:
    - Database: Native Rust SQLite (`rusqlite` bundled) with identical schema migrations
    - Distro Bundles: Debian/Ubuntu (`.deb`), Fedora/RHEL (`.rpm`), Universal (`.AppImage`), Arch (`PKGBUILD`), Flatpak
 
+**Keeping the two backends in sync:** `contracts/api-shapes.json` lists the camelCase keys both the web API and the desktop IPC must return for each entity the frontend reads. `src/backend/__tests__/api-contract.test.ts` and `src-tauri/src/contract.rs` check against it, so renaming a field on one side only fails a test. When you add a field the frontend depends on, add it to the contract.
+
 ---
 
 ## 🚀 2. Release Cadence Policy: Desktop vs. Web Version

@@ -84,19 +84,12 @@ function resolveWithinRoot(root: string, requestedPath: string): string {
 
 /**
  * Resolve path within root AND realpath-check the result so symlinks pointing
- * outside the project cannot be followed. Falls back to the lexical path when
- * realpath fails (target does not exist yet) — for read_file the read will
- * then fail naturally with ENOENT.
+ * outside the project cannot be followed. When the target does not exist yet
+ * (a new file), the nearest existing ancestor is checked instead, so a
+ * symlinked parent directory cannot redirect a write outside the root.
  */
 async function resolveWithinRootRealpath(root: string, requestedPath: string): Promise<string> {
   const lexical = resolveWithinRoot(root, requestedPath);
-
-  let real: string;
-  try {
-    real = await fs.realpath(lexical);
-  } catch {
-    return lexical;
-  }
 
   let realRoot: string;
   try {
@@ -105,11 +98,25 @@ async function resolveWithinRootRealpath(root: string, requestedPath: string): P
     realRoot = root;
   }
 
+  let existing = lexical;
+  const missing: string[] = [];
+  let real: string | null = null;
+  while (real === null) {
+    try {
+      real = await fs.realpath(existing);
+    } catch {
+      const parent = path.dirname(existing);
+      if (parent === existing) return lexical;
+      missing.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+
   if (!isWithinPath(realRoot, real)) {
     throw new Error('Access denied: symlink target outside project directory');
   }
 
-  return real;
+  return missing.length > 0 ? path.join(real, ...missing) : real;
 }
 
 function isIgnoredPath(relativePath: string, patterns: string[]): boolean {
@@ -330,6 +337,24 @@ async function assertSafeOutboundUrl(rawUrl: string): Promise<void> {
   }
 }
 
+const UNSAFE_GIT_FLAGS = ['--output', '--no-index', '--ext-diff', '--textconv', '--contents'];
+
+/** Longest a run_command child may live; npm builds and test runs can be slow. */
+const RUN_COMMAND_TIMEOUT_MS = 180_000;
+
+/**
+ * Environment for child processes. `npm run test` executes repository
+ * scripts, so provider API keys held by this server are not passed through.
+ */
+export function childProcessEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (/(_API_KEY|_TOKEN|_SECRET|PASSWORD)$/i.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 export function isAllowedCommand(command: string, args: string[]): boolean {
   command = command.toLowerCase();
   if (command === 'git') {
@@ -341,6 +366,11 @@ export function isAllowedCommand(command: string, args: string[]): boolean {
     if (!READ_ONLY_GIT.includes(args[0])) return false;
     // `git branch -D name` deletes; only the plain listing form is allowed.
     if (args[0] === 'branch' && args.some((arg) => arg.startsWith('-') && arg !== '-a' && arg !== '-v')) {
+      return false;
+    }
+    // Flags that write files, read outside the repository, or run programs
+    // named in repository config.
+    if (args.some((arg) => UNSAFE_GIT_FLAGS.some((flag) => arg === flag || arg.startsWith(`${flag}=`)))) {
       return false;
     }
     return true;
@@ -390,6 +420,21 @@ async function readWithFs(
   );
 
   return sections.join('\n').trim() || 'Command completed with no output';
+}
+
+/** Races a tool against its deadline and always clears the timer. */
+async function withTimeout(work: Promise<string>, timeoutMs: number, name: string): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<string>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function executableForPlatform(command: string, platform: NodeJS.Platform): string {
@@ -646,6 +691,7 @@ export class ToolService {
     },
     run_command: {
       name: 'run_command',
+      timeoutMs: RUN_COMMAND_TIMEOUT_MS + 5_000,
       description:
         'Run an allowlisted Git or npm command. For files, use list_directory, read_file, and search_files instead of OS shell commands.',
       parameters: {
@@ -699,7 +745,10 @@ export class ToolService {
           const executable = executableForPlatform(normalizedCommand, process.platform);
           const { stdout, stderr } = await execFilePromise(executable, commandArgs, {
             cwd: baseRoot,
+            env: childProcessEnv(),
             maxBuffer: 1024 * 1024,
+            // Kills the child; the executeTool race alone would leave it running.
+            timeout: RUN_COMMAND_TIMEOUT_MS,
             shell: process.platform === 'win32' && executable.endsWith('.cmd'),
           });
 
@@ -897,13 +946,7 @@ export class ToolService {
     const timeoutMs = tool.timeoutMs ?? 30_000;
 
     try {
-      const result = await Promise.race([
-        tool.execute(args, projectRoot),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs),
-        ),
-      ]);
-      return result;
+      return await withTimeout(tool.execute(args, projectRoot), timeoutMs, name);
     } catch (error) {
       return `Tool failed: ${getErrorMessage(error)}`;
     }
@@ -926,12 +969,7 @@ export class ToolService {
     const start = performance.now();
 
     try {
-      const output = await Promise.race([
-        tool.execute(args, projectRoot),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error(`Tool '${name}' timed out after ${timeoutMs}ms`)), timeoutMs),
-        ),
-      ]);
+      const output = await withTimeout(tool.execute(args, projectRoot), timeoutMs, name);
       return {
         success: true,
         output,

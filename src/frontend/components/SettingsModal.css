@@ -1154,3 +1154,49 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Model download ── */
+.settings-model-pull__row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-model-pull__row .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-model-pull__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.settings-model-pull__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+
+.settings-model-pull__bar span {
+  display: block;
+  height: 100%;
+  background: var(--bg-accent);
+  transition: width 0.2s ease;
+}
+
+.settings-model-pull__bar span.is-indeterminate {
+  opacity: 0.35;
+  animation: settings-pull-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes settings-pull-pulse {
+  50% { opacity: 0.7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-model-pull__bar span { transition: none; }
+  .settings-model-pull__bar span.is-indeterminate { animation: none; }
+}

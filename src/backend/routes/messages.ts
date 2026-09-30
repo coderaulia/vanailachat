@@ -64,6 +64,8 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
         createdAt?: unknown;
         created_at?: unknown;
         timestamp?: unknown;
+        versionOf?: unknown;
+        version_of?: unknown;
       };
 
       const chatId = typeof body.chatId === 'string' ? body.chatId : typeof body.chat_id === 'string' ? body.chat_id : '';
@@ -88,12 +90,38 @@ export function messagesRouter(dependencies: AppDependencies): Hono {
         promptTokens: toOptionalNumber(body.promptTokens ?? body.prompt_tokens),
         completionTokens: toOptionalNumber(body.completionTokens ?? body.completion_tokens),
         createdAt: toOptionalNumber(body.createdAt ?? body.created_at ?? body.timestamp),
+        versionOf: typeof body.versionOf === 'string' ? body.versionOf : typeof body.version_of === 'string' ? body.version_of : null,
       });
 
       return context.json({ message }, 201);
     } catch (error) {
       const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
+    }
+  });
+
+  /**
+   * POST /api/messages/supersede — hide a message and everything after it,
+   * called before a regenerate or edit re-sends from that point.
+   */
+  app.post('/supersede', async (context) => {
+    const body = (await context.req.json().catch(() => ({}))) as { chatId?: unknown; fromMessageId?: unknown };
+    if (typeof body.chatId !== 'string' || typeof body.fromMessageId !== 'string') {
+      return context.json({ error: 'chatId and fromMessageId are required' }, 400);
+    }
+    try {
+      return context.json({ superseded: dependencies.supersedeMessagesFrom(body.chatId, body.fromMessageId) });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'Unknown error') }, 500);
+    }
+  });
+
+  /** GET /api/messages/:id/versions — every answer in a regenerate group. */
+  app.get('/:id/versions', (context) => {
+    try {
+      return context.json({ versions: dependencies.listMessageVersions(context.req.param('id')) });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'Unknown error') }, 500);
     }
   });
 

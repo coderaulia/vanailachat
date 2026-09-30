@@ -6,11 +6,14 @@ use std::collections::HashMap;
 use tauri::State;
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportBundle {
+    #[serde(alias = "exported_at", default)]
     pub exported_at: i64,
     pub projects: Vec<ProjectRecord>,
     pub chats: Vec<ChatRecord>,
     pub messages: Vec<MessageRecord>,
+    #[serde(default)]
     pub settings: HashMap<String, String>,
 }
 
@@ -22,6 +25,7 @@ pub struct ImportPayload {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub imported_projects: usize,
     pub imported_chats: usize,
@@ -30,6 +34,7 @@ pub struct ImportResult {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrainingStats {
     pub pairs: usize,
     pub explicit: usize,
@@ -138,7 +143,14 @@ pub async fn import_data(
     if let Some(messages) = payload.messages {
         for m in messages {
             if imported_chat_ids.contains(&m.chat_id) {
-                let _ = db.save_message(&m.id, &m.chat_id, &m.role, &m.content);
+                let _ = db.save_message(
+                    &m.id,
+                    &m.chat_id,
+                    &m.role,
+                    &m.content,
+                    Some(m.created_at),
+                    m.version_of.as_deref(),
+                );
                 imported_messages += 1;
             }
         }

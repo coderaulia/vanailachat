@@ -8,6 +8,7 @@ import type { ModelMetadataMap } from '../config/modelMetadata';
 import { getContextWindowForModel } from '../config/modelMetadata';
 import { useSendMessage } from './useSendMessage';
 import { useResearch } from './useResearch';
+import { apiFetchSettings, apiRespondToApproval, apiUpdateSetting } from '../lib/api';
 
 export function useChatSession(deps: {
   selectedModel: string;
@@ -56,13 +57,8 @@ export function useChatSession(deps: {
   useEffect(() => { currentChatIdRef.current = currentChatId; }, [currentChatId]);
 
   useEffect(() => {
-    fetch('/api/settings/require_tool_approval')
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => {
-        if (data && typeof (data as { value?: string }).value === 'string') {
-          setIsAutoApprove((data as { value: string }).value === 'false');
-        }
-      })
+    apiFetchSettings()
+      .then((settings) => setIsAutoApprove(settings.require_tool_approval === 'false'))
       .catch(() => {});
   }, []);
 
@@ -70,11 +66,7 @@ export function useChatSession(deps: {
     const next = !isAutoApprove;
     setIsAutoApprove(next);
     try {
-      await fetch('/api/settings/require_tool_approval', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: next ? 'false' : 'true' }),
-      });
+      await apiUpdateSetting('require_tool_approval', next ? 'false' : 'true');
       deps.setStatusText(
         next
           ? 'Auto-approve enabled: Tools will execute automatically'
@@ -141,19 +133,11 @@ export function useChatSession(deps: {
 
     if (autoApproveRemaining) {
       setIsAutoApprove(true);
-      void fetch('/api/settings/require_tool_approval', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: 'false' }),
-      }).catch(() => {});
+      void apiUpdateSetting('require_tool_approval', 'false').catch(() => {});
     }
 
     try {
-      await fetch('/api/chat/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: approval.id, approved }),
-      });
+      await apiRespondToApproval(approval.id, approved);
     } catch {
       deps.setStatusText('Could not send the decision — the request will time out and be denied.');
     }

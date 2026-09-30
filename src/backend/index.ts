@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
+import { isLoopbackHost } from './middleware/accessToken.js';
 import { DatabaseService } from './services/database.js';
 import { OllamaService } from './services/ollama.js';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -57,6 +58,14 @@ try {
   process.exit(1);
 }
 
+// Binding beyond loopback exposes filesystem and shell tools, so it is only
+// allowed together with an access token.
+const HOST = process.env.HOST?.trim() || '127.0.0.1';
+if (!isLoopbackHost(HOST) && !process.env.VANAILA_ACCESS_TOKEN?.trim()) {
+  console.error(`[FATAL] HOST=${HOST} is not loopback. Set VANAILA_ACCESS_TOKEN to expose the API on the network.`);
+  process.exit(1);
+}
+
 const app = createApp();
 
 function startServer(port: number, retries: number): Promise<number> {
@@ -65,10 +74,10 @@ function startServer(port: number, retries: number): Promise<number> {
       {
         fetch: app.fetch,
         port,
-        hostname: '127.0.0.1',
+        hostname: HOST,
       },
       (info: { port: number }) => {
-        console.log(`[SERVER] Listening on http://127.0.0.1:${info.port}`);
+        console.log(`[SERVER] Listening on http://${HOST}:${info.port}`);
         try {
           const portFile = resolve(import.meta.dirname, '../../.port');
           writeFileSync(portFile, String(info.port));

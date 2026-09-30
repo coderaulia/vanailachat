@@ -4,17 +4,9 @@ import { DATE_FORMATTER } from '../lib/date';
 import './Sidebar.css';
 
 import { useChat } from '../context/ChatContext';
+import { apiSearchMessages } from '../lib/api';
+import type { MessageSearchHit } from '../lib/api';
 import { Skills } from './Skills';
-
-/** One message-body hit from the FTS search endpoint. */
-interface ContentMatch {
-  chatId: string;
-  chatTitle: string;
-  messageId: string;
-  role: string;
-  snippet: string;
-  createdAt: number;
-}
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
@@ -33,6 +25,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     handleDeleteChat: onDeleteChat,
     handleRenameChat: onRenameChat,
     handleTogglePin: onTogglePin,
+    handleToggleArchive: onToggleArchive,
     setViewMode,
     isDarkMode,
     toggleTheme,
@@ -65,6 +58,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [isSkillsOpen, setIsSkillsOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -116,7 +110,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
   // Title matches resolve instantly from local state; message-body matches
   // need the FTS index, so they arrive asynchronously and are merged in.
-  const [contentMatches, setContentMatches] = useState<ContentMatch[]>([]);
+  const [contentMatches, setContentMatches] = useState<MessageSearchHit[]>([]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -128,14 +122,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const scope = selectedProjectId ? `&projectId=${encodeURIComponent(selectedProjectId)}` : '';
-        const response = await fetch(
-          `/api/messages/search?q=${encodeURIComponent(query)}${scope}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) return;
-        const body = await response.json() as { results?: ContentMatch[] };
-        setContentMatches(body.results ?? []);
+        const results = await apiSearchMessages(query, selectedProjectId ?? undefined, controller.signal);
+        if (!controller.signal.aborted) setContentMatches(results);
       } catch {
         // Aborted or offline — leave the title-only results in place.
       }
@@ -154,10 +142,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     }
   }
 
-  const filteredHistories = histories.filter(([id, chat]) => {
-    const chatProj = chat.projectId || null;
-    const currentProj = selectedProjectId || null;
-    if (chatProj !== currentProj) return false;
+  const projectHistories = histories.filter(([, chat]) => (chat.projectId || null) === (selectedProjectId || null));
+  const archivedCount = projectHistories.filter(([, chat]) => chat.archived).length;
+
+  const filteredHistories = projectHistories.filter(([id, chat]) => {
+    if (Boolean(chat.archived) !== showArchived) return false;
     if (!searchQuery.trim()) return true;
     if (chat.title?.toLowerCase().includes(searchQuery.toLowerCase())) return true;
     return snippetByChatId.has(id);
@@ -266,8 +255,18 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
           <div className="sidebar-section">
             <div className="section-heading">
-              <h2 className="section-title">Chats</h2>
+              <h2 className="section-title">{showArchived ? 'Archived' : 'Chats'}</h2>
               <span className="section-meta">{filteredHistories.length}</span>
+              {(archivedCount > 0 || showArchived) && (
+                <button
+                  type="button"
+                  className="section-toggle"
+                  aria-pressed={showArchived}
+                  onClick={() => setShowArchived((value) => !value)}
+                >
+                  {showArchived ? 'Back to chats' : `Archived (${archivedCount})`}
+                </button>
+              )}
             </div>
 
             <div className="sidebar-search">
@@ -371,6 +370,23 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                         <path d="m9 10-3 3"></path>
                         <path d="m15 10 3 3"></path>
                         <path d="M8 3h8l-1 7H9L8 3z"></path>
+                      </svg>
+                    </button>
+
+                    <button
+                      className="history-item__archive"
+                      type="button"
+                      aria-label={chat.archived ? 'Restore chat' : 'Archive chat'}
+                      title={chat.archived ? 'Restore chat' : 'Archive chat'}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleArchive(id);
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="2" y="3" width="20" height="5" rx="1"></rect>
+                        <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path>
+                        <path d="M10 12h4"></path>
                       </svg>
                     </button>
 

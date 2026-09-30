@@ -24,11 +24,7 @@
         "transparent": false,
         "center": true
       }
-    ],
-    "trayIcon": {
-      "iconPath": "icons/32x32.png",
-      "iconAsTemplate": false
-    }
+    ]
   },
   "bundle": {
     "active": true,

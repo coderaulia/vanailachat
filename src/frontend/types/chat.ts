@@ -20,6 +20,10 @@ export interface Message {
   completionTokens?: number | null;
   timestamp: number;
   toolActivities?: ToolActivity[];
+  /** Id of the first answer in this message's regenerate group. */
+  versionOf?: string | null;
+  /** Answers in the group, including replaced ones; absent or 1 when never regenerated. */
+  versionCount?: number;
 }
 
 export interface Chat {
@@ -30,6 +34,7 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
   pinned: boolean;
+  archived?: boolean;
   role: string | null;
   model: string | null;
   projectRoot: string | null;
@@ -58,6 +63,7 @@ export interface ApiChat {
   projectRoot?: string | null;
   systemPrompt?: string | null;
   pinned?: boolean;
+  archived?: boolean;
   role?: string | null;
   createdAt: number;
   updatedAt: number;

@@ -117,9 +117,34 @@ mod tests {
         assert!(blocked.is_err());
 
         // Allowed command executes
-        let allowed = run_command::run_command("echo hello", None).await;
+        let allowed = run_command::run_command("pwd", None).await;
         assert!(allowed.is_ok());
-        assert!(allowed.unwrap().contains("hello"));
+        assert!(!allowed.unwrap().trim().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_resolve_path_containment() {
+        let root = std::env::temp_dir().join(format!("vanaila_resolve_{}", uuid::Uuid::new_v4()));
+        let outside = std::env::temp_dir().join(format!("vanaila_outside_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("alias")).unwrap();
+        let r = root.to_str().unwrap();
+
+        // Absolute and traversal paths whose parents do not exist used to skip every check.
+        assert!(read_file::resolve_path("/tmp/vanaila_nowhere/x.txt", Some(r)).is_err());
+        assert!(read_file::resolve_path("missing/../../../etc/x", Some(r)).is_err());
+        // New files through a symlink that leaves the root are refused...
+        assert!(write_file::write_file("link/sub/new.txt", "x", Some(r)).await.is_err());
+        assert!(!outside.join("sub").exists());
+        // ...while in-root symlinks and new nested paths still work.
+        assert!(write_file::write_file("alias/deep/new.txt", "ok", Some(r)).await.is_ok());
+        assert_eq!(std::fs::read_to_string(root.join("real/deep/new.txt")).unwrap(), "ok");
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 }
 

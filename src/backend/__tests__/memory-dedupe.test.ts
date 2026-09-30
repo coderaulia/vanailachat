@@ -11,8 +11,7 @@ function freshDb(): string {
 }
 
 function resetSingleton() {
-  (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
-  (DatabaseService as unknown as { db: unknown }).db = null;
+  DatabaseService.close();
 }
 
 describe('memory de-duplication', () => {

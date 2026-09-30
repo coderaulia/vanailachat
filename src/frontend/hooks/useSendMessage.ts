@@ -4,7 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiCreateCodingSession, apiFetchSettings, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
+import { apiCreateCodingSession, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -99,10 +99,21 @@ export function useSendMessage(deps: SendMessageDeps) {
    * `baseConversation` replaces the history the new turn is appended to, so a
    * retry can drop the answer (and optionally the question) being replaced
    * instead of stacking a duplicate pair onto the thread.
+   *
+   * `supersedeFromId` hides that stored message and everything after it once
+   * the new turn is saved, so the replaced messages do not come back on
+   * reload. `versionOf`/`versionCount` link a regenerated answer to the
+   * earlier ones so they stay browsable.
    */
   const handleSend = async (
     event?: FormEvent,
-    options?: { promptOverride?: string; baseConversation?: Message[] },
+    options?: {
+      promptOverride?: string;
+      baseConversation?: Message[];
+      supersedeFromId?: string;
+      versionOf?: string;
+      versionCount?: number;
+    },
   ) => {
     if (event) event.preventDefault();
 
@@ -177,10 +188,22 @@ export function useSendMessage(deps: SendMessageDeps) {
       content: '',
       timestamp: startedAt + 1,
       toolActivities: [],
+      versionOf: options?.versionOf ?? null,
+      versionCount: options?.versionCount,
     };
 
     const optimisticConversation = [...conversation, userMessage, assistantMessage];
     setConversation(optimisticConversation);
+
+    // Hide the replaced messages in storage before the new turn starts; the web
+    // server writes the new reply mid-stream, so doing this later would hide it too.
+    if (options?.supersedeFromId && activeChatId) {
+      try {
+        await apiSupersedeMessages(activeChatId, options.supersedeFromId);
+      } catch (error) {
+        console.error('[HISTORY] Failed to supersede replaced messages', error);
+      }
+    }
     setPrompt('');
     setAttachedFiles([]);
 
@@ -656,6 +679,7 @@ export function useSendMessage(deps: SendMessageDeps) {
         promptTokens: promptTokens ?? null,
         completionTokens: completionTokens ?? null,
         toolActivities: currentToolActivities.length > 0 ? [...currentToolActivities] : undefined,
+        versionOf: assistantMessage.versionOf,
       };
 
       const updateFinal = (conv: Message[]) => {
@@ -738,9 +762,13 @@ export function useSendMessage(deps: SendMessageDeps) {
     const userMessage = conversation[userIndex];
     if (!userMessage.content.trim()) return;
 
+    const previous = conversation[assistantIndex];
     await handleSend(undefined, {
       promptOverride: userMessage.content,
       baseConversation: conversation.slice(0, userIndex),
+      supersedeFromId: userMessage.id,
+      versionOf: previous.versionOf ?? previous.id,
+      versionCount: (previous.versionCount ?? 1) + 1,
     });
   };
 
@@ -755,6 +783,7 @@ export function useSendMessage(deps: SendMessageDeps) {
     await handleSend(undefined, {
       promptOverride: newContent,
       baseConversation: conversation.slice(0, userIndex),
+      supersedeFromId: userMessageId,
     });
   };
 
