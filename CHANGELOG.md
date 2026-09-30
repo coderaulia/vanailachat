@@ -2,6 +2,34 @@
 
 All notable changes to Vanaila Chat are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Earlier answers stay available after Regenerate: step through them with the 1 / 2 switcher on the answer.
+- Archive chats from the sidebar; archived chats sit behind an **Archived** toggle.
+- Download Ollama models from **Settings → AI Connection** with a live progress bar (web and desktop).
+- Chat header shows the chat's total tokens and, for priced models, estimated cost.
+- Desktop: tray menu (Show, New chat, Quit), global `Ctrl+Shift+Space` show/hide, and a daily update notice from GitHub Releases.
+- Optional `VANAILA_ACCESS_TOKEN` (and `HOST`) for using the web edition from other devices.
+- Automatic database backup before migrations (`data/backups`, newest five kept).
+- Shared API contract (`contracts/api-shapes.json`) tested against both backends.
+
+### Fixed
+
+- Regenerated or edited messages no longer reappear after reloading a chat.
+- Databases created before the migration table existed now receive every migration after v4.
+- Blockquotes, GitHub-style alerts and formatted link text render as markdown instead of raw text.
+- Model output can no longer render forms, inputs or inline styles.
+- `write_file` can no longer create files through a symlinked directory that leaves the project; `run_command` blocks git flags that write files or read outside the repo, kills children at its timeout, and does not pass API keys to them.
+- Desktop: chat rename/pin/archive, search, ratings, tool approvals and auto-approve now work (they called the web API); desktop paths with missing parents are confined to the project; desktop records use the same field names as the web API, so exports move between editions.
+- Training export now honours **Include distillation pairs**.
+
+### Changed
+
+- Settings modal split into one component per tab with a shared autosaving store.
+- Backend database code split into per-domain modules behind `DatabaseService`.
+
 ## [0.3.2] - 2026-09-02
 
 ### Fixed
