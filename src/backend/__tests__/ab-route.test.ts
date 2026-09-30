@@ -10,8 +10,7 @@ describe('A/B route', () => {
 
   afterEach(() => {
     if (dbDir) {
-      (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
-      (DatabaseService as unknown as { db: unknown }).db = null;
+      DatabaseService.close();
       try {
         if (fs.existsSync(dbDir)) fs.rmSync(dbDir, { recursive: true, force: true });
       } catch {
@@ -175,8 +174,7 @@ describe('A/B route', () => {
   it('DatabaseService.recordAbPick creates chat and training pair with default project safely', () => {
     dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-ab-test-'));
     const testDbPath = path.join(dbDir, 'test.sqlite');
-    (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
-    (DatabaseService as unknown as { db: unknown }).db = null;
+    DatabaseService.close();
     DatabaseService.initialize(testDbPath);
 
     const result = DatabaseService.recordAbPick({

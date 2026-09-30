@@ -11,7 +11,7 @@ describe('message full-text search', () => {
   beforeEach(() => {
     dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-fts-')), 'test.sqlite');
     // Reset the singleton so initialize() targets the throwaway database.
-    (DatabaseService as unknown as { db: unknown }).db = null;
+    DatabaseService.close();
     DatabaseService.initialize(dbPath);
 
     const project = DatabaseService.listProjects()[0];
@@ -34,8 +34,7 @@ describe('message full-text search', () => {
   });
 
   afterEach(() => {
-    (DatabaseService as unknown as { db: { close: () => void } | null }).db?.close();
-    (DatabaseService as unknown as { db: unknown }).db = null;
+    DatabaseService.close();
   });
 
   it('finds messages whose chat title does not mention the term', () => {
