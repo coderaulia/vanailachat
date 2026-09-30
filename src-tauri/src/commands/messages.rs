@@ -1,4 +1,4 @@
-use crate::db::models::MessageRecord;
+use crate::db::models::{FeedbackRecord, MessageRecord, MessageSearchHit};
 use crate::error::AppResult;
 use crate::state::AppState;
 use serde::Deserialize;
@@ -36,9 +36,10 @@ pub async fn search_messages(
     state: State<'_, AppState>,
     query: String,
     limit: Option<usize>,
-) -> AppResult<Vec<MessageRecord>> {
+    project_id: Option<String>,
+) -> AppResult<Vec<MessageSearchHit>> {
     let db = state.db.lock();
-    db.search_messages(&query, limit)
+    db.search_messages(&query, limit, project_id.as_deref())
 }
 
 #[derive(Deserialize)]
@@ -61,4 +62,10 @@ pub async fn set_feedback(
         payload.edited_content.as_deref(),
         payload.implicit.unwrap_or(false),
     )
+}
+
+#[tauri::command]
+pub async fn get_feedback(state: State<'_, AppState>, message_id: String) -> AppResult<Option<FeedbackRecord>> {
+    let db = state.db.lock();
+    db.get_feedback(&message_id)
 }

@@ -315,33 +315,50 @@ impl Database {
         })
     }
 
-    pub fn search_messages(&self, query: &str, limit: Option<usize>) -> AppResult<Vec<MessageRecord>> {
-        let lim = limit.unwrap_or(50) as i64;
+    /// Full-text search over message bodies, matching the web backend's
+    /// `searchMessages`: each word is quoted so arbitrary typing (quotes,
+    /// `AND`, parentheses) cannot raise an FTS5 syntax error.
+    pub fn search_messages(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+        project_id: Option<&str>,
+    ) -> AppResult<Vec<MessageSearchHit>> {
+        let lowered = query.to_lowercase();
+        let terms: Vec<String> = lowered
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|term| term.chars().count() > 1)
+            .map(|term| format!("\"{term}\""))
+            .collect();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let match_expression = terms.join(" AND ");
+        let lim = limit.unwrap_or(30) as i64;
+
         let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.chat_id, m.role, m.content, m.created_at 
-             FROM messages m
-             JOIN messages_fts fts ON m.rowid = fts.rowid
-             WHERE messages_fts MATCH ?1
-             ORDER BY rank LIMIT ?2"
+            "SELECT m.id, m.chat_id, m.role, m.created_at, c.title, c.project_id,
+                    snippet(messages_fts, 0, '', '', '…', 12)
+             FROM messages_fts
+             JOIN messages m ON m.rowid = messages_fts.rowid
+             JOIN chats c ON c.id = m.chat_id
+             WHERE messages_fts MATCH ?1 AND (?2 IS NULL OR c.project_id = ?2)
+             ORDER BY bm25(messages_fts)
+             LIMIT ?3",
         )?;
-        let rows = stmt.query_map(params![query, lim], |row| {
-            Ok(MessageRecord {
-                id: row.get(0)?,
+        let rows = stmt.query_map(params![match_expression, project_id, lim], |row| {
+            Ok(MessageSearchHit {
+                message_id: row.get(0)?,
                 chat_id: row.get(1)?,
                 role: row.get(2)?,
-                content: row.get(3)?,
-                created_at: row.get(4)?,
+                created_at: row.get(3)?,
+                chat_title: row.get(4)?,
+                project_id: row.get(5)?,
+                snippet: row.get(6)?,
             })
         })?;
-
-        let mut results = Vec::new();
-        for r in rows {
-            results.push(r?);
-        }
-        Ok(results)
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
-
-    // ── Settings CRUD ───────────────────────────────────────────────────
 
     pub fn get_all_settings(&self) -> AppResult<std::collections::HashMap<String, String>> {
         let mut stmt = self.conn.prepare("SELECT key, value FROM settings")?;
@@ -445,6 +462,24 @@ impl Database {
             params![message_id, rating, edited_content, implicit as i32, now],
         )?;
         Ok(())
+    }
+
+    pub fn get_feedback(&self, message_id: &str) -> AppResult<Option<FeedbackRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT message_id, rating, edited_content, COALESCE(implicit, 0), created_at, updated_at
+             FROM message_feedback WHERE message_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![message_id], |row| {
+            Ok(FeedbackRecord {
+                message_id: row.get(0)?,
+                rating: row.get(1)?,
+                edited_content: row.get(2)?,
+                implicit: row.get::<_, i32>(3)? != 0,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
     }
 
     pub fn list_training_examples(&self) -> AppResult<Vec<TrainingExample>> {
@@ -551,9 +586,16 @@ mod tests {
         assert_eq!(saved.harness, "pi-harness");
         assert_eq!(db.get_coding_session("c1").expect("load coding session failed").unwrap().workspace_path, "/tmp");
 
-        let search_res = db.search_messages("Desktop", None).expect("FTS5 search failed");
+        let search_res = db.search_messages("Desktop", None, None).expect("FTS5 search failed");
         assert_eq!(search_res.len(), 1);
-        assert_eq!(search_res[0].id, "m1");
+        assert_eq!(search_res[0].message_id, "m1");
+        assert_eq!(search_res[0].chat_title, "Test Chat");
+        assert!(db.search_messages("\"unbalanced AND (", None, None).is_ok());
+
+        db.set_feedback("m2", 1, None, false).expect("set feedback failed");
+        assert_eq!(db.get_feedback("m2").unwrap().unwrap().rating, 1);
+        assert!(db.get_feedback("m1").unwrap().is_none());
+        assert!(db.search_messages("desktop", None, Some("other-project")).unwrap().is_empty());
 
         // 4. Settings
         db.set_setting("theme", "dark").expect("set setting failed");

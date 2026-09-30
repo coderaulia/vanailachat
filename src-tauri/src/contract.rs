@@ -64,6 +64,10 @@ mod tests {
             chat_id: "c".into(), harness: "pi-harness".into(), harness_session_id: None,
             workspace_path: "/tmp".into(), status: "ready".into(), created_at: 1, updated_at: 1,
         });
+        assert_shape("messageSearchHit", MessageSearchHit {
+            chat_id: "c".into(), chat_title: "C".into(), project_id: None, message_id: "m".into(),
+            role: "user".into(), snippet: "…".into(), created_at: 1,
+        });
         assert_shape("exportBundle", ExportBundle {
             exported_at: 1, projects: vec![project()], chats: vec![chat()], messages: vec![message()],
             settings: Default::default(),

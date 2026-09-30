@@ -47,4 +47,5 @@ describe('web API matches contracts/api-shapes.json', () => {
   it('trainingStats', async () => expectShape('trainingStats', await get('/api/training/stats')));
   it('codingSession', async () => expectShape('codingSession', (await get(`/api/coding/sessions/${chatId}`)).session));
   it('exportBundle', async () => expectShape('exportBundle', await get('/api/export')));
+  it('messageSearchHit', async () => expectShape('messageSearchHit', first((await get('/api/messages/search?q=question')).results)));
 });

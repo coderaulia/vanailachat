@@ -7,5 +7,6 @@
   "trainingExample": ["id", "chatId", "chatTitle", "userContent", "assistantContent", "rating", "edited", "createdAt"],
   "trainingStats": ["pairs", "explicit", "edited", "implicit", "distillation", "topChats", "oldest", "newest"],
   "codingSession": ["chatId", "harness", "harnessSessionId", "workspacePath", "status", "createdAt", "updatedAt"],
-  "exportBundle": ["projects", "chats", "messages"]
+  "exportBundle": ["projects", "chats", "messages"],
+  "messageSearchHit": ["chatId", "chatTitle", "projectId", "messageId", "role", "snippet", "createdAt"]
 }

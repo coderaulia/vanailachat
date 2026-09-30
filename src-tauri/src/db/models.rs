@@ -136,3 +136,16 @@ pub struct CodingSessionRecord {
     #[serde(alias = "updated_at")]
     pub updated_at: i64,
 }
+
+/// One message-body hit from full-text search (web: `GET /api/messages/search`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageSearchHit {
+    pub chat_id: String,
+    pub chat_title: String,
+    pub project_id: Option<String>,
+    pub message_id: String,
+    pub role: String,
+    pub snippet: String,
+    pub created_at: i64,
+}

@@ -306,6 +306,68 @@ export async function apiFetchMessages(chatId: string): Promise<ApiMessageDto[]>
   return Array.isArray(data.messages) ? data.messages : [];
 }
 
+/** Answers a parked tool-call approval request. */
+export async function apiRespondToApproval(id: string, approved: boolean): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('approve_tool', { id, approved });
+    return;
+  }
+  await requestApi('/api/chat/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, approved }),
+  });
+}
+
+/** One message-body hit from full-text search; same shape on web and desktop. */
+export interface MessageSearchHit {
+  chatId: string;
+  chatTitle: string;
+  projectId?: string | null;
+  messageId: string;
+  role: string;
+  snippet: string;
+  createdAt: number;
+}
+
+export async function apiSearchMessages(query: string, projectId?: string, signal?: AbortSignal): Promise<MessageSearchHit[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MessageSearchHit[]>('search_messages', { query, projectId: projectId ?? null });
+  }
+  const scope = projectId ? `&projectId=${encodeURIComponent(projectId)}` : '';
+  const data = await requestApi<{ results?: MessageSearchHit[] }>(
+    `/api/messages/search?q=${encodeURIComponent(query)}${scope}`,
+    { signal },
+  );
+  return data.results ?? [];
+}
+
+/** Current rating for a message: 1, -1, 0, or null when never rated. */
+export async function apiGetFeedback(messageId: string): Promise<number | null> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const feedback = await invoke<{ rating: number } | null>('get_feedback', { messageId });
+    return feedback?.rating ?? null;
+  }
+  const data = await requestApi<{ feedback: { rating: number } | null }>(`/api/messages/${encodeURIComponent(messageId)}/feedback`);
+  return data.feedback?.rating ?? null;
+}
+
+export async function apiSetFeedback(messageId: string, rating: number): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('set_feedback', { payload: { message_id: messageId, rating } });
+    return;
+  }
+  await requestApi(`/api/messages/${encodeURIComponent(messageId)}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+}
+
 export async function apiSaveMessage(payload: {
   id: string;
   chat_id?: string;

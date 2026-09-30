@@ -76,6 +76,7 @@ pub fn run() {
             commands::messages::save_message,
             commands::messages::search_messages,
             commands::messages::set_feedback,
+            commands::messages::get_feedback,
             commands::models::get_models,
             commands::models::pull_model,
             commands::projects::get_projects,

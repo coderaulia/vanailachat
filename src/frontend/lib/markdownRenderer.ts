@@ -121,12 +121,16 @@ async function buildRenderer(): Promise<MarkdownRenderFn> {
   hljs.registerLanguage('markdown', markdownModule.default);
 
   const renderer = new marked.Renderer();
-  renderer.link = ({ href, title, text }) => {
+  // marked passes raw markdown in `text`; the children must be parsed through
+  // `this.parser` or nested formatting shows up as literal asterisks.
+  renderer.link = function ({ href, title, tokens }) {
+    const text = this.parser.parseInline(tokens);
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
     return `<a href="${escapeHtml(href || '')}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
   };
 
-  renderer.blockquote = ({ text }) => {
+  renderer.blockquote = function ({ tokens }) {
+    const text = this.parser.parse(tokens);
     const match = text.match(/^\s*<p>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(?:<br\s*\/?>)?\s*([\s\S]*)$/i);
     if (match) {
       const rawType = match[1].toUpperCase();
@@ -178,6 +182,10 @@ async function buildRenderer(): Promise<MarkdownRenderFn> {
     const preprocessed = preprocessMessageContent(content);
     const rendered = marked.parse(preprocessed) as string;
     return DOMPurify.sanitize(rendered, {
+      // Model output can carry prompt-injected HTML: no forms that post
+      // elsewhere, and no inline styles that could overlay fake UI.
+      FORBID_TAGS: ['form', 'input', 'textarea', 'select', 'option', 'style'],
+      FORBID_ATTR: ['style', 'action', 'formaction'],
       ADD_TAGS: ['details', 'summary', 'svg', 'path', 'polygon', 'polyline', 'rect', 'line', 'circle', 'g'],
       ADD_ATTR: [
         'target',

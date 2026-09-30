@@ -4,17 +4,9 @@ import { DATE_FORMATTER } from '../lib/date';
 import './Sidebar.css';
 
 import { useChat } from '../context/ChatContext';
+import { apiSearchMessages } from '../lib/api';
+import type { MessageSearchHit } from '../lib/api';
 import { Skills } from './Skills';
-
-/** One message-body hit from the FTS search endpoint. */
-interface ContentMatch {
-  chatId: string;
-  chatTitle: string;
-  messageId: string;
-  role: string;
-  snippet: string;
-  createdAt: number;
-}
 
 export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const {
@@ -116,7 +108,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
   // Title matches resolve instantly from local state; message-body matches
   // need the FTS index, so they arrive asynchronously and are merged in.
-  const [contentMatches, setContentMatches] = useState<ContentMatch[]>([]);
+  const [contentMatches, setContentMatches] = useState<MessageSearchHit[]>([]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -128,14 +120,8 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const scope = selectedProjectId ? `&projectId=${encodeURIComponent(selectedProjectId)}` : '';
-        const response = await fetch(
-          `/api/messages/search?q=${encodeURIComponent(query)}${scope}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) return;
-        const body = await response.json() as { results?: ContentMatch[] };
-        setContentMatches(body.results ?? []);
+        const results = await apiSearchMessages(query, selectedProjectId ?? undefined, controller.signal);
+        if (!controller.signal.aborted) setContentMatches(results);
       } catch {
         // Aborted or offline — leave the title-only results in place.
       }

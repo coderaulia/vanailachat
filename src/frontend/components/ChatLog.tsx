@@ -2,6 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { MouseEvent } from 'react';
 import './ChatLog.css';
 import { DATE_FORMATTER } from '../lib/date';
+import { apiGetFeedback, apiSetFeedback } from '../lib/api';
 import type { Message, ToolActivity } from '../types/chat';
 import { useChat } from '../context/ChatContext';
 import { estimateCost, formatCost } from '../config/modelPricing';
@@ -298,10 +299,8 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
       const updates: Record<string, number> = {};
       await Promise.all(assistantIds.map(async (id) => {
         try {
-          const response = await fetch(`/api/messages/${id}/feedback`);
-          if (!response.ok) return;
-          const data = await response.json() as { feedback: { rating: number } | null };
-          if (data.feedback) updates[id] = data.feedback.rating;
+          const rating = await apiGetFeedback(id);
+          if (rating !== null) updates[id] = rating;
         } catch {
           // ignore network errors
         }
@@ -322,12 +321,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
     setFeedbackRatings(prev => ({ ...prev, [id]: rating }));
 
     try {
-      const response = await fetch(`/api/messages/${id}/feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await apiSetFeedback(id, rating);
     } catch (error) {
       console.error('Failed to save feedback', error);
       // Roll back — refetch on next conversation change
