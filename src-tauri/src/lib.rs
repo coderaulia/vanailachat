@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod commands;
 mod contract;
 pub mod db;
@@ -42,19 +43,10 @@ pub fn run() {
         }
     };
 
-    // Load initial settings for providers from DB or environment
+    // Providers come from the saved settings, falling back to the environment.
     let all_settings = db.get_all_settings().unwrap_or_default();
-    let openai_key = all_settings
-        .get("openai_api_key")
-        .cloned()
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
-    let openrouter_key = all_settings
-        .get("openrouter_api_key")
-        .cloned()
-        .or_else(|| std::env::var("OPENROUTER_API_KEY").ok());
-
-    let provider_registry = ProviderRegistry::new(None, openai_key, openrouter_key);
-    let ollama_manager = OllamaManager::new(None, true);
+    let provider_registry = ProviderRegistry::from_settings(&all_settings, &|key| std::env::var(key).ok());
+    let ollama_manager = OllamaManager::new(Some(provider_registry.ollama().base_url()), true);
     let approval_service = ApprovalService::new();
 
     let app_state = AppState {
@@ -62,7 +54,7 @@ pub fn run() {
         provider_registry: Arc::new(Mutex::new(provider_registry)),
         ollama_manager: Arc::new(ollama_manager),
         approval_service: Arc::new(approval_service),
-        active_stream_abort: Arc::new(tokio::sync::Mutex::new(None)),
+        active_streams: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     tauri::Builder::default()
@@ -120,9 +112,18 @@ pub fn run() {
             commands::git::get_git_diff,
             commands::git::create_git_branch,
             commands::skills::get_skills,
-            commands::skills::install_skill,
+            commands::skills::get_skill_catalog,
+            commands::skills::install_catalog_skill,
+            commands::skills::install_custom_skill,
+            commands::skills::set_skill_enabled,
+            commands::skills::delete_skill,
+            commands::memory::get_memories,
+            commands::memory::add_memory,
+            commands::memory::delete_memory,
+            commands::memory::clear_memories,
             commands::research::start_research,
             commands::chat::start_chat,
+            commands::chat::chat_once,
             commands::chat::cancel_chat,
             commands::chat::approve_tool,
             commands::coding::get_coding_session,

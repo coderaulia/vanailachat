@@ -3,6 +3,7 @@ pub mod coding;
 pub mod chats;
 pub mod data;
 pub mod git;
+pub mod memory;
 pub mod messages;
 pub mod models;
 pub mod projects;

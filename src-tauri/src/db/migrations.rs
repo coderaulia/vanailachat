@@ -158,5 +158,11 @@ fn migration_list() -> Vec<M<'static>> {
         M::up("
             ALTER TABLE projects ADD COLUMN project_root TEXT;
         "),
+        // V18: memory_metadata_and_source
+        M::up("
+            ALTER TABLE memories ADD COLUMN metadata TEXT;
+            ALTER TABLE memories ADD COLUMN source_id TEXT;
+            CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
+        "),
     ]
 }

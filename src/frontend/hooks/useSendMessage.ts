@@ -4,7 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
+import { apiChatOnce, apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -52,27 +52,11 @@ async function generateChatTitle(
   updateHistories: SendMessageDeps['updateHistories'],
 ): Promise<void> {
   try {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [{
-          role: 'user',
-          content: `Generate a concise 3-6 word title for this conversation. Reply with ONLY the title — no quotes, no punctuation, no explanation:\n\n${userContent.slice(0, 300)}`,
-        }],
-        stream: false,
-        skipMemory: true,
-      }),
-    });
-    if (!response.ok) return;
-
-    const data = await response.json() as Record<string, unknown>;
-    // Handle Ollama and OpenAI response shapes
-    const ollamaContent = (data as { message?: { content?: string } }).message?.content;
-    const openaiContent = (data as { choices?: Array<{ message?: { content?: string } }> })
-      .choices?.[0]?.message?.content;
-    const title = (ollamaContent ?? openaiContent ?? '').trim().replace(/^["']|["']$/g, '');
+    const reply = await apiChatOnce(
+      model,
+      `Generate a concise 3-6 word title for this conversation. Reply with ONLY the title — no quotes, no punctuation, no explanation:\n\n${userContent.slice(0, 300)}`,
+    );
+    const title = (reply ?? '').trim().replace(/^["']|["']$/g, '');
     if (!title || title.length > 80) return;
 
     await patchChat(chatId, { title, updatedAt: Date.now() });

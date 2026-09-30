@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::state::AppState;
+use crate::state::{affects_providers, AppState};
 use std::collections::HashMap;
 use tauri::State;
 
@@ -15,6 +15,9 @@ pub async fn update_setting(
     key: String,
     value: String,
 ) -> AppResult<()> {
-    let db = state.db.lock();
-    db.set_setting(&key, &value)
+    state.db.lock().set_setting(&key, &value)?;
+    if affects_providers(&key) {
+        state.refresh_providers();
+    }
+    Ok(())
 }

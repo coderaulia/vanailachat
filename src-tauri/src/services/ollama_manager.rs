@@ -2,16 +2,20 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 pub struct OllamaManager {
-    host: String,
+    host: parking_lot::RwLock<String>,
     auto_start: bool,
 }
 
 impl OllamaManager {
     pub fn new(host: Option<String>, auto_start: bool) -> Self {
         Self {
-            host: host.unwrap_or_else(|| "http://127.0.0.1:11434".to_string()),
+            host: parking_lot::RwLock::new(host.unwrap_or_else(|| "http://127.0.0.1:11434".to_string())),
             auto_start,
         }
+    }
+
+    pub fn set_host(&self, host: &str) {
+        *self.host.write() = host.to_string();
     }
 
     pub async fn is_running(&self) -> bool {
@@ -20,7 +24,7 @@ impl OllamaManager {
             .build()
             .unwrap_or_default();
 
-        let url = format!("{}/api/tags", self.host);
+        let url = format!("{}/api/tags", self.host.read());
         client.get(&url).send().await.is_ok()
     }
 

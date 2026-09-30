@@ -24,7 +24,8 @@
     "tauri": "tauri",
     "desktop:dev": "node scripts/predev.js && tauri dev",
     "desktop:build": "tauri build",
-    "desktop:icon": "tauri icon"
+    "desktop:icon": "tauri icon",
+    "contracts:update": "node --import tsx scripts/export-contracts.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.84.4",

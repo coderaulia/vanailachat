@@ -7,7 +7,7 @@ import type { AppDependencies } from '../types.js';
  * We keep a static catalog with their raw SKILL.md URLs.
  * The backend fetches content on demand and caches locally in SQLite.
  */
-const SKILLS_CATALOG: Array<{ name: string; rawUrl: string }> = [
+export const SKILLS_CATALOG: Array<{ name: string; rawUrl: string }> = [
   { name: 'frontend-design',       rawUrl: 'https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md' },
   { name: 'algorithmic-art',        rawUrl: 'https://raw.githubusercontent.com/anthropics/skills/main/skills/algorithmic-art/SKILL.md' },
   { name: 'brand-guidelines',       rawUrl: 'https://raw.githubusercontent.com/anthropics/skills/main/skills/brand-guidelines/SKILL.md' },

@@ -129,17 +129,28 @@ pub struct SkillRecord {
     pub installed_at: i64,
 }
 
+/// A stored memory, shaped like the web API's entries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryRecord {
     pub id: String,
-    pub content: String,
-    pub embedding: String,
     pub r#type: String,
-    #[serde(alias = "created_at")]
+    pub content: String,
+    /// Vectors stay server-side on desktop; the field exists for parity with the web shape.
+    pub embedding: String,
+    pub metadata: Option<String>,
+    pub source_id: Option<String>,
     pub created_at: i64,
-    #[serde(alias = "updated_at")]
-    pub updated_at: i64,
+}
+
+/// A memory with its vector, for similarity search.
+#[derive(Debug, Clone)]
+pub struct StoredMemory {
+    pub id: String,
+    pub content: String,
+    pub metadata: Option<String>,
+    pub created_at: i64,
+    pub vector: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

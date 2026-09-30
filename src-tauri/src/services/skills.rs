@@ -1,56 +1,80 @@
-use crate::error::{AppError, AppResult};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::sync::LazyLock;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillCatalogItem {
-    pub id: String,
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogEntry {
     pub name: String,
-    pub description: String,
-    pub author: String,
-    pub category: String,
-    pub source_url: String,
-    pub installed: bool,
+    pub raw_url: String,
 }
 
-pub fn parse_skill_frontmatter(raw_content: &str) -> AppResult<(String, String, String)> {
-    let lines: Vec<&str> = raw_content.lines().collect();
-    if lines.is_empty() || lines[0].trim() != "---" {
-        return Err(AppError::InvalidRequest("Missing YAML frontmatter start (---)".to_string()));
-    }
+#[derive(Deserialize)]
+struct CatalogFile {
+    skills: Vec<CatalogEntry>,
+}
 
-    let mut end_index = None;
-    for (i, line) in lines.iter().enumerate().skip(1) {
-        if line.trim() == "---" {
-            end_index = Some(i);
-            break;
+/// Skills offered in the catalog, shared with the web backend through
+/// `contracts/skills-catalog.json` (generated from src/backend/routes/skills.ts).
+pub static CATALOG: LazyLock<Vec<CatalogEntry>> = LazyLock::new(|| {
+    serde_json::from_str::<CatalogFile>(include_str!("../../../contracts/skills-catalog.json"))
+        .map(|file| file.skills)
+        .unwrap_or_default()
+});
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ParsedSkill {
+    pub name: String,
+    pub description: String,
+    pub body: String,
+}
+
+fn unquote(value: &str) -> String {
+    let v = value.trim();
+    for quote in ['"', '\''] {
+        if v.len() >= 2 && v.starts_with(quote) && v.ends_with(quote) {
+            return v[1..v.len() - 1].to_string();
         }
     }
+    v.to_string()
+}
 
-    let end_idx = end_index.ok_or_else(|| {
-        AppError::InvalidRequest("Missing YAML frontmatter closing (---)".to_string())
-    })?;
+/// Reads the `---` frontmatter of a SKILL.md. A folded or multi-line
+/// `description:` is joined into one line. Without frontmatter the whole text
+/// is the body and the name is empty.
+pub fn parse_skill_md(raw: &str) -> ParsedSkill {
+    let text = raw.replace("\r\n", "\n");
+    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
+        return ParsedSkill { body: text.trim().to_string(), ..Default::default() };
+    };
+    let Some(end) = rest.find("\n---") else {
+        return ParsedSkill { body: text.trim().to_string(), ..Default::default() };
+    };
+    let front = &rest[..end];
+    let after = &rest[end + 4..];
+    let body = after.strip_prefix('\n').unwrap_or(after).trim().to_string();
 
     let mut name = String::new();
     let mut description = String::new();
-
-    for line in &lines[1..end_idx] {
-        if let Some((k, v)) = line.split_once(':') {
-            let key = k.trim().to_lowercase();
-            let val = v.trim().trim_matches('"').trim_matches('\'');
-            if key == "name" {
-                name = val.to_string();
-            } else if key == "description" {
-                description = val.to_string();
+    let lines: Vec<&str> = front.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if let Some(value) = line.strip_prefix("name:") {
+            name = unquote(value);
+        } else if let Some(value) = line.strip_prefix("description:") {
+            let mut parts = vec![value.trim().to_string()];
+            // Continuation lines are indented.
+            while i + 1 < lines.len() && lines[i + 1].starts_with([' ', '\t']) {
+                i += 1;
+                parts.push(lines[i].trim().to_string());
             }
+            // `>` / `|` only mark a block scalar; they are not the text.
+            let joined = parts.into_iter().filter(|p| !matches!(p.as_str(), ">" | "|" | ">-" | "|-" | "")).collect::<Vec<_>>().join(" ");
+            description = unquote(&joined);
         }
+        i += 1;
     }
-
-    if name.is_empty() {
-        return Err(AppError::InvalidRequest("Frontmatter missing 'name' property".to_string()));
-    }
-
-    let body = lines[end_idx + 1..].join("\n");
-    Ok((name, description, body.trim().to_string()))
+    ParsedSkill { name, description, body }
 }
 
 #[cfg(test)]
@@ -58,18 +82,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_skill_frontmatter() {
-        let content = r#"---
-name: "Web Researcher"
-description: "Advanced internet search and synthesis"
----
+    fn parses_name_description_and_body() {
+        let parsed = parse_skill_md("---\nname: \"Web Researcher\"\ndescription: Advanced internet search\n---\n\n# Instructions\nSearch well.");
+        assert_eq!(parsed.name, "Web Researcher");
+        assert_eq!(parsed.description, "Advanced internet search");
+        assert_eq!(parsed.body, "# Instructions\nSearch well.");
+    }
 
-# Instructions
-Perform search queries and synthesize findings."#;
+    #[test]
+    fn joins_folded_and_multiline_descriptions() {
+        let folded = parse_skill_md("---\nname: a\ndescription: >\n  First part\n  second part.\nlicense: MIT\n---\nBody");
+        assert_eq!(folded.description, "First part second part.");
+        let plain = parse_skill_md("---\nname: b\ndescription: One line\n  continued here\n---\nBody");
+        assert_eq!(plain.description, "One line continued here");
+    }
 
-        let (name, desc, body) = parse_skill_frontmatter(content).unwrap();
-        assert_eq!(name, "Web Researcher");
-        assert_eq!(desc, "Advanced internet search and synthesis");
-        assert!(body.starts_with("# Instructions"));
+    #[test]
+    fn handles_windows_line_endings_and_missing_frontmatter() {
+        let crlf = parse_skill_md("---\r\nname: win\r\ndescription: d\r\n---\r\nText");
+        assert_eq!((crlf.name.as_str(), crlf.body.as_str()), ("win", "Text"));
+        let none = parse_skill_md("# Just text\nNo frontmatter.");
+        assert!(none.name.is_empty());
+        assert_eq!(none.body, "# Just text\nNo frontmatter.");
+        assert!(parse_skill_md("---\nname: unclosed\nbody").name.is_empty());
+    }
+
+    #[test]
+    fn the_shared_catalog_loads() {
+        assert!(CATALOG.len() >= 10);
+        assert!(CATALOG.iter().all(|e| e.raw_url.starts_with("https://raw.githubusercontent.com/")));
+        assert!(CATALOG.iter().any(|e| e.name == "frontend-design"));
     }
 }

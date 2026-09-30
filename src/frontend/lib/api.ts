@@ -39,6 +39,8 @@ export interface StreamChunk {
   prompt_eval_count?: number;
   eval_count?: number;
   error?: string;
+  /** Desktop only: which chat this event belongs to. */
+  chat_id?: string;
 }
 
 export interface ChatStreamRequest {
@@ -731,56 +733,88 @@ export async function runNativeCoding(
 
 // ── Streaming Chat Completions ────────────────────────────────────────
 
+type ContentPart = string | { type?: string; text?: string; image_url?: { url?: string } };
+
+/** Desktop messages carry plain text plus a separate list of images. */
+export function toNativeMessage(message: ChatStreamRequest['messages'][number]) {
+  const { content, ...rest } = message;
+  if (typeof content === 'string') return { ...rest, content };
+  const parts: ContentPart[] = Array.isArray(content) ? content : [String(content ?? '')];
+  const text = parts
+    .map((part) => (typeof part === 'string' ? part : part.text ?? ''))
+    .filter(Boolean)
+    .join('\n');
+  const images = parts
+    .map((part) => (typeof part === 'string' ? undefined : part.image_url?.url))
+    .filter((url): url is string => Boolean(url));
+  return { ...rest, content: text, ...(images.length > 0 ? { images } : {}) };
+}
+
+/**
+ * One non-streaming completion (chat titles and the like). Skips the profile,
+ * memories and tools. Returns the reply text, or null when it fails.
+ */
+export async function apiChatOnce(model: string, prompt: string): Promise<string | null> {
+  try {
+    if (isTauri) {
+      const { invoke } = await getTauriCore();
+      return await invoke<string>('chat_once', { request: { model, messages: [{ role: 'user', content: prompt }], skip_memory: true } });
+    }
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], stream: false, skipMemory: true }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json() as Record<string, unknown>;
+    // Ollama and OpenAI response shapes
+    const ollama = (data as { message?: { content?: string } }).message?.content;
+    const openai = (data as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content;
+    return ollama ?? openai ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
 export async function streamChatCompletion(
   body: ChatStreamRequest,
   onChunk: (chunk: StreamChunk) => void,
   signal?: AbortSignal
 ): Promise<void> {
   if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const { listen } = await getTauriEvent();
+    const { systemPrompt, maxTokens, ...nativeRequest } = body;
+    const chatId = body.chatId;
+    const nativeBody = {
+      ...nativeRequest,
+      messages: body.messages.map(toNativeMessage),
+      system_prompt: systemPrompt,
+      max_tokens: maxTokens,
+    };
+
+    // Events are tagged with their chat, so a second chat streaming at the same
+    // time cannot write into this one's message.
+    const unlisten = await listen<StreamChunk>('chat-stream', (event) => {
+      const payload = event.payload;
+      if (chatId && payload.chat_id && payload.chat_id !== chatId) return;
+      onChunk(payload);
+    });
+    const abortHandler = () => { invoke('cancel_chat', { chatId: chatId ?? null }).catch(() => {}); };
+    signal?.addEventListener('abort', abortHandler, { once: true });
+
     try {
-      const { invoke } = await getTauriCore();
-      const { listen } = await getTauriEvent();
-      const { systemPrompt, maxTokens, ...nativeRequest } = body;
-      const nativeBody = {
-        ...nativeRequest,
-        messages: body.messages.map((message) => ({
-          ...message,
-          content: typeof message.content === 'string' ? message.content : Array.isArray(message.content)
-            ? message.content.map((part: unknown) => typeof part === 'string' ? part : (part as { text?: string }).text ?? '').join('')
-            : String(message.content),
-        })),
-        system_prompt: systemPrompt,
-        max_tokens: maxTokens,
-      };
-
-      let unlisten: (() => void) | null = null;
-      unlisten = await listen<StreamChunk>('chat-stream', (event) => {
-        onChunk(event.payload);
-      });
-
-      const abortHandler = () => {
-        invoke('cancel_chat').catch(() => {});
-        if (unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      };
-
-      signal?.addEventListener('abort', abortHandler, { once: true });
-
-      try {
-        await invoke('start_chat', { request: nativeBody });
-      } finally {
-        if (unlisten) {
-          unlisten();
-        }
-        signal?.removeEventListener('abort', abortHandler);
-      }
-      return;
-    } catch (err) {
-      console.error('[api] Tauri IPC chat stream failed:', err);
-      throw err;
+      // Resolves when the reply is complete; a provider error rejects.
+      await invoke('start_chat', { request: nativeBody });
+    } catch (error) {
+      if (signal?.aborted) return;
+      throw new Error(typeof error === 'string' ? error : error instanceof Error ? error.message : 'Chat failed');
+    } finally {
+      unlisten();
+      signal?.removeEventListener('abort', abortHandler);
     }
+    return;
   }
 
   // Web fallback: HTTP fetch with ReadableStream NDJSON line reader
@@ -1010,4 +1044,143 @@ export async function onDesktopNewChat(handler: () => void): Promise<() => void>
   if (!isTauri) return () => {};
   const { listen } = await getTauriEvent();
   return await listen('vanaila://new-chat', handler);
+}
+
+// ── Skills ────────────────────────────────────────────────────────────
+
+export interface SkillCatalogEntry {
+  name: string;
+  rawUrl: string;
+  installed: boolean;
+  enabled: boolean;
+  id: string | null;
+  description: string | null;
+}
+
+/** Turns a rejected desktop command (a plain string) into an Error. */
+function commandError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) return error;
+  return new Error(typeof error === 'string' && error ? error : fallback);
+}
+
+export async function apiFetchSkillCatalog(): Promise<SkillCatalogEntry[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<SkillCatalogEntry[]>('get_skill_catalog');
+  }
+  const data = await requestApi<{ catalog: SkillCatalogEntry[] }>('/api/skills/catalog');
+  return data.catalog;
+}
+
+export async function apiInstallSkill(name: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      await invoke('install_catalog_skill', { name });
+    } catch (error) {
+      throw commandError(error, 'Install failed');
+    }
+    return;
+  }
+  await requestApi('/api/skills/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function apiInstallCustomSkill(content: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      await invoke('install_custom_skill', { content });
+    } catch (error) {
+      throw commandError(error, 'Upload failed');
+    }
+    return;
+  }
+  await requestApi('/api/skills/custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function apiSetSkillEnabled(id: string, enabled: boolean): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('set_skill_enabled', { id, enabled });
+    return;
+  }
+  await requestApi(`/api/skills/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function apiDeleteSkill(id: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('delete_skill', { id });
+    return;
+  }
+  await requestApi(`/api/skills/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ── Memories ──────────────────────────────────────────────────────────
+
+export interface MemoryEntryDto {
+  id: string;
+  type: string;
+  content: string;
+  embedding: string;
+  metadata: string | null;
+  sourceId: string | null;
+  createdAt: number;
+}
+
+export async function apiFetchMemories(): Promise<MemoryEntryDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MemoryEntryDto[]>('get_memories');
+  }
+  const data = await requestApi<{ memories?: MemoryEntryDto[] }>('/api/memory');
+  return data.memories ?? [];
+}
+
+export async function apiAddMemory(content: string): Promise<MemoryEntryDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke<MemoryEntryDto>('add_memory', { payload: { content, type: 'manual' } });
+    } catch (error) {
+      throw commandError(error, 'Could not save memory');
+    }
+  }
+  const data = await requestApi<{ memory: MemoryEntryDto }>('/api/memory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, type: 'manual' }),
+  });
+  return data.memory;
+}
+
+export async function apiDeleteMemory(id: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('delete_memory', { id });
+    return;
+  }
+  await requestApi(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Forgets every memory; chats are untouched. */
+export async function apiClearMemories(): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('clear_memories');
+    return;
+  }
+  await requestApi('/api/memory', { method: 'DELETE' });
 }

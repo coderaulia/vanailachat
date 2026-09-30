@@ -31,6 +31,7 @@ describe('web API matches contracts/api-shapes.json', () => {
     const answer = DatabaseService.insertMessage({ chatId, role: 'assistant', content: 'answer', createdAt: 2_000 });
     DatabaseService.upsertFeedback({ messageId: answer.id, rating: 1 });
     DatabaseService.upsertSkill({ name: 'contract-skill', description: 'd', content: 'c' });
+    DatabaseService.upsertMemory({ type: 'manual', content: 'contract memory', embedding: null });
     DatabaseService.upsertCodingSession({ chatId, harness: 'pi-harness', workspacePath: os.tmpdir(), status: 'ready' });
   });
 
@@ -47,6 +48,8 @@ describe('web API matches contracts/api-shapes.json', () => {
   it('trainingStats', async () => expectShape('trainingStats', await get('/api/training/stats')));
   it('codingSession', async () => expectShape('codingSession', (await get(`/api/coding/sessions/${chatId}`)).session));
   it('exportBundle', async () => expectShape('exportBundle', await get('/api/export')));
+  it('memory', async () => expectShape('memory', first((await get('/api/memory')).memories)));
+  it('skillCatalogEntry', async () => expectShape('skillCatalogEntry', first((await get('/api/skills/catalog')).catalog)));
   it('messageVersion', async () => {
     const [message] = (await get(`/api/messages?chatId=${chatId}`)).messages as Array<{ id: string }>;
     expectShape('messageVersion', first((await get(`/api/messages/${message.id}/versions`)).versions));

@@ -165,9 +165,12 @@ async function buildSystemPrompt(
     }
   }
 
-  // Project-level instructions + memory
-  if (chatRecord?.projectId) {
-    const project = deps.getProject(chatRecord.projectId);
+  // Project-level instructions + memory. A brand-new chat has no row yet, so
+  // its project comes from the request; otherwise the first message of every
+  // new chat ignored the project's instructions.
+  const projectId = chatRecord?.projectId ?? (typeof body.projectId === 'string' ? body.projectId : undefined);
+  if (projectId) {
+    const project = deps.getProject(projectId);
     if (project) {
       if (project.instructions?.trim()) {
         systemPrompt += `\n\n[Project Instructions]\n${project.instructions}`;

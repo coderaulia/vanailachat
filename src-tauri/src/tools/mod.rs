@@ -1,5 +1,6 @@
 pub mod edit_file;
 pub mod list_directory;
+pub mod net_guard;
 pub mod read_file;
 pub mod read_url;
 pub mod run_command;
@@ -27,7 +28,12 @@ pub async fn execute_tool(
                 .get("url")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| AppError::InvalidRequest("Missing url argument".to_string()))?;
-            read_url::read_url(url).await
+            let max_chars = args
+                .get("max_chars")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(read_url::DEFAULT_MAX_CHARS);
+            read_url::read_url_limited(url, max_chars).await
         }
         "read_file" => {
             let path = args

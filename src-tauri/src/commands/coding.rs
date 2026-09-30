@@ -74,9 +74,9 @@ pub async fn run_coding(
         db.get_coding_session(&request.chat_id)?
             .ok_or_else(|| AppError::InvalidRequest("Create a coding workspace first".into()))?
     };
-    let provider = {
+    let (provider, model_name) = {
         let registry = state.provider_registry.lock();
-        registry.resolve_provider_for_model(&request.model)
+        registry.resolve_model(&request.model)
             .ok_or_else(|| AppError::NotFound(format!("No provider registered for model {}", request.model)))?
     };
     {
@@ -84,11 +84,11 @@ pub async fn run_coding(
         db.upsert_coding_session(&CodingSessionRecord { status: "running".into(), ..session.clone() })?;
     }
     let chat_request = ChatRequest {
-        messages: vec![ChatMessage { role: "user".into(), content: request.prompt, tool_calls: None, tool_call_id: None }],
-        model: request.model,
+        messages: vec![ChatMessage::new("user", request.prompt)],
+        model: model_name,
         system_prompt: request.system_prompt,
         temperature: Some(0.7),
-        max_tokens: None,
+        ..Default::default()
     };
     let mut stream = provider.chat(chat_request).await?;
     let app_handle = app.clone();

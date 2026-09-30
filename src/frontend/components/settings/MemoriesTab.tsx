@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
+import { apiAddMemory, apiClearMemories, apiDeleteMemory, apiFetchMemories } from '../../lib/api';
 import type { SettingsStore } from './useSettingsStore';
 import type { MemoryEntry } from './types';
-
-async function fetchMemories(): Promise<MemoryEntry[]> {
-  const r = await fetch('/api/memory');
-  const data = (await r.json()) as { memories: MemoryEntry[] };
-  return data.memories ?? [];
-}
 
 export function MemoriesTab({ store }: { store: SettingsStore }) {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
@@ -16,7 +11,7 @@ export function MemoriesTab({ store }: { store: SettingsStore }) {
   const memoryEnabled = store.values.memory_enabled !== 'false';
 
   useEffect(() => {
-    fetchMemories()
+    apiFetchMemories()
       .then(setMemories)
       .catch(() => {/* best-effort */})
       .finally(() => setLoading(false));
@@ -25,7 +20,7 @@ export function MemoriesTab({ store }: { store: SettingsStore }) {
   const refresh = async () => {
     setLoading(true);
     try {
-      setMemories(await fetchMemories());
+      setMemories(await apiFetchMemories());
     } catch {
       // best-effort
     }
@@ -35,7 +30,7 @@ export function MemoriesTab({ store }: { store: SettingsStore }) {
   const deleteMemory = async (id: string) => {
     setDeleting(id);
     try {
-      await fetch(`/api/memory/${id}`, { method: 'DELETE' });
+      await apiDeleteMemory(id);
       setMemories((prev) => prev.filter((m) => m.id !== id));
     } catch {
       // best-effort
@@ -47,14 +42,7 @@ export function MemoriesTab({ store }: { store: SettingsStore }) {
     const content = window.prompt('What should the assistant remember?');
     if (!content?.trim()) return;
     try {
-      const response = await fetch('/api/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content.trim(), type: 'manual' }),
-      });
-      if (!response.ok) throw new Error('Could not save memory');
-      const data = await response.json() as { memory?: MemoryEntry };
-      const memory = data.memory;
+      const memory = await apiAddMemory(content.trim());
       if (memory) setMemories((prev) => [memory, ...prev.filter((m) => m.id !== memory.id)]);
     } catch {
       setError('Could not save memory');
@@ -64,8 +52,7 @@ export function MemoriesTab({ store }: { store: SettingsStore }) {
   const forgetAll = async () => {
     if (!window.confirm('Forget all saved memories? Your chats will not be deleted.')) return;
     try {
-      const response = await fetch('/api/memory', { method: 'DELETE' });
-      if (!response.ok) throw new Error('Could not delete memories');
+      await apiClearMemories();
       setMemories([]);
     } catch {
       setError('Could not delete memories');
