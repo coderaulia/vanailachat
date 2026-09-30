@@ -1,4 +1,5 @@
 pub mod approvals;
+pub mod documents;
 pub mod memory;
 pub mod ollama_manager;
 pub mod research;

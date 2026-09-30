@@ -874,44 +874,58 @@ export async function streamChatCompletion(
 
 // ── Deep Research Stream ──────────────────────────────────────────────
 
+export interface ResearchStreamRequest {
+  query: string;
+  model: string;
+  maxSources?: number;
+  depth?: 'quick' | 'standard' | 'deep';
+  /** Identifies this run so the desktop app can cancel it and route its events. */
+  researchId?: string;
+}
+
+/** Streams the stage events (`searching` … `chunk` … `done`) of a research run. */
 export async function streamResearch(
-  query: string,
+  request: ResearchStreamRequest,
   onEvent: (event: Record<string, unknown>) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<void> {
   if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const { listen } = await getTauriEvent();
+    const id = request.researchId;
+
+    const unlisten = await listen<Record<string, unknown>>('research-stage', (event) => {
+      if (id && event.payload.chat_id && event.payload.chat_id !== id) return;
+      onEvent(event.payload);
+    });
+    const abortHandler = () => { invoke('cancel_chat', { chatId: id ?? null }).catch(() => {}); };
+    signal?.addEventListener('abort', abortHandler, { once: true });
     try {
-      const { invoke } = await getTauriCore();
-      const { listen } = await getTauriEvent();
-
-      let unlisten: (() => void) | null = null;
-      unlisten = await listen('research-status', (event) => {
-        onEvent(event.payload as Record<string, unknown>);
+      // Resolves once the report is complete; failures arrive as an `error` stage.
+      await invoke('start_research', {
+        request: { query: request.query, model: request.model, max_sources: request.maxSources, depth: request.depth, research_id: id },
       });
-
-      try {
-        const res = await invoke<string[]>('start_research', { query });
-        onEvent({ status: 'complete', results: res });
-      } finally {
-        if (unlisten) unlisten();
-      }
-      return;
-    } catch (err) {
-      console.warn('[api] Tauri research IPC failed, falling back to HTTP:', err);
+    } catch (error) {
+      if (!signal?.aborted) throw commandError(error, 'Research failed');
+    } finally {
+      unlisten();
+      signal?.removeEventListener('abort', abortHandler);
     }
+    return;
   }
 
+  const { researchId: _researchId, ...body } = request;
   const response = await fetch('/api/research', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(body),
     signal,
   });
 
-  if (!response.ok) throw new Error(`Research request failed: ${response.status}`);
+  if (!response.ok) throw new Error((await response.text().catch(() => '')) || `Research request failed: ${response.status}`);
 
   const reader = response.body?.getReader();
-  if (!reader) return;
+  if (!reader) throw new Error('No response body');
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -928,13 +942,122 @@ export async function streamResearch(
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        const parsed = JSON.parse(trimmed);
-        onEvent(parsed);
+        onEvent(JSON.parse(trimmed));
       } catch {
         // ignore malformed line
       }
     }
   }
+}
+
+// ── A/B comparison ────────────────────────────────────────────────────
+
+export interface AbRunRequest {
+  prompt: string;
+  modelA: string;
+  modelB: string;
+  systemPrompt?: string;
+  search?: boolean;
+  deepResearch?: boolean;
+  attachments?: Array<{ type?: string; name?: string; content?: string }>;
+}
+
+export interface AbSideResult {
+  model: string;
+  content: string;
+  latencyMs: number;
+}
+
+export interface AbPickRequest {
+  userContent: string;
+  winnerContent: string;
+  winnerModel: string;
+  loserModel?: string;
+}
+
+async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? `${fallback} (HTTP ${response.status})`);
+  return data;
+}
+
+export async function apiRunAb(request: AbRunRequest): Promise<{ a: AbSideResult; b: AbSideResult }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke('run_ab', { request });
+    } catch (error) {
+      throw commandError(error, 'Comparison failed');
+    }
+  }
+  return postJson('/api/ab', request, 'Comparison failed');
+}
+
+export async function apiPickAb(pick: AbPickRequest): Promise<{ chatId: string; messageId: string }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke('pick_ab', { pick });
+    } catch (error) {
+      throw commandError(error, 'Failed to save pick');
+    }
+  }
+  return postJson('/api/ab/pick', pick, 'Failed to save pick');
+}
+
+// ── Attachments & folders ─────────────────────────────────────────────
+
+export interface ExtractedDocument {
+  name?: string;
+  kind?: string;
+  characters?: number;
+  text?: string;
+}
+
+/** Unpacks a .docx/.xlsx/.pdf into plain text for the model. */
+export async function apiExtractAttachment(file: File): Promise<ExtractedDocument> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      // The bytes go as the raw request body; the name rides in a header.
+      return await invoke<ExtractedDocument>('extract_attachment', new Uint8Array(await file.arrayBuffer()), {
+        headers: { 'x-file-name': encodeURIComponent(file.name), 'x-file-type': file.type },
+      });
+    } catch (error) {
+      throw commandError(error, 'Extraction failed');
+    }
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/attachments/extract', { method: 'POST', body: formData });
+  const data = (await response.json().catch(() => ({}))) as ExtractedDocument & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Extraction failed');
+  return data;
+}
+
+export interface DirectoryListing {
+  path: string;
+  parent: string | null;
+  directories: Array<{ name: string; path: string }>;
+  drives: string[];
+  home: string;
+}
+
+export async function apiBrowseDirectory(target?: string): Promise<DirectoryListing> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke<DirectoryListing>('browse_directory', { path: target ?? null });
+    } catch (error) {
+      throw commandError(error, 'Unable to read that folder');
+    }
+  }
+  const query = target ? `?path=${encodeURIComponent(target)}` : '';
+  const response = await fetch(`/api/fs/browse${query}`);
+  const data = (await response.json().catch(() => ({}))) as DirectoryListing & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Unable to read that folder');
+  return data;
 }
 
 // ── Data Backup & Restore ─────────────────────────────────────────────

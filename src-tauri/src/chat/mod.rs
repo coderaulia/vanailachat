@@ -1,5 +1,6 @@
 //! Desktop chat pipeline: the Rust counterpart of src/backend/routes/chat.ts.
 
+pub mod ab;
 pub mod agent;
 pub mod memory;
 pub mod personas;

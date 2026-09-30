@@ -161,4 +161,59 @@ describe('desktop commands behind the shared API', () => {
     expect(invoke.mock.calls.map(([name]) => name)).toEqual(['get_memories', 'add_memory', 'delete_memory', 'clear_memories']);
     expect(invoke).toHaveBeenCalledWith('add_memory', { payload: { content: 'I like tabs', type: 'manual' } });
   });
+
+  it('streams research stages for its own run and cancels it by id', async () => {
+    const { api, invoke, emit } = await loadDesktopApi();
+    const stages: string[] = [];
+    const controller = new AbortController();
+    let finish!: () => void;
+    invoke.mockImplementation((command: string) => (command === 'start_research' ? new Promise<void>((resolve) => { finish = resolve; }) : Promise.resolve()));
+
+    const done = api.streamResearch({ query: 'sky', model: 'llama3', maxSources: 3, depth: 'quick', researchId: 'r1' }, (e) => stages.push(String(e.stage)), controller.signal);
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('start_research', expect.anything()));
+    expect(invoke).toHaveBeenCalledWith('start_research', { request: { query: 'sky', model: 'llama3', max_sources: 3, depth: 'quick', research_id: 'r1' } });
+
+    emit({ chat_id: 'r1', stage: 'searching' });
+    emit({ chat_id: 'someone-else', stage: 'chunk' });
+    emit({ chat_id: 'r1', stage: 'done' });
+    controller.abort();
+    expect(invoke).toHaveBeenCalledWith('cancel_chat', { chatId: 'r1' });
+    finish();
+    await done;
+    expect(stages).toEqual(['searching', 'done']);
+  });
+
+  it('runs and records an A/B comparison through its commands', async () => {
+    const { api, invoke } = await loadDesktopApi();
+    invoke.mockResolvedValue({ a: { model: 'x', content: 'A', latencyMs: 1 }, b: { model: 'y', content: 'B', latencyMs: 2 } });
+    const request = { prompt: 'p', modelA: 'x', modelB: 'y' };
+    expect((await api.apiRunAb(request)).b.content).toBe('B');
+    expect(invoke).toHaveBeenCalledWith('run_ab', { request });
+
+    invoke.mockResolvedValue({ chatId: 'c', messageId: 'm' });
+    const pick = { userContent: 'p', winnerContent: 'A', winnerModel: 'x' };
+    expect(await api.apiPickAb(pick)).toEqual({ chatId: 'c', messageId: 'm' });
+    expect(invoke).toHaveBeenCalledWith('pick_ab', { pick });
+
+    invoke.mockRejectedValue('Invalid request: prompt: required string');
+    await expect(api.apiRunAb(request)).rejects.toThrow('prompt: required string');
+  });
+
+  it('sends attachments as raw bytes with the name in a header, and browses folders', async () => {
+    const { api, invoke } = await loadDesktopApi();
+    invoke.mockResolvedValue({ name: 'Q3 plan.docx', text: 'hello' });
+    const file = new File([new Uint8Array([1, 2, 3])], 'Q3 plan.docx', { type: '' });
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new Uint8Array([1, 2, 3]).buffer });
+    expect((await api.apiExtractAttachment(file)).text).toBe('hello');
+    const [command, bytes, options] = invoke.mock.calls[0];
+    expect(command).toBe('extract_attachment');
+    expect(Array.from(bytes as Uint8Array)).toEqual([1, 2, 3]);
+    expect(options.headers['x-file-name']).toBe('Q3%20plan.docx');
+
+    invoke.mockResolvedValue({ path: '/home/me', parent: '/home', directories: [], drives: ['/'], home: '/home/me' });
+    await api.apiBrowseDirectory();
+    await api.apiBrowseDirectory('/tmp');
+    expect(invoke).toHaveBeenCalledWith('browse_directory', { path: null });
+    expect(invoke).toHaveBeenCalledWith('browse_directory', { path: '/tmp' });
+  });
 });

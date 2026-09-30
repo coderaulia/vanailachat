@@ -114,7 +114,7 @@ pub enum Outcome {
 }
 
 /// Resolves when the user cancels; never resolves if the cancel handle is dropped.
-async fn cancelled(rx: &mut watch::Receiver<bool>) {
+pub async fn cancelled(rx: &mut watch::Receiver<bool>) {
     loop {
         if *rx.borrow() {
             return;

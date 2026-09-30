@@ -1,4 +1,5 @@
 import type { FormEvent, MutableRefObject, Dispatch, SetStateAction } from 'react';
+import { streamResearch } from '../lib/api';
 import type { ApiChat, Message, ApiProject, Chat } from '../types/chat';
 
 export interface ResearchDeps {
@@ -78,77 +79,48 @@ export function useResearch(deps: ResearchDeps) {
     const stageMessages: string[] = [];
 
     try {
-      const response = await fetch('/api/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          query: originalPrompt,
-          model: resolvedModel,
-          maxSources: 5,
-          depth: 'standard',
-        }),
-      });
-
-      if (!response.ok) throw new Error(await response.text());
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const ev = JSON.parse(trimmed) as Record<string, unknown>;
-            if (ev.stage === 'chunk' && ev.content) {
-              researchContent += ev.content as string;
-              setConversation(prev => {
-                if (prev.length < 2) return prev;
-                const updated = [...prev];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], content: researchContent };
-                return updated;
-              });
-            } else if (ev.stage === 'searching') {
-              stageMessages.push(`🔎 ${ev.message}`);
-              setStatusText(ev.message as string);
-            } else if (ev.stage === 'reading') {
-              stageMessages.push(`📄 ${ev.message}`);
-              setStatusText(ev.message as string);
-            } else if (ev.stage === 'synthesizing') {
-              setStatusText('Synthesizing report…');
-            } else if (ev.stage === 'streaming') {
-              setStatusText('Generating report…');
-            } else if (ev.stage === 'error') {
-              researchContent += `\n\n> [!CAUTION]\n> ${ev.message}\n\n`;
-              setStatusText('Research error');
-            } else if (ev.stage === 'done') {
-              const stageSummary = stageMessages.map(m => `> ${m}`).join('\n');
-              const fullContent = stageSummary
-                ? `${stageSummary}\n\n---\n\n${researchContent}`
-                : researchContent;
-              researchContent = fullContent;
-              setConversation(prev => {
-                if (prev.length < 2) return prev;
-                const updated = [...prev];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
-                return updated;
-              });
-              setStatusText('Research complete');
-            }
-          } catch {
-            // Skip malformed lines
+      // Stage events arrive in the same shape from the server and the desktop app.
+      await streamResearch(
+        { query: originalPrompt, model: resolvedModel, maxSources: 5, depth: 'standard', researchId: chatId },
+        (ev) => {
+          if (ev.stage === 'chunk' && ev.content) {
+            researchContent += ev.content as string;
+            setConversation(prev => {
+              if (prev.length < 2) return prev;
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...updated[updated.length - 1], content: researchContent };
+              return updated;
+            });
+          } else if (ev.stage === 'searching') {
+            stageMessages.push(`🔎 ${ev.message}`);
+            setStatusText(ev.message as string);
+          } else if (ev.stage === 'reading') {
+            stageMessages.push(`📄 ${ev.message}`);
+            setStatusText(ev.message as string);
+          } else if (ev.stage === 'synthesizing') {
+            setStatusText('Synthesizing report…');
+          } else if (ev.stage === 'streaming') {
+            setStatusText('Generating report…');
+          } else if (ev.stage === 'error') {
+            researchContent += `\n\n> [!CAUTION]\n> ${ev.message}\n\n`;
+            setStatusText('Research error');
+          } else if (ev.stage === 'done') {
+            const stageSummary = stageMessages.map(m => `> ${m}`).join('\n');
+            const fullContent = stageSummary
+              ? `${stageSummary}\n\n---\n\n${researchContent}`
+              : researchContent;
+            researchContent = fullContent;
+            setConversation(prev => {
+              if (prev.length < 2) return prev;
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...updated[updated.length - 1], content: fullContent };
+              return updated;
+            });
+            setStatusText('Research complete');
           }
-        }
-      }
+        },
+        abortController.signal,
+      );
     } catch (error) {
       const isAbort =
         (error instanceof DOMException || error instanceof Error) && error.name === 'AbortError';

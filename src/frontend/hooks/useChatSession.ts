@@ -8,7 +8,7 @@ import type { ModelMetadataMap } from '../config/modelMetadata';
 import { getContextWindowForModel } from '../config/modelMetadata';
 import { useSendMessage } from './useSendMessage';
 import { useResearch } from './useResearch';
-import { apiCreateProject, apiFetchSettings, apiRespondToApproval, apiUpdateSetting } from '../lib/api';
+import { apiCreateProject, apiExtractAttachment, apiFetchSettings, apiRespondToApproval, apiUpdateSetting } from '../lib/api';
 import { toProject } from '../lib/mappers';
 
 export function useChatSession(deps: {
@@ -262,17 +262,7 @@ export function useChatSession(deps: {
       } else if (NEEDS_EXTRACTION.test(file.name)) {
         try {
           deps.setStatusText(`Extracting text from ${file.name}…`);
-          const formData = new FormData();
-          formData.append('file', file);
-          const response = await fetch('/api/attachments/extract', {
-            method: 'POST',
-            body: formData,
-          });
-          if (!response.ok) {
-            const err = await response.text().catch(() => 'Extraction failed');
-            throw new Error(err);
-          }
-          const data = (await response.json()) as { name?: string; text?: string };
+          const data = await apiExtractAttachment(file);
           newAttachments.push({
             name: file.name,
             type: 'file',
