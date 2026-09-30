@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
+import { useChat } from '../../context/ChatContext';
 import { CodingEngineSettings } from './CodingEngineSettings';
+import { ModelPull } from './ModelPull';
 import { customProviderWrites, parseCustomProviders } from './useSettingsStore';
 import type { SettingsStore } from './useSettingsStore';
 import type { CustomProviderConfig, LlmMode, SettingWrites } from './types';
@@ -20,6 +22,7 @@ interface Props {
 
 export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
   const { values } = store;
+  const { handleRefreshModels } = useChat();
   const customProviders = useMemo(() => parseCustomProviders(values), [values]);
   const [activeCustomId, setActiveCustomId] = useState<string>(() => customProviders[0]?.id ?? 'custom');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
@@ -111,6 +114,8 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
           <p className="settings-hint">Default works if Ollama is running locally. Change for remote hosts.</p>
         </div>
       )}
+
+      {llmMode === 'ollama' && <ModelPull onPulled={() => void handleRefreshModels()} />}
 
       {llmMode === 'custom' && (
         <div className="settings-custom-section">

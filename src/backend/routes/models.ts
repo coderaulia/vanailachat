@@ -2,6 +2,11 @@ import { Hono } from 'hono';
 import { sanitizeError } from '../helpers/index.js';
 import type { AppDependencies } from '../types.js';
 
+/** Ollama model references: `name`, `name:tag`, `namespace/name:tag`. */
+export function isValidModelName(name: string): boolean {
+  return name.length > 0 && name.length <= 200 && /^[a-zA-Z0-9][a-zA-Z0-9._\-/:]*$/.test(name) && !name.includes('..');
+}
+
 export function modelsRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
@@ -61,6 +66,39 @@ export function modelsRouter(dependencies: AppDependencies): Hono {
       const message = sanitizeError(error, 'Unknown error');
       return context.json({ error: message }, 500);
     }
+  });
+
+  /**
+   * POST /api/models/pull — download an Ollama model, streaming Ollama's own
+   * NDJSON progress lines ({status, completed, total}) straight through so
+   * the browser can draw a progress bar. An {error} line ends the stream.
+   */
+  app.post('/pull', async (context) => {
+    const body = (await context.req.json().catch(() => ({}))) as { name?: unknown };
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!isValidModelName(name)) {
+      return context.json({ error: 'A valid model name is required, e.g. llama3.2:3b' }, 400);
+    }
+
+    let upstream: Response;
+    try {
+      upstream = await dependencies.fetchFn(`${dependencies.getBaseUrl()}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, stream: true }),
+        signal: context.req.raw.signal,
+      });
+    } catch (error) {
+      return context.json({ error: sanitizeError(error, 'Ollama is not reachable') }, 502);
+    }
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => '');
+      return context.json({ error: detail || `Ollama returned HTTP ${upstream.status}` }, 502);
+    }
+
+    return new Response(upstream.body, {
+      headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' },
+    });
   });
 
   app.get('/details', async (context) => {

@@ -182,6 +182,11 @@ impl OllamaProvider {
             .send()
             .await
             .map_err(AppError::Network)?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let detail = resp.text().await.unwrap_or_default();
+            return Err(AppError::Agent(format!("Ollama returned HTTP {status}: {detail}")));
+        }
 
         let mut stream = resp.bytes_stream();
         let mut buffer = String::new();
@@ -196,6 +201,7 @@ impl OllamaProvider {
                 buffer.drain(..=idx);
                 if !line.is_empty() {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&line) {
+                        pull_error(&parsed)?;
                         on_progress(parsed);
                     }
                 }
@@ -204,10 +210,31 @@ impl OllamaProvider {
 
         if !buffer.trim().is_empty() {
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(buffer.trim()) {
+                pull_error(&parsed)?;
                 on_progress(parsed);
             }
         }
 
         Ok(())
+    }
+}
+
+/// Ollama reports a failed pull (unknown model, disk full) as an `{"error": ...}`
+/// progress line with HTTP 200, which must not be treated as success.
+fn pull_error(line: &serde_json::Value) -> AppResult<()> {
+    match line.get("error").and_then(|e| e.as_str()) {
+        Some(message) => Err(AppError::Agent(format!("Pull failed: {message}"))),
+        None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod pull_tests {
+    use super::pull_error;
+
+    #[test]
+    fn error_lines_fail_the_pull() {
+        assert!(pull_error(&serde_json::json!({ "status": "pulling manifest" })).is_ok());
+        assert!(pull_error(&serde_json::json!({ "error": "pull model manifest: file does not exist" })).is_err());
     }
 }

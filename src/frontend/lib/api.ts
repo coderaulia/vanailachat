@@ -499,9 +499,23 @@ export async function apiFetchModels(): Promise<Array<{
   return Array.isArray(data.models) ? data.models : [];
 }
 
+/** One line of Ollama's pull progress. */
+export interface PullProgress {
+  status?: string;
+  digest?: string;
+  completed?: number;
+  total?: number;
+  error?: string;
+}
+
+/**
+ * Downloads an Ollama model, reporting Ollama's progress lines as they
+ * arrive. Rejects on an `error` line, so a bad name does not look like success.
+ */
 export async function apiPullModel(
   name: string,
-  onProgress?: (progress: { status?: string; completed?: number; total?: number }) => void
+  onProgress?: (progress: PullProgress) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -510,7 +524,7 @@ export async function apiPullModel(
     let unlisten: (() => void) | null = null;
     if (onProgress) {
       unlisten = await listen('ollama-pull-progress', (event) => {
-        onProgress(event.payload as { status?: string; completed?: number; total?: number });
+        onProgress(event.payload as PullProgress);
       });
     }
 
@@ -522,12 +536,40 @@ export async function apiPullModel(
     return;
   }
 
-  // Web fallback:
-  await requestApi('/api/models/pull', {
+  const response = await fetch('/api/models/pull', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
+    signal,
   });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error || `Pull failed (HTTP ${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    let progress: PullProgress;
+    try {
+      progress = JSON.parse(line) as PullProgress;
+    } catch {
+      return;
+    }
+    if (progress.error) throw new Error(progress.error);
+    onProgress?.(progress);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    lines.forEach(handleLine);
+  }
+  handleLine(buffer);
 }
 
 export async function apiFetchSettings(): Promise<Record<string, string>> {

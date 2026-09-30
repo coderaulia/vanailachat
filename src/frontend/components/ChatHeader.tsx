@@ -1,6 +1,7 @@
 import './ChatHeader.css';
 import { useChat } from '../context/ChatContext';
-import { getProviderDisplayInfo } from '../config/modelMetadata';
+import { formatTokensCompact, getProviderDisplayInfo } from '../config/modelMetadata';
+import { formatCost, summarizeChatUsage } from '../config/modelPricing';
 
 interface ChatHeaderProps {
   showTokens: boolean;
@@ -24,6 +25,7 @@ export function ChatHeader({
   onToggleLog,
 }: ChatHeaderProps) {
   const {
+    conversation,
     isCurrentChatSending,
     selectedModel,
     modelMetadata,
@@ -43,6 +45,9 @@ export function ChatHeader({
   const providerLabel = modelMetadata[selectedModel]?.providerLabel
     || selectedProvider?.providerLabel
     || getProviderDisplayInfo(modelProvider).label;
+
+  const usage = summarizeChatUsage(conversation, selectedModel);
+  const usageTokens = usage.promptTokens + usage.completionTokens;
 
   return (
     <header className="app-header" data-tauri-drag-region="true">
@@ -80,6 +85,17 @@ export function ChatHeader({
                 ) : null}
               </span>
             </div>
+            {usageTokens > 0 && (
+              <div
+                className="status-pill chat-usage"
+                title={`This chat: ${usage.promptTokens.toLocaleString()} input + ${usage.completionTokens.toLocaleString()} output tokens${usage.cost === null ? '' : ' — cost is an estimate from Settings → Behaviour → Model pricing'}`}
+              >
+                <span className="status-pill__label">Chat</span>
+                <span className="status-pill__value">
+                  {formatTokensCompact(usageTokens)} tok{usage.cost !== null ? ` · ${formatCost(usage.cost)}` : ''}
+                </span>
+              </div>
+            )}
             {responseStats && (
               <div className="status-pill response-stats" title="Latest completed response">
                 <span>{responseStats.tokensPerSecond.toFixed(1)} tok/s</span>
