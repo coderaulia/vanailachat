@@ -4,7 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiCreateCodingSession, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
+import { apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -266,17 +266,12 @@ export function useSendMessage(deps: SendMessageDeps) {
         } else if (!activeProjectId || activeProjectId === 'default') {
           const folderName = workspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
           try {
-            const pRes = await fetch('/api/projects', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: folderName, projectRoot: workspacePath }),
+            const created = await apiCreateProject({
+              id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              name: folderName,
+              projectRoot: workspacePath,
             });
-            if (pRes.ok) {
-              const pData = (await pRes.json()) as { project?: ApiProject };
-              if (pData.project) {
-                resolvedProjectId = pData.project.id;
-              }
-            }
+            resolvedProjectId = created.id;
           } catch (e) {
             console.warn('[WORKSPACE PROJECT] Failed to auto-create project:', e);
           }
@@ -295,28 +290,11 @@ export function useSendMessage(deps: SendMessageDeps) {
         } as Parameters<typeof upsertChat>[0]);
 
         try {
-          const settings = isTauri ? await apiFetchSettings() : null;
-          const configuredHarness = settings?.coding_harness;
+          const configuredHarness = (await apiFetchSettings()).coding_harness;
           if (configuredHarness === 'deepseek-harness' || configuredHarness === 'pi-harness') chosenHarness = configuredHarness;
-          else if (!isTauri) {
-            const harnessRes = await fetch('/api/settings/coding_harness');
-            const hData = harnessRes.ok ? await harnessRes.json() as { value?: string } : {};
-            if (hData.value === 'deepseek-harness' || hData.value === 'pi-harness') chosenHarness = hData.value;
-          }
         } catch { /* default to Pi Harness */ }
 
-        if (isTauri) {
-          await apiCreateCodingSession({ chatId, harness: chosenHarness, workspacePath });
-        } else {
-          const sessionResponse = await fetch('/api/coding/sessions', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chatId, harness: chosenHarness, workspacePath }),
-          });
-          if (!sessionResponse.ok) {
-            const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
-            throw new Error(detail?.error ?? 'Could not open the coding workspace');
-          }
-        }
+        await apiCreateCodingSession({ chatId, harness: chosenHarness, workspacePath });
       }
 
       const syncUIAndHistory = () => {

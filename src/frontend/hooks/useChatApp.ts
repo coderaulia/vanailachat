@@ -7,6 +7,7 @@ import { usePersistence } from './usePersistence';
 import { useUIState } from './useUIState';
 import { useChatSession } from './useChatSession';
 import { DEFAULT_MODEL_ROLE } from '../config/constants';
+import { apiExportData, apiImportData } from '../lib/api';
 
 export function useChatApp() {
   const [prompt, setPrompt] = useState('');
@@ -153,9 +154,7 @@ export function useChatApp() {
 
   const handleExportData = async () => {
     try {
-      const res = await fetch('/api/export');
-      if (!res.ok) throw new Error(await res.text());
-      const backup = await res.json();
+      const backup = await apiExportData();
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -174,12 +173,7 @@ export function useChatApp() {
   const handleImportData = async (file: File) => {
     try {
       const content = await file.text();
-      const res = await fetch('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(JSON.parse(content)),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      await apiImportData(JSON.parse(content));
       window.location.reload();
     } catch (err) {
       console.error(err);
@@ -201,18 +195,10 @@ export function useChatApp() {
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, description: description?.trim() || undefined }),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const data = (await response.json()) as { project?: ApiProject };
-      if (!data.project) throw new Error('Missing project in response');
-      persistence.setProjects((prev) => [...prev, data.project!]);
-      setSelectedProjectId(data.project.id);
+      const project = await persistence.createProject({ name: trimmed, description: description?.trim() || undefined });
+      setSelectedProjectId(project.id);
       handleNewChat();
-      return data.project;
+      return project;
     } catch (error) {
       console.error(error);
       setStatusText('Failed to create project');
@@ -263,7 +249,7 @@ export function useChatApp() {
       return next;
     });
     if (chatSession.currentChatId === id) handleNewChat();
-    void fetch(`/api/chats/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    void persistence.deleteChat(id)
       .catch((err) => { console.error(err); setStatusText('Failed to delete chat'); });
   };
 

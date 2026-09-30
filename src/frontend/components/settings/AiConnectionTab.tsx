@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useChat } from '../../context/ChatContext';
+import { apiListModelNames } from '../../lib/api';
 import { CodingEngineSettings } from './CodingEngineSettings';
 import { ModelPull } from './ModelPull';
 import { customProviderWrites, parseCustomProviders } from './useSettingsStore';
@@ -76,14 +77,8 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
       };
       await store.persist(modeWrites[llmMode]);
 
-      const res = await fetch('/api/models');
-      if (res.ok) {
-        const data = (await res.json()) as { models?: string[] };
-        const count = Array.isArray(data.models) ? data.models.length : 0;
-        setTestStatus(count > 0 ? 'ok' : 'fail');
-      } else {
-        setTestStatus('fail');
-      }
+      const models = await apiListModelNames();
+      setTestStatus(models.length > 0 ? 'ok' : 'fail');
     } catch {
       setTestStatus('fail');
     }

@@ -8,7 +8,8 @@ import type { ModelMetadataMap } from '../config/modelMetadata';
 import { getContextWindowForModel } from '../config/modelMetadata';
 import { useSendMessage } from './useSendMessage';
 import { useResearch } from './useResearch';
-import { apiFetchSettings, apiRespondToApproval, apiUpdateSetting } from '../lib/api';
+import { apiCreateProject, apiFetchSettings, apiRespondToApproval, apiUpdateSetting } from '../lib/api';
+import { toProject } from '../lib/mappers';
 
 export function useChatSession(deps: {
   selectedModel: string;
@@ -368,19 +369,14 @@ export function useChatSession(deps: {
     } else {
       const folderName = path.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
       try {
-        const res = await fetch('/api/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: folderName, projectRoot: path }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { project?: ApiProject };
-          if (data.project) {
-            targetProjectId = data.project.id;
-            deps.setProjects?.((prev) => [...prev, data.project!]);
-            deps.setSelectedProjectId(data.project.id);
-          }
-        }
+        const created = toProject(await apiCreateProject({
+          id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: folderName,
+          projectRoot: path,
+        }));
+        targetProjectId = created.id;
+        deps.setProjects?.((prev) => [...prev, created]);
+        deps.setSelectedProjectId(created.id);
       } catch (e) {
         console.warn('[WORKSPACE PROJECT] Failed to auto-create project:', e);
       }

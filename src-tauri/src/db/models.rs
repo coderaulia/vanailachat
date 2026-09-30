@@ -17,6 +17,9 @@ pub struct ProjectRecord {
     pub created_at: i64,
     #[serde(alias = "updated_at", default)]
     pub updated_at: i64,
+    /// Workspace directory this project is bound to, if any.
+    #[serde(default, alias = "project_root")]
+    pub project_root: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +68,7 @@ pub struct ChatPatch {
 }
 
 /// Marks a key as present, so `null` (clear) differs from a missing key (keep).
-fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+pub fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,

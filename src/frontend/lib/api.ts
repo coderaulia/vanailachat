@@ -70,6 +70,8 @@ export interface ApiProjectDto {
   instructions?: string | null;
   memory?: string | null;
   pinned?: boolean;
+  projectRoot?: string | null;
+  project_root?: string | null;
   created_at?: number;
   createdAt?: number;
   updated_at?: number;
@@ -192,7 +194,7 @@ export async function apiGetProject(id: string): Promise<ApiProjectDto | null> {
   return data.project ?? null;
 }
 
-export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string }): Promise<ApiProjectDto> {
+export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string; projectRoot?: string }): Promise<ApiProjectDto> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
     return await invoke<ApiProjectDto>('create_project', { payload });
@@ -207,7 +209,7 @@ export async function apiCreateProject(payload: { id: string; name: string; desc
 
 export async function apiUpdateProject(
   id: string,
-  payload: { name?: string; description?: string; instructions?: string; memory?: string; pinned?: boolean }
+  payload: { name?: string; description?: string; instructions?: string; memory?: string; pinned?: boolean; projectRoot?: string | null }
 ): Promise<ApiProjectDto | null> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -496,6 +498,15 @@ export async function apiFetchModels(): Promise<Array<{
   const data = await requestApi<{
     models?: Array<{ name: string; provider: string; providerLabel?: string; model_type?: string }>;
   }>('/api/models');
+  return Array.isArray(data.models) ? data.models : [];
+}
+
+/** Names of every model the configured providers can serve (used by "Test connection"). */
+export async function apiListModelNames(): Promise<string[]> {
+  if (isTauri) {
+    return (await apiFetchModels()).map((model) => model.name);
+  }
+  const data = await requestApi<{ models?: string[] }>('/api/models');
   return Array.isArray(data.models) ? data.models : [];
 }
 

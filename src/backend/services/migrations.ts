@@ -374,5 +374,14 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_messages_version_of ON messages(version_of);
       `);
     }
+  },
+  {
+    version: 17,
+    name: 'project_workspace_root',
+    up: (db) => {
+      // A project can be bound to a workspace directory; the UI matches a coding
+      // chat's folder against it, which never worked while nothing stored it.
+      db.exec(`ALTER TABLE projects ADD COLUMN project_root TEXT;`);
+    }
   }
 ];

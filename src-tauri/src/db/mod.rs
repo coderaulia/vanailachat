@@ -70,7 +70,9 @@ impl Database {
         }
         migs.to_latest(&mut conn)?;
 
-        Ok(Self { conn })
+        let db = Self { conn };
+        db.ensure_default_project()?;
+        Ok(db)
     }
 
     pub fn in_memory() -> AppResult<Self> {
@@ -78,80 +80,77 @@ impl Database {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         let migs = migrations::get_migrations();
         migs.to_latest(&mut conn)?;
-        Ok(Self { conn })
+        let db = Self { conn };
+        db.ensure_default_project()?;
+        Ok(db)
     }
 
     // ── Projects CRUD ───────────────────────────────────────────────────
 
-    pub fn list_projects(&self) -> AppResult<Vec<ProjectRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, description, instructions, memory, pinned, created_at, updated_at 
-             FROM projects ORDER BY pinned DESC, updated_at DESC"
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(ProjectRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                instructions: row.get(3)?,
-                memory: row.get(4)?,
-                pinned: row.get::<_, i32>(5)? != 0,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-            })
-        })?;
+    const PROJECT_COLUMNS: &'static str =
+        "id, name, description, instructions, memory, pinned, created_at, updated_at, project_root";
 
-        let mut results = Vec::new();
-        for r in rows {
-            results.push(r?);
-        }
-        Ok(results)
-    }
-
-    pub fn create_project(&self, id: &str, name: &str, description: Option<&str>, instructions: Option<&str>) -> AppResult<ProjectRecord> {
-        let now = chrono::Utc::now().timestamp_millis();
-        self.conn.execute(
-            "INSERT INTO projects (id, name, description, instructions, created_at, updated_at) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, name, description, instructions, now, now],
-        )?;
+    fn map_project_row(row: &rusqlite::Row) -> rusqlite::Result<ProjectRecord> {
         Ok(ProjectRecord {
-            id: id.to_string(),
-            name: name.to_string(),
-            description: description.map(|s| s.to_string()),
-            instructions: instructions.map(|s| s.to_string()),
-            memory: None,
-            pinned: false,
-            created_at: now,
-            updated_at: now,
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            instructions: row.get(3)?,
+            memory: row.get(4)?,
+            pinned: row.get::<_, i32>(5)? != 0,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            project_root: row.get(8)?,
         })
     }
 
-    pub fn get_project(&self, id: &str) -> AppResult<Option<ProjectRecord>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, description, instructions, memory, pinned, created_at, updated_at 
-             FROM projects WHERE id = ?1"
-        )?;
-        let mut rows = stmt.query_map(params![id], |row| {
-            Ok(ProjectRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                instructions: row.get(3)?,
-                memory: row.get(4)?,
-                pinned: row.get::<_, i32>(5)? != 0,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-            })
-        })?;
-
-        if let Some(r) = rows.next() {
-            Ok(Some(r?))
-        } else {
-            Ok(None)
-        }
+    /// Oldest first, like the web backend, so the first project is the default one.
+    pub fn list_projects(&self) -> AppResult<Vec<ProjectRecord>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {} FROM projects ORDER BY created_at ASC, rowid ASC",
+            Self::PROJECT_COLUMNS
+        ))?;
+        let rows = stmt.query_map([], Self::map_project_row)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Returns the oldest project, creating "Default" on a fresh database. Chats
+    /// reference a project by foreign key, so one must always exist.
+    pub fn ensure_default_project(&self) -> AppResult<ProjectRecord> {
+        if let Some(first) = self.list_projects()?.into_iter().next() {
+            return Ok(first);
+        }
+        self.create_project(&format!("project_{}", uuid::Uuid::new_v4()), "Default", None, None, None)
+    }
+
+    pub fn create_project(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+        instructions: Option<&str>,
+        project_root: Option<&str>,
+    ) -> AppResult<ProjectRecord> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let project_root = project_root.map(str::trim).filter(|root| !root.is_empty());
+        self.conn.execute(
+            "INSERT INTO projects (id, name, description, instructions, project_root, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![id, name, description, instructions, project_root, now],
+        )?;
+        self.get_project(id)?
+            .ok_or_else(|| crate::error::AppError::NotFound(format!("Project '{id}' not found")))
+    }
+
+    pub fn get_project(&self, id: &str) -> AppResult<Option<ProjectRecord>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("SELECT {} FROM projects WHERE id = ?1", Self::PROJECT_COLUMNS))?;
+        let mut rows = stmt.query_map(params![id], Self::map_project_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// `project_root`: `None` leaves the binding alone, `Some(None)` unbinds it.
     pub fn update_project(
         &self,
         id: &str,
@@ -160,22 +159,28 @@ impl Database {
         instructions: Option<&str>,
         memory: Option<&str>,
         pinned: Option<bool>,
+        project_root: Option<Option<&str>>,
     ) -> AppResult<Option<ProjectRecord>> {
         let existing = match self.get_project(id)? {
             Some(p) => p,
             None => return Ok(None),
         };
 
-        let new_name = name.unwrap_or(&existing.name);
+        let new_name = name.filter(|n| !n.trim().is_empty()).unwrap_or(&existing.name);
         let new_description = description.or(existing.description.as_deref());
         let new_instructions = instructions.or(existing.instructions.as_deref());
         let new_memory = memory.or(existing.memory.as_deref());
         let new_pinned = pinned.unwrap_or(existing.pinned);
+        let new_root = match project_root {
+            Some(root) => root.map(str::trim).filter(|r| !r.is_empty()),
+            None => existing.project_root.as_deref(),
+        };
         let now = chrono::Utc::now().timestamp_millis();
 
         self.conn.execute(
-            "UPDATE projects SET name = ?1, description = ?2, instructions = ?3, memory = ?4, pinned = ?5, updated_at = ?6 WHERE id = ?7",
-            params![new_name, new_description, new_instructions, new_memory, if new_pinned { 1 } else { 0 }, now, id],
+            "UPDATE projects SET name = ?1, description = ?2, instructions = ?3, memory = ?4, pinned = ?5,
+                                 project_root = ?6, updated_at = ?7 WHERE id = ?8",
+            params![new_name, new_description, new_instructions, new_memory, if new_pinned { 1 } else { 0 }, new_root, now, id],
         )?;
 
         self.get_project(id)
@@ -280,6 +285,13 @@ impl Database {
         role: Option<&str>,
     ) -> AppResult<ChatRecord> {
         let now = chrono::Utc::now().timestamp_millis();
+        // The UI sends "default" (or nothing) before any project exists; a
+        // dangling id would fail the foreign key and lose the chat.
+        let resolved_project = match project_id {
+            Some(pid) if self.get_project(pid)?.is_some() => Some(pid.to_string()),
+            _ => Some(self.ensure_default_project()?.id),
+        };
+        let project_id = resolved_project.as_deref();
         self.conn.execute(
             "INSERT INTO chats (id, title, project_id, project_root, system_prompt, model, role, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
@@ -658,11 +670,12 @@ mod tests {
         let db = Database::in_memory().expect("in-memory db initialization failed");
 
         // 1. Projects
-        let proj = db.create_project("p1", "Test Project", Some("Desc"), None).expect("create project failed");
+        let proj = db.create_project("p1", "Test Project", Some("Desc"), None, None).expect("create project failed");
         assert_eq!(proj.name, "Test Project");
 
         let projs = db.list_projects().expect("list projects failed");
-        assert_eq!(projs.len(), 1);
+        assert_eq!(projs.len(), 2, "the default project plus the new one");
+        assert_eq!(projs[0].name, "Default");
 
         // 2. Chats
         let chat = db.upsert_chat("c1", "Test Chat", Some("p1"), None, None, Some("ollama:llama3"), Some("general")).expect("upsert chat failed");
@@ -749,7 +762,7 @@ mod tests {
     #[test]
     fn test_regenerate_history_and_archive() {
         let db = Database::in_memory().unwrap();
-        db.create_project("p1", "P", None, None).unwrap();
+        db.create_project("p1", "P", None, None, None).unwrap();
         db.upsert_chat("c1", "Chat", Some("p1"), None, None, None, None).unwrap();
         db.save_message("u1", "c1", "user", "question", Some(1), None).unwrap();
         db.save_message("a1", "c1", "assistant", "first", Some(2), None).unwrap();
@@ -782,5 +795,25 @@ mod tests {
         assert_eq!(cleared.system_prompt, Some(None));
         let untouched: ChatPatch = serde_json::from_str("{}").unwrap();
         assert_eq!(untouched.system_prompt, None);
+    }
+
+    #[test]
+    fn test_default_project_and_workspace_binding() {
+        let db = Database::in_memory().unwrap();
+        let default = db.list_projects().unwrap();
+        assert_eq!(default.len(), 1);
+
+        // A chat for a project that does not exist lands in the default one
+        // instead of failing the foreign key.
+        let chat = db.upsert_chat("c1", "First", Some("default"), None, None, None, None).unwrap();
+        assert_eq!(chat.project_id.as_deref(), Some(default[0].id.as_str()));
+
+        let bound = db.create_project("p1", "Repo", None, None, Some("  /work/repo ")).unwrap();
+        assert_eq!(bound.project_root.as_deref(), Some("/work/repo"));
+        let kept = db.update_project("p1", Some("Renamed"), None, None, None, None, None).unwrap().unwrap();
+        assert_eq!(kept.project_root.as_deref(), Some("/work/repo"));
+        let cleared = db.update_project("p1", None, None, None, None, None, Some(None)).unwrap().unwrap();
+        assert_eq!(cleared.project_root, None);
+        assert_eq!(cleared.name, "Renamed");
     }
 }

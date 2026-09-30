@@ -107,6 +107,7 @@ pub async fn import_data(
                     &p.name,
                     p.description.as_deref(),
                     p.instructions.as_deref(),
+                    p.project_root.as_deref(),
                 );
                 imported_projects += 1;
             }

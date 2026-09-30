@@ -1,67 +1,18 @@
 import { useState, useMemo } from 'react';
-import type { Chat, ApiChat, ApiProject, Message, MessageRole } from '../types/chat';
+import type { Chat, ApiChat, ApiProject, Message } from '../types/chat';
 import {
   apiFetchProjects,
   apiFetchChats,
   apiCreateChat,
+  apiCreateProject,
   apiDeleteChat,
+  apiDeleteProject,
   apiPatchChat,
   apiSaveMessage,
   apiFetchMessages,
   apiUpdateProject,
 } from '../lib/api';
-import type { ApiChatDto, ApiMessageDto, ApiProjectDto } from '../lib/api';
-
-function toMessageRole(role: string): MessageRole {
-  if (role === 'user' || role === 'assistant' || role === 'system') {
-    return role;
-  }
-  return 'assistant';
-}
-
-// Both backends return camelCase now; the snake_case fallbacks keep older
-// desktop builds and exported files working.
-function toProject(p: ApiProjectDto): ApiProject {
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description ?? null,
-    instructions: p.instructions ?? null,
-    memory: p.memory ?? null,
-    pinned: Boolean(p.pinned),
-    createdAt: p.createdAt ?? p.created_at ?? Date.now(),
-  };
-}
-
-function toChat(c: ApiChatDto): ApiChat {
-  return {
-    id: c.id,
-    projectId: c.projectId ?? c.project_id ?? '',
-    title: c.title,
-    model: c.model ?? null,
-    projectRoot: c.projectRoot ?? c.project_root ?? null,
-    systemPrompt: c.systemPrompt ?? c.system_prompt ?? null,
-    pinned: Boolean(c.pinned),
-    archived: Boolean(c.archived),
-    role: c.role ?? null,
-    createdAt: c.createdAt ?? c.created_at ?? Date.now(),
-    updatedAt: c.updatedAt ?? c.updated_at ?? Date.now(),
-    usage: typeof c.usage === 'number' ? c.usage : 0,
-  };
-}
-
-function toMessage(m: ApiMessageDto): Message {
-  return {
-    id: m.id,
-    role: toMessageRole(m.role),
-    content: m.content,
-    promptTokens: m.promptTokens ?? m.prompt_tokens ?? null,
-    completionTokens: m.completionTokens ?? m.completion_tokens ?? null,
-    timestamp: m.createdAt ?? m.created_at ?? m.timestamp ?? Date.now(),
-    versionOf: m.versionOf ?? m.version_of ?? null,
-    versionCount: m.versionCount ?? m.version_count ?? 1,
-  };
-}
+import { toChat, toMessage, toProject } from '../lib/mappers';
 
 export function usePersistence() {
   const [projects, setProjects] = useState<ApiProject[]>([]);
@@ -122,6 +73,21 @@ export function usePersistence() {
     });
   };
 
+  const createProject = async (input: { name: string; description?: string; instructions?: string; projectRoot?: string }) => {
+    const created = await apiCreateProject({
+      id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ...input,
+    });
+    const mapped = toProject(created);
+    setProjects((prev) => [...prev, mapped]);
+    return mapped;
+  };
+
+  const deleteProject = async (id: string) => {
+    await apiDeleteProject(id);
+    setProjects((prev) => prev.filter((project) => project.id !== id));
+  };
+
   const patchProject = async (id: string, updates: Partial<ApiProject>) => {
     const updated = await apiUpdateProject(id, {
       name: updates.name,
@@ -151,6 +117,8 @@ export function usePersistence() {
     upsertChat,
     patchChat,
     patchProject,
+    createProject,
+    deleteProject,
     deleteChat,
     saveMessage,
     loadMessages,

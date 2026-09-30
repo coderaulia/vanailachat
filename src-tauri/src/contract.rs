@@ -29,7 +29,7 @@ mod tests {
     fn project() -> ProjectRecord {
         ProjectRecord {
             id: "p".into(), name: "P".into(), description: None, instructions: None,
-            memory: None, pinned: false, created_at: 1, updated_at: 1,
+            memory: None, pinned: false, created_at: 1, updated_at: 1, project_root: None,
         }
     }
 
