@@ -2,6 +2,21 @@ import { Hono } from 'hono';
 import type { AppDependencies } from '../types.js';
 import { sanitizeError, toOptionalNumber } from '../helpers/index.js';
 
+/**
+ * Desktop exports written before v0.3.3 use snake_case keys (created_at,
+ * chat_id). Mirror them to camelCase so either edition's backup imports here.
+ */
+function camelizeKeys<T>(row: T): T {
+  if (typeof row !== 'object' || row === null) return row;
+  const out: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(out)) {
+    if (!key.includes('_')) continue;
+    const camel = key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    if (!(camel in out)) out[camel] = value;
+  }
+  return out as T;
+}
+
 export function dataRouter(dependencies: AppDependencies): Hono {
   const app = new Hono();
 
@@ -50,9 +65,9 @@ export function dataRouter(dependencies: AppDependencies): Hono {
         }>;
       };
 
-      const incomingProjects = Array.isArray(body.projects) ? body.projects : [];
-      const incomingChats = Array.isArray(body.chats) ? body.chats : [];
-      const incomingMessages = Array.isArray(body.messages) ? body.messages : [];
+      const incomingProjects = Array.isArray(body.projects) ? body.projects.map(camelizeKeys) : [];
+      const incomingChats = Array.isArray(body.chats) ? body.chats.map(camelizeKeys) : [];
+      const incomingMessages = Array.isArray(body.messages) ? body.messages.map(camelizeKeys) : [];
 
       // One transaction for the whole import — per-row inserts each paid their
       // own fsync, which dominated the cost of restoring a large backup.

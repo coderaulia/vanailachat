@@ -1,4 +1,5 @@
 pub mod commands;
+mod contract;
 pub mod db;
 pub mod desktop;
 pub mod error;

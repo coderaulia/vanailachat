@@ -493,13 +493,13 @@ export async function apiExportTrainingData(request: {
 }
 
 export interface CodingSessionDto {
-  chat_id: string;
+  chatId: string;
   harness: string;
-  harness_session_id?: string | null;
-  workspace_path: string;
+  harnessSessionId?: string | null;
+  workspacePath: string;
   status: string;
-  created_at: number;
-  updated_at: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export async function apiGetCodingSession(chatId: string): Promise<CodingSessionDto | null> {
