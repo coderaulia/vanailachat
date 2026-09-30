@@ -967,3 +967,36 @@ export async function apiGetGitDiff(workspaceRoot: string): Promise<string> {
   const data = await res.json() as { diff?: string };
   return data.diff ?? '';
 }
+
+// ── Desktop integration ───────────────────────────────────────────────
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  url: string;
+}
+
+/** Desktop only: compares this build with the latest GitHub release. */
+export async function apiCheckForUpdate(): Promise<UpdateInfo | null> {
+  if (!isTauri) return null;
+  const { invoke } = await getTauriCore();
+  return await invoke<UpdateInfo>('check_for_update');
+}
+
+/** Opens a link in the system browser (desktop) or a new tab (web). */
+export async function apiOpenExternal(url: string): Promise<void> {
+  if (isTauri) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/** Desktop only: runs `handler` when the tray menu asks for a new chat. Returns an unsubscribe. */
+export async function onDesktopNewChat(handler: () => void): Promise<() => void> {
+  if (!isTauri) return () => {};
+  const { listen } = await getTauriEvent();
+  return await listen('vanaila://new-chat', handler);
+}

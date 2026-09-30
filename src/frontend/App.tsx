@@ -14,7 +14,8 @@ import { setPricingOverrides } from './config/modelPricing';
 import { AppLogPanel } from './components/AppLogPanel';
 import { installAppLogCapture } from './lib/appLog';
 
-import { apiFetchSettings } from './lib/api';
+import { apiFetchSettings, isTauri, onDesktopNewChat } from './lib/api';
+import { UpdateNotice } from './components/UpdateNotice';
 
 // Rendered only on demand, so they are kept out of the initial bundle.
 // OnboardingWizard stays eager: useOnboarding runs on every load.
@@ -132,6 +133,23 @@ const AppShell = () => {
 
   useKeyboardShortcuts(shortcutsMap);
 
+  // Tray menu "New chat" (desktop). The ref keeps one subscription while
+  // handleNewChat is recreated on every render.
+  const newChatRef = useRef(() => {});
+  newChatRef.current = () => { handleNewChat(); setViewMode('chat'); };
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void onDesktopNewChat(() => newChatRef.current()).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   // OS theme synchronization with FreeDesktop appearance portal
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -181,6 +199,7 @@ const AppShell = () => {
       <Sidebar onOpenSettings={() => setIsSettingsOpen(true)} />
 
       <main className="main-content">
+        {isTauri && <UpdateNotice />}
         {viewMode === 'projects' ? (
           <Suspense fallback={null}>
             <ProjectsLanding />

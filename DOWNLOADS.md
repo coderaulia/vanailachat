@@ -72,6 +72,14 @@ AppImage runs on virtually all Linux distributions without root permissions or s
 
 ---
 
+### Desktop app extras
+
+- **Tray icon** — Show the window, start a new chat, or quit from the tray menu.
+- **Global shortcut** — `Ctrl+Shift+Space` shows or hides the window from anywhere. Some Wayland desktops block global shortcuts; the tray still works there.
+- **Update notices** — Once a day the app checks GitHub Releases and shows a dismissible note when a newer version is out, with a link to download it. Install updates with your package manager or the new AppImage.
+
+---
+
 ### 4. Arch Linux & Manjaro (via AUR / PKGBUILD)
 
 If you are using an AUR helper such as `yay` or `paru`:
