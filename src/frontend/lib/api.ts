@@ -473,6 +473,7 @@ export async function apiFetchTrainingStats(): Promise<TrainingStatsDto> {
 export async function apiExportTrainingData(request: {
   format: 'sharegpt' | 'alpaca';
   selectedIds: string[];
+  includeDistillation?: boolean;
 }): Promise<{ path?: string; pairs?: number; explicit?: number; distilled?: number; format?: string; error?: string }> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -483,7 +484,11 @@ export async function apiExportTrainingData(request: {
   return await requestApi('/api/training/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ format: request.format, selectedIds: request.selectedIds }),
+    body: JSON.stringify({
+      format: request.format,
+      selectedIds: request.selectedIds,
+      includeDistillation: request.includeDistillation ?? false,
+    }),
   });
 }
 
