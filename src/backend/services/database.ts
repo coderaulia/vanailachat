@@ -19,6 +19,7 @@ export type {
   ChatRecord,
   UpsertChatInput,
   MessageRecord,
+  MessageVersionRecord,
   MessageFeedbackRecord,
   UpsertFeedbackInput,
   InsertMessageInput,
@@ -50,6 +51,8 @@ export class DatabaseService {
   static listMessages = messages.listMessages;
   static insertMessage = messages.insertMessage;
   static searchMessages = messages.searchMessages;
+  static supersedeMessagesFrom = messages.supersedeMessagesFrom;
+  static listMessageVersions = messages.listMessageVersions;
   // feedback
   static listTrainingPairs = feedback.listTrainingPairs;
   static listTrainingExamples = feedback.listTrainingExamples;

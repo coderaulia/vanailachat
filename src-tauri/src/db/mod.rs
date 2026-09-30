@@ -3,10 +3,15 @@ pub mod models;
 
 use crate::error::AppResult;
 use models::*;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 const MAX_MIGRATION_BACKUPS: usize = 5;
+
+/// Message columns plus the size of the message's regenerate group.
+const MESSAGE_COLUMNS: &str = "m.id, m.chat_id, m.role, m.content, m.created_at, m.version_of,
+    (SELECT COUNT(*) FROM messages v
+      WHERE v.id = COALESCE(m.version_of, m.id) OR v.version_of = COALESCE(m.version_of, m.id))";
 
 /// Snapshots an existing database before pending migrations run, keeping the
 /// newest few. A failed backup is logged rather than blocking startup.
@@ -189,7 +194,7 @@ impl Database {
 
         if let Some(pid) = project_id {
             let mut stmt = self.conn.prepare(
-                "SELECT id, title, project_id, project_root, system_prompt, pinned, model, role, created_at, updated_at 
+                "SELECT id, title, project_id, project_root, system_prompt, pinned, model, role, created_at, updated_at, archived
                  FROM chats WHERE project_id = ?1 ORDER BY pinned DESC, updated_at DESC LIMIT ?2"
             )?;
             let rows = stmt.query_map(params![pid, lim], Self::map_chat_row)?;
@@ -198,7 +203,7 @@ impl Database {
             }
         } else {
             let mut stmt = self.conn.prepare(
-                "SELECT id, title, project_id, project_root, system_prompt, pinned, model, role, created_at, updated_at 
+                "SELECT id, title, project_id, project_root, system_prompt, pinned, model, role, created_at, updated_at, archived
                  FROM chats ORDER BY pinned DESC, updated_at DESC LIMIT ?1"
             )?;
             let rows = stmt.query_map(params![lim], Self::map_chat_row)?;
@@ -221,7 +226,47 @@ impl Database {
             role: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
+            archived: row.get::<_, i32>(10)? != 0,
         })
+    }
+
+    pub fn get_chat(&self, id: &str) -> AppResult<Option<ChatRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, project_id, project_root, system_prompt, pinned, model, role, created_at, updated_at, archived
+             FROM chats WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], Self::map_chat_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Applies only the fields present in `patch`, like the web `PATCH /api/chats/:id`.
+    pub fn patch_chat(&self, id: &str, patch: &ChatPatch) -> AppResult<Option<ChatRecord>> {
+        let Some(existing) = self.get_chat(id)? else {
+            return Ok(None);
+        };
+        let pick = |new: &Option<Option<String>>, old: &Option<String>| match new {
+            Some(value) => value.clone(),
+            None => old.clone(),
+        };
+        let now = chrono::Utc::now().timestamp_millis();
+        self.conn.execute(
+            "UPDATE chats SET title = ?2, project_id = ?3, project_root = ?4, system_prompt = ?5, model = ?6,
+                              role = ?7, pinned = ?8, archived = ?9, updated_at = ?10
+             WHERE id = ?1",
+            params![
+                id,
+                patch.title.clone().unwrap_or(existing.title),
+                pick(&patch.project_id, &existing.project_id),
+                pick(&patch.project_root, &existing.project_root),
+                pick(&patch.system_prompt, &existing.system_prompt),
+                pick(&patch.model, &existing.model),
+                pick(&patch.role, &existing.role),
+                patch.pinned.unwrap_or(existing.pinned) as i32,
+                patch.archived.unwrap_or(existing.archived) as i32,
+                patch.updated_at.unwrap_or(now),
+            ],
+        )?;
+        self.get_chat(id)
     }
 
     pub fn upsert_chat(
@@ -249,18 +294,8 @@ impl Database {
             params![id, title, project_id, project_root, system_prompt, model, role, now],
         )?;
 
-        Ok(ChatRecord {
-            id: id.to_string(),
-            title: title.to_string(),
-            project_id: project_id.map(|s| s.to_string()),
-            project_root: project_root.map(|s| s.to_string()),
-            system_prompt: system_prompt.map(|s| s.to_string()),
-            pinned: false,
-            model: model.map(|s| s.to_string()),
-            role: role.map(|s| s.to_string()),
-            created_at: now,
-            updated_at: now,
-        })
+        self.get_chat(id)?
+            .ok_or_else(|| crate::error::AppError::NotFound(format!("Chat '{id}' not found")))
     }
 
     pub fn delete_chat(&self, id: &str) -> AppResult<bool> {
@@ -270,34 +305,58 @@ impl Database {
 
     // ── Messages CRUD & FTS5 Search ─────────────────────────────────────
 
+    /// Live messages for a chat, oldest first; superseded ones (replaced by a
+    /// regenerate or edit) are left out. `limit` keeps the newest N.
     pub fn list_messages(&self, chat_id: &str, limit: Option<usize>) -> AppResult<Vec<MessageRecord>> {
         let lim = limit.unwrap_or(500) as i64;
-        let mut stmt = self.conn.prepare(
-            "SELECT id, chat_id, role, content, created_at FROM messages 
-             WHERE chat_id = ?1 ORDER BY created_at ASC LIMIT ?2"
-        )?;
-        let rows = stmt.query_map(params![chat_id, lim], |row| {
-            Ok(MessageRecord {
-                id: row.get(0)?,
-                chat_id: row.get(1)?,
-                role: row.get(2)?,
-                content: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?;
-
-        let mut results = Vec::new();
-        for r in rows {
-            results.push(r?);
-        }
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {MESSAGE_COLUMNS} FROM messages m
+             WHERE m.chat_id = ?1 AND m.superseded_at IS NULL
+             ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?2"
+        ))?;
+        let mut results = stmt
+            .query_map(params![chat_id, lim], Self::map_message_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        results.reverse();
         Ok(results)
     }
 
-    pub fn save_message(&self, id: &str, chat_id: &str, role: &str, content: &str) -> AppResult<MessageRecord> {
+    pub fn get_message(&self, id: &str) -> AppResult<Option<MessageRecord>> {
+        let mut stmt = self.conn.prepare(&format!("SELECT {MESSAGE_COLUMNS} FROM messages m WHERE m.id = ?1"))?;
+        let mut rows = stmt.query_map(params![id], Self::map_message_row)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    fn map_message_row(row: &rusqlite::Row) -> rusqlite::Result<MessageRecord> {
+        Ok(MessageRecord {
+            id: row.get(0)?,
+            chat_id: row.get(1)?,
+            role: row.get(2)?,
+            content: row.get(3)?,
+            created_at: row.get(4)?,
+            version_of: row.get(5)?,
+            version_count: row.get(6)?,
+        })
+    }
+
+    pub fn save_message(
+        &self,
+        id: &str,
+        chat_id: &str,
+        role: &str,
+        content: &str,
+        created_at: Option<i64>,
+        version_of: Option<&str>,
+    ) -> AppResult<MessageRecord> {
         let now = chrono::Utc::now().timestamp_millis();
         self.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, chat_id, role, content, now],
+            "INSERT INTO messages (id, chat_id, role, content, created_at, version_of) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(id) DO UPDATE SET
+                role = excluded.role,
+                content = excluded.content,
+                version_of = COALESCE(excluded.version_of, messages.version_of),
+                superseded_at = NULL",
+            params![id, chat_id, role, content, created_at.unwrap_or(now), version_of],
         )?;
 
         // Update parent chat updated_at
@@ -306,13 +365,59 @@ impl Database {
             params![now, chat_id],
         )?;
 
-        Ok(MessageRecord {
-            id: id.to_string(),
-            chat_id: chat_id.to_string(),
-            role: role.to_string(),
-            content: content.to_string(),
-            created_at: now,
-        })
+        self.get_message(id)?
+            .ok_or_else(|| crate::error::AppError::NotFound(format!("Message '{id}' not found")))
+    }
+
+    /// Hides `from_message_id` and every later live message in its chat, as a
+    /// regenerate or edit replaces them. Rows are kept so earlier answers stay browsable.
+    pub fn supersede_messages_from(&self, chat_id: &str, from_message_id: &str) -> AppResult<usize> {
+        let from = self
+            .conn
+            .query_row(
+                "SELECT rowid, created_at FROM messages WHERE id = ?1 AND chat_id = ?2",
+                params![from_message_id, chat_id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+            )
+            .optional()?;
+        let Some((rowid, created_at)) = from else {
+            return Ok(0);
+        };
+        let changed = self.conn.execute(
+            "UPDATE messages SET superseded_at = ?1
+             WHERE chat_id = ?2 AND superseded_at IS NULL
+               AND (created_at > ?3 OR (created_at = ?3 AND rowid >= ?4))",
+            params![chrono::Utc::now().timestamp_millis(), chat_id, created_at, rowid],
+        )?;
+        Ok(changed)
+    }
+
+    /// Every answer in a message's regenerate group, oldest first.
+    pub fn list_message_versions(&self, message_id: &str) -> AppResult<Vec<MessageVersion>> {
+        let root: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(version_of, id) FROM messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(root) = root else {
+            return Ok(Vec::new());
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, content, created_at, superseded_at IS NULL FROM messages
+             WHERE id = ?1 OR version_of = ?1 ORDER BY created_at ASC, rowid ASC",
+        )?;
+        let rows = stmt.query_map(params![root], |row| {
+            Ok(MessageVersion {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                created_at: row.get(2)?,
+                current: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Full-text search over message bodies, matching the web backend's
@@ -342,7 +447,7 @@ impl Database {
              FROM messages_fts
              JOIN messages m ON m.rowid = messages_fts.rowid
              JOIN chats c ON c.id = m.chat_id
-             WHERE messages_fts MATCH ?1 AND (?2 IS NULL OR c.project_id = ?2)
+             WHERE messages_fts MATCH ?1 AND m.superseded_at IS NULL AND (?2 IS NULL OR c.project_id = ?2)
              ORDER BY bm25(messages_fts)
              LIMIT ?3",
         )?;
@@ -567,8 +672,8 @@ mod tests {
         assert_eq!(chats.len(), 1);
 
         // 3. Messages & FTS5
-        db.save_message("m1", "c1", "user", "Hello Vanaila Desktop!").expect("save message failed");
-        db.save_message("m2", "c1", "assistant", "Hello! How can I help you today?").expect("save assistant failed");
+        db.save_message("m1", "c1", "user", "Hello Vanaila Desktop!", Some(1), None).expect("save message failed");
+        db.save_message("m2", "c1", "assistant", "Hello! How can I help you today?", Some(2), None).expect("save assistant failed");
 
         let msgs = db.list_messages("c1", None).expect("list messages failed");
         assert_eq!(msgs.len(), 2);
@@ -610,13 +715,17 @@ mod tests {
         let db_path = dir.join("vanaila.sqlite");
 
         // Brand-new database: nothing to back up.
-        Database::new(&db_path).expect("fresh db failed").set_setting("user_name", "Alex").unwrap();
+        let fresh_path = dir.join("fresh.sqlite");
+        Database::new(&fresh_path).expect("fresh db failed");
         assert!(!dir.join("backups").exists());
 
-        // Roll the recorded version back one step; the final migration is idempotent.
-        let conn = Connection::open(&db_path).unwrap();
-        let latest = migrations::latest_version();
-        conn.pragma_update(None, "user_version", latest - 1).unwrap();
+        // A database one release behind: every migration but the last.
+        let mut conn = Connection::open(&db_path).unwrap();
+        migrations::get_migrations()
+            .to_version(&mut conn, migrations::latest_version() - 1)
+            .unwrap();
+        conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('user_name', 'Alex', 0)", [])
+            .unwrap();
         drop(conn);
 
         Database::new(&db_path).expect("reopen failed");
@@ -635,5 +744,43 @@ mod tests {
         }
         assert_eq!(std::fs::read_dir(dir.join("backups")).unwrap().count(), MAX_MIGRATION_BACKUPS);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_regenerate_history_and_archive() {
+        let db = Database::in_memory().unwrap();
+        db.create_project("p1", "P", None, None).unwrap();
+        db.upsert_chat("c1", "Chat", Some("p1"), None, None, None, None).unwrap();
+        db.save_message("u1", "c1", "user", "question", Some(1), None).unwrap();
+        db.save_message("a1", "c1", "assistant", "first", Some(2), None).unwrap();
+        db.save_message("u2", "c1", "user", "follow-up", Some(3), None).unwrap();
+
+        assert_eq!(db.supersede_messages_from("c1", "a1").unwrap(), 2);
+        let retry = db.save_message("a1b", "c1", "assistant", "second", Some(4), Some("a1")).unwrap();
+        assert_eq!(retry.version_count, 2);
+
+        let live: Vec<String> = db.list_messages("c1", None).unwrap().into_iter().map(|m| m.id).collect();
+        assert_eq!(live, vec!["u1", "a1b"]);
+        let versions = db.list_message_versions("a1b").unwrap();
+        assert_eq!(versions.iter().map(|v| v.content.as_str()).collect::<Vec<_>>(), vec!["first", "second"]);
+        assert_eq!(versions.iter().map(|v| v.current).collect::<Vec<_>>(), vec![false, true]);
+        assert!(db.search_messages("follow", None, None).unwrap().is_empty());
+
+        let archived = db
+            .patch_chat("c1", &ChatPatch { archived: Some(true), ..Default::default() })
+            .unwrap()
+            .unwrap();
+        assert!(archived.archived);
+        assert_eq!(archived.title, "Chat");
+        let renamed = db
+            .patch_chat("c1", &ChatPatch { title: Some("Renamed".into()), pinned: Some(true), ..Default::default() })
+            .unwrap()
+            .unwrap();
+        assert!(renamed.archived && renamed.pinned);
+        assert_eq!(renamed.project_id.as_deref(), Some("p1"));
+        let cleared: ChatPatch = serde_json::from_str(r#"{"systemPrompt": null}"#).unwrap();
+        assert_eq!(cleared.system_prompt, Some(None));
+        let untouched: ChatPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(untouched.system_prompt, None);
     }
 }

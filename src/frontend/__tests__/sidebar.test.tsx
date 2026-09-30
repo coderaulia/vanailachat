@@ -32,6 +32,7 @@ function mockChat(overrides: Partial<Record<string, unknown>> = {}) {
     handleDeleteChat: vi.fn(),
     handleRenameChat: vi.fn(),
     handleTogglePin: vi.fn(),
+    handleToggleArchive: vi.fn(),
     setViewMode: vi.fn(),
     isDarkMode: false,
     toggleTheme: vi.fn(),
@@ -133,5 +134,30 @@ describe('Sidebar', () => {
     fireEvent.change(input, { target: { value: 'Research' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(value.handleCreateProject).toHaveBeenCalledWith('Research');
+  });
+
+  it('hides archived chats until the archive view is opened', () => {
+    const [id, archivedChat] = chat('c9', 'Finished project');
+    const value = mockChat({
+      sortedHistories: [chat('c1', 'Leave policy'), [id, { ...archivedChat, archived: true }]],
+    });
+    render(<Sidebar />);
+    expect(screen.queryByText('Finished project')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
+    expect(screen.getByText('Finished project')).toBeDefined();
+    expect(screen.queryByText('Leave policy')).toBeNull();
+
+    fireEvent.click(screen.getByLabelText('Restore chat'));
+    expect(value.handleToggleArchive).toHaveBeenCalledWith('c9');
+  });
+
+  it('archives a chat from its row', () => {
+    const value = mockChat();
+    render(<Sidebar />);
+    expect(screen.queryByRole('button', { name: /Archived/ })).toBeNull();
+    fireEvent.click(screen.getAllByLabelText('Archive chat')[0]);
+    expect(value.handleToggleArchive).toHaveBeenCalledWith('c1');
+    expect(value.handleSelectChat).not.toHaveBeenCalled();
   });
 });

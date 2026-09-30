@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as ChatContext from '../context/ChatContext';
+import * as api from '../lib/api';
 import { ChatLog } from '../components/ChatLog';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import type { Message } from '../types/chat';
@@ -98,5 +99,33 @@ describe('ChatLog', () => {
     mockChat([message('u1', 'user', 'q')], { isCurrentChatSending: true });
     const { container } = render(<ChatLog showTokens={false} renderMarkdown={renderMarkdown} />);
     expect(container.querySelector('.message.is-loading')).not.toBeNull();
+  });
+
+  it('steps back to an earlier answer of a regenerated message and forward again', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ feedback: null })));
+    const versions = vi.spyOn(api, 'apiFetchMessageVersions').mockResolvedValue([
+      { id: 'a1', content: 'first try', createdAt: 1, current: false },
+      { id: 'a1b', content: 'second try', createdAt: 2, current: true },
+    ]);
+    mockChat([message('u1', 'user', 'q'), { ...message('a1b', 'assistant', 'second try'), versionOf: 'a1', versionCount: 2 }]);
+    render(<ChatLog showTokens={false} renderMarkdown={renderMarkdown} />);
+
+    expect(screen.getByText('2 / 2')).toBeDefined();
+    fireEvent.click(screen.getByLabelText('Previous answer'));
+    await waitFor(() => expect(screen.getByText('first try')).toBeDefined());
+    expect(versions).toHaveBeenCalledWith('a1b');
+    expect(screen.getByText('1 / 2')).toBeDefined();
+    expect(screen.getByText(/Earlier answer/)).toBeDefined();
+
+    fireEvent.click(screen.getByLabelText('Next answer'));
+    await waitFor(() => expect(screen.getByText('second try')).toBeDefined());
+    expect(screen.queryByText(/Earlier answer/)).toBeNull();
+  });
+
+  it('shows no version switcher for an answer that was never regenerated', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ feedback: null })));
+    mockChat([message('u1', 'user', 'q'), message('a1', 'assistant', 'only')]);
+    render(<ChatLog showTokens={false} renderMarkdown={renderMarkdown} />);
+    expect(screen.queryByLabelText('Answer versions')).toBeNull();
   });
 });

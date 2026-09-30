@@ -37,11 +37,15 @@ mod tests {
         ChatRecord {
             id: "c".into(), title: "C".into(), project_id: Some("p".into()), project_root: None,
             system_prompt: None, pinned: false, model: None, role: None, created_at: 1, updated_at: 1,
+            archived: false,
         }
     }
 
     fn message() -> MessageRecord {
-        MessageRecord { id: "m".into(), chat_id: "c".into(), role: "user".into(), content: "hi".into(), created_at: 1 }
+        MessageRecord {
+            id: "m".into(), chat_id: "c".into(), role: "user".into(), content: "hi".into(), created_at: 1,
+            version_of: None, version_count: 1,
+        }
     }
 
     #[test]
@@ -63,6 +67,9 @@ mod tests {
         assert_shape("codingSession", CodingSessionRecord {
             chat_id: "c".into(), harness: "pi-harness".into(), harness_session_id: None,
             workspace_path: "/tmp".into(), status: "ready".into(), created_at: 1, updated_at: 1,
+        });
+        assert_shape("messageVersion", MessageVersion {
+            id: "m".into(), content: "a".into(), created_at: 1, current: true,
         });
         assert_shape("messageSearchHit", MessageSearchHit {
             chat_id: "c".into(), chat_title: "C".into(), project_id: None, message_id: "m".into(),

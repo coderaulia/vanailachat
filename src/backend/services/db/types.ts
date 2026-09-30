@@ -16,6 +16,7 @@ export interface ChatRow {
   project_root: string | null;
   system_prompt: string | null;
   pinned: number;
+  archived: number;
   role: string | null;
   created_at: number;
   updated_at: number;
@@ -30,6 +31,8 @@ export interface MessageRow {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   created_at: number;
+  version_of?: string | null;
+  version_count?: number | null;
 }
 
 export interface ProjectRecord {
@@ -68,6 +71,7 @@ export interface ChatRecord {
   projectRoot: string | null;
   systemPrompt: string | null;
   pinned: boolean;
+  archived: boolean;
   role: string | null;
   createdAt: number;
   updatedAt: number;
@@ -82,6 +86,7 @@ export interface UpsertChatInput {
   projectRoot?: string | null;
   systemPrompt?: string | null;
   pinned?: boolean;
+  archived?: boolean;
   role?: string | null;
   createdAt?: number;
   updatedAt?: number;
@@ -95,6 +100,17 @@ export interface MessageRecord {
   promptTokens: number | null;
   completionTokens: number | null;
   createdAt: number;
+  /** Id of the first answer in this message's regenerate group, if any. */
+  versionOf: string | null;
+  /** Answers in the group, including superseded ones; 1 when never regenerated. */
+  versionCount: number;
+}
+
+export interface MessageVersionRecord {
+  id: string;
+  content: string;
+  createdAt: number;
+  current: boolean;
 }
 
 export interface MessageFeedbackRecord {
@@ -119,6 +135,7 @@ export interface InsertMessageInput {
   promptTokens?: number | null;
   completionTokens?: number | null;
   createdAt?: number;
+  versionOf?: string | null;
 }
 
 export interface CodingSessionRecord {

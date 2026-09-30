@@ -92,6 +92,7 @@ export interface ApiChatDto {
   updated_at?: number;
   updatedAt?: number;
   pinned?: boolean | number;
+  archived?: boolean | number;
   usage?: number;
 }
 
@@ -108,6 +109,10 @@ export interface ApiMessageDto {
   created_at?: number;
   createdAt?: number;
   timestamp?: number;
+  versionOf?: string | null;
+  version_of?: string | null;
+  versionCount?: number;
+  version_count?: number;
 }
 
 // ── Dynamic Tauri API Loader ──────────────────────────────────────────
@@ -286,6 +291,36 @@ export async function apiCreateChat(payload: {
   return data.chat ?? (payload as ApiChatDto);
 }
 
+/** Partial chat update: rename, pin, archive, prompt, root, model, role. */
+export async function apiPatchChat(
+  id: string,
+  updates: {
+    title?: string;
+    projectId?: string | null;
+    projectRoot?: string | null;
+    systemPrompt?: string | null;
+    model?: string | null;
+    role?: string | null;
+    pinned?: boolean;
+    archived?: boolean;
+    updatedAt?: number;
+  },
+): Promise<ApiChatDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const chat = await invoke<ApiChatDto | null>('update_chat', { id, patch: updates });
+    if (!chat) throw new Error(`Chat ${id} not found`);
+    return chat;
+  }
+  const data = await requestApi<{ chat?: ApiChatDto }>(`/api/chats/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!data.chat) throw new Error('Missing chat in response');
+  return data.chat;
+}
+
 export async function apiDeleteChat(id: string): Promise<boolean> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -381,6 +416,7 @@ export async function apiSaveMessage(payload: {
   created_at?: number;
   createdAt?: number;
   timestamp?: number;
+  versionOf?: string | null;
 }): Promise<ApiMessageDto> {
   const chatId = payload.chatId ?? payload.chat_id ?? '';
   const createdAt = payload.createdAt ?? payload.created_at ?? payload.timestamp ?? Date.now();
@@ -393,6 +429,7 @@ export async function apiSaveMessage(payload: {
         role: payload.role,
         content: payload.content,
         created_at: createdAt,
+        version_of: payload.versionOf ?? null,
       },
     });
   }
@@ -407,9 +444,41 @@ export async function apiSaveMessage(payload: {
       promptTokens: payload.promptTokens ?? payload.prompt_tokens ?? null,
       completionTokens: payload.completionTokens ?? payload.completion_tokens ?? null,
       createdAt,
+      versionOf: payload.versionOf ?? null,
     }),
   });
   return data.message ?? (payload as ApiMessageDto);
+}
+
+/** Hides a message and everything after it, before a regenerate or edit re-sends. */
+export async function apiSupersedeMessages(chatId: string, fromMessageId: string): Promise<number> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<number>('supersede_messages', { chatId, fromMessageId });
+  }
+  const data = await requestApi<{ superseded: number }>('/api/messages/supersede', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatId, fromMessageId }),
+  });
+  return data.superseded;
+}
+
+export interface MessageVersionDto {
+  id: string;
+  content: string;
+  createdAt: number;
+  current: boolean;
+}
+
+/** Every answer in a message's regenerate group, oldest first. */
+export async function apiFetchMessageVersions(messageId: string): Promise<MessageVersionDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MessageVersionDto[]>('get_message_versions', { messageId });
+  }
+  const data = await requestApi<{ versions?: MessageVersionDto[] }>(`/api/messages/${encodeURIComponent(messageId)}/versions`);
+  return data.versions ?? [];
 }
 
 // ── Models & Settings IPC / REST ──────────────────────────────────────

@@ -143,7 +143,14 @@ pub async fn import_data(
     if let Some(messages) = payload.messages {
         for m in messages {
             if imported_chat_ids.contains(&m.chat_id) {
-                let _ = db.save_message(&m.id, &m.chat_id, &m.role, &m.content);
+                let _ = db.save_message(
+                    &m.id,
+                    &m.chat_id,
+                    &m.role,
+                    &m.content,
+                    Some(m.created_at),
+                    m.version_of.as_deref(),
+                );
                 imported_messages += 1;
             }
         }

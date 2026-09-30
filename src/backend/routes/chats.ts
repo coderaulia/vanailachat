@@ -40,6 +40,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
         systemPrompt?: unknown;
         system_prompt?: unknown;
         pinned?: unknown;
+        archived?: unknown;
         role?: unknown;
         createdAt?: unknown;
         created_at?: unknown;
@@ -117,6 +118,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
         systemPrompt?: unknown;
         system_prompt?: unknown;
         pinned?: unknown;
+        archived?: unknown;
         role?: unknown;
         createdAt?: unknown;
         created_at?: unknown;
@@ -141,6 +143,7 @@ export function chatsRouter(dependencies: AppDependencies): Hono {
             : typeof body.pinned === 'number'
               ? body.pinned === 1
               : existingChat.pinned,
+        archived: typeof body.archived === 'boolean' ? body.archived : existingChat.archived,
         role: typeof body.role === 'string' ? body.role : body.role === null ? null : existingChat.role,
         createdAt: toOptionalNumber(body.createdAt ?? body.created_at) ?? existingChat.createdAt,
         updatedAt: toOptionalNumber(body.updatedAt ?? body.updated_at) ?? Date.now(),

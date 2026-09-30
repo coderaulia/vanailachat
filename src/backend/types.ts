@@ -5,6 +5,7 @@ import type {
   MemoryEntryRecord,
   MessageFeedbackRecord,
   MessageRecord,
+  MessageVersionRecord,
   ProjectRecord,
   SkillRecord,
   UpdateProjectInput,
@@ -68,6 +69,9 @@ export interface AppDependencies {
     createdAt: number;
   }>;
   insertMessage: (input: InsertMessageInput) => MessageRecord;
+  /** Hides a message and everything after it in the chat (regenerate/edit). */
+  supersedeMessagesFrom: (chatId: string, fromMessageId: string) => number;
+  listMessageVersions: (messageId: string) => MessageVersionRecord[];
   getMessage: (id: string) => MessageRecord | null;
   upsertFeedback: (input: UpsertFeedbackInput) => MessageFeedbackRecord;
   getFeedback: (messageId: string) => MessageFeedbackRecord | null;

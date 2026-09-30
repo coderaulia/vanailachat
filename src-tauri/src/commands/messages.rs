@@ -1,4 +1,4 @@
-use crate::db::models::{FeedbackRecord, MessageRecord, MessageSearchHit};
+use crate::db::models::{FeedbackRecord, MessageRecord, MessageSearchHit, MessageVersion};
 use crate::error::AppResult;
 use crate::state::AppState;
 use serde::Deserialize;
@@ -20,6 +20,8 @@ pub struct SaveMessagePayload {
     pub chat_id: String,
     pub role: String,
     pub content: String,
+    pub created_at: Option<i64>,
+    pub version_of: Option<String>,
 }
 
 #[tauri::command]
@@ -28,7 +30,31 @@ pub async fn save_message(
     payload: SaveMessagePayload,
 ) -> AppResult<MessageRecord> {
     let db = state.db.lock();
-    db.save_message(&payload.id, &payload.chat_id, &payload.role, &payload.content)
+    db.save_message(
+        &payload.id,
+        &payload.chat_id,
+        &payload.role,
+        &payload.content,
+        payload.created_at,
+        payload.version_of.as_deref(),
+    )
+}
+
+/// Hides a message and everything after it (regenerate/edit); returns how many.
+#[tauri::command]
+pub async fn supersede_messages(
+    state: State<'_, AppState>,
+    chat_id: String,
+    from_message_id: String,
+) -> AppResult<usize> {
+    let db = state.db.lock();
+    db.supersede_messages_from(&chat_id, &from_message_id)
+}
+
+#[tauri::command]
+pub async fn get_message_versions(state: State<'_, AppState>, message_id: String) -> AppResult<Vec<MessageVersion>> {
+    let db = state.db.lock();
+    db.list_message_versions(&message_id)
 }
 
 #[tauri::command]

@@ -58,6 +58,8 @@ const defaultDependencies: Omit<AppDependencies, 'providerRegistry'> = {
   deleteChat: DatabaseService.deleteChat.bind(DatabaseService),
   listMessages: DatabaseService.listMessages.bind(DatabaseService),
   searchMessages: DatabaseService.searchMessages.bind(DatabaseService),
+  supersedeMessagesFrom: DatabaseService.supersedeMessagesFrom.bind(DatabaseService),
+  listMessageVersions: DatabaseService.listMessageVersions.bind(DatabaseService),
   insertMessage: DatabaseService.insertMessage.bind(DatabaseService),
   getMessage: DatabaseService.getMessage.bind(DatabaseService),
   upsertFeedback: DatabaseService.upsertFeedback.bind(DatabaseService),

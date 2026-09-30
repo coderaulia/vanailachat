@@ -359,5 +359,20 @@ export const migrations: Migration[] = [
         db.prepare("DELETE FROM settings WHERE key = 'openai_base_url'").run();
       }
     }
+  },
+  {
+    version: 16,
+    name: 'message_versions_and_archived_chats',
+    up: (db) => {
+      // Regenerate/edit used to leave replaced messages in place, so they
+      // reappeared after a reload. They are now marked superseded (kept for
+      // answer history) and hidden from the live conversation.
+      db.exec(`
+        ALTER TABLE messages ADD COLUMN superseded_at INTEGER;
+        ALTER TABLE messages ADD COLUMN version_of TEXT;
+        ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_messages_version_of ON messages(version_of);
+      `);
+    }
   }
 ];

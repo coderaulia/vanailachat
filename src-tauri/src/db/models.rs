@@ -38,6 +38,39 @@ pub struct ChatRecord {
     pub created_at: i64,
     #[serde(alias = "updated_at")]
     pub updated_at: i64,
+    #[serde(default)]
+    pub archived: bool,
+}
+
+/// Fields for `update_chat`; absent fields are left unchanged. For the
+/// nullable ones, `Some(None)` (a JSON `null`) clears the value.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatPatch {
+    pub title: Option<String>,
+    #[serde(default, alias = "project_id", deserialize_with = "present")]
+    pub project_id: Option<Option<String>>,
+    #[serde(default, alias = "project_root", deserialize_with = "present")]
+    pub project_root: Option<Option<String>>,
+    #[serde(default, alias = "system_prompt", deserialize_with = "present")]
+    pub system_prompt: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present")]
+    pub model: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present")]
+    pub role: Option<Option<String>>,
+    pub pinned: Option<bool>,
+    pub archived: Option<bool>,
+    #[serde(alias = "updated_at")]
+    pub updated_at: Option<i64>,
+}
+
+/// Marks a key as present, so `null` (clear) differs from a missing key (keep).
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +83,26 @@ pub struct MessageRecord {
     pub content: String,
     #[serde(alias = "created_at")]
     pub created_at: i64,
+    /// Id of the first answer in this message's regenerate group, if any.
+    #[serde(default, alias = "version_of")]
+    pub version_of: Option<String>,
+    /// Answers in the group, including superseded ones; 1 when never regenerated.
+    #[serde(default = "one", alias = "version_count")]
+    pub version_count: i64,
+}
+
+fn one() -> i64 {
+    1
+}
+
+/// One answer in a regenerate group (web: `GET /api/messages/:id/versions`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageVersion {
+    pub id: String,
+    pub content: String,
+    pub created_at: i64,
+    pub current: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

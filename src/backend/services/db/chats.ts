@@ -12,6 +12,7 @@ export function mapChat(row: ChatRow): ChatRecord {
     projectRoot: row.project_root,
     systemPrompt: row.system_prompt,
     pinned: row.pinned === 1,
+    archived: row.archived === 1,
     role: row.role,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -38,6 +39,7 @@ export function listChats(projectId?: string, limit?: number): ChatRecord[] {
       c.project_root,
       c.system_prompt,
       c.pinned,
+      c.archived,
       c.role,
       c.created_at,
       c.updated_at,
@@ -62,6 +64,7 @@ export function listChats(projectId?: string, limit?: number): ChatRecord[] {
       c.project_root,
       c.system_prompt,
       c.pinned,
+      c.archived,
       c.role,
       c.created_at,
       c.updated_at,
@@ -95,6 +98,7 @@ export function getChat(id: string): ChatRecord | null {
         c.project_root,
         c.system_prompt,
         c.pinned,
+        c.archived,
         c.role,
         c.created_at,
         c.updated_at,
@@ -125,6 +129,7 @@ export function upsertChat(input: UpsertChatInput): ChatRecord {
     project_root: input.projectRoot ?? existing?.projectRoot ?? null,
     system_prompt: input.systemPrompt ?? existing?.systemPrompt ?? null,
     pinned: input.pinned ?? existing?.pinned ?? false,
+    archived: input.archived ?? existing?.archived ?? false,
     role: input.role ?? existing?.role ?? null,
     created_at: normalizeTimestamp(input.createdAt ?? existing?.createdAt),
     updated_at: normalizeTimestamp(input.updatedAt ?? existing?.updatedAt),
@@ -132,8 +137,8 @@ export function upsertChat(input: UpsertChatInput): ChatRecord {
 
   db.prepare(
     `
-    INSERT INTO chats (id, project_id, title, model, project_root, system_prompt, pinned, role, created_at, updated_at)
-    VALUES (@id, @project_id, @title, @model, @project_root, @system_prompt, @pinned, @role, @created_at, @updated_at)
+    INSERT INTO chats (id, project_id, title, model, project_root, system_prompt, pinned, archived, role, created_at, updated_at)
+    VALUES (@id, @project_id, @title, @model, @project_root, @system_prompt, @pinned, @archived, @role, @created_at, @updated_at)
     ON CONFLICT(id) DO UPDATE SET
       project_id = excluded.project_id,
       title = excluded.title,
@@ -141,12 +146,14 @@ export function upsertChat(input: UpsertChatInput): ChatRecord {
       project_root = excluded.project_root,
       system_prompt = excluded.system_prompt,
       pinned = excluded.pinned,
+      archived = excluded.archived,
       role = excluded.role,
       updated_at = excluded.updated_at
   `
   ).run({
     ...chat,
     pinned: chat.pinned ? 1 : 0,
+    archived: chat.archived ? 1 : 0,
   });
 
   const saved = getChat(chat.id);

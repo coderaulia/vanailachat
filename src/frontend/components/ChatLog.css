@@ -1058,3 +1058,20 @@ summary.thought-process__summary:hover {
     opacity: 0.85;
   }
 }
+
+.message__versions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.message__versions-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.message__versions-note {
+  font-style: italic;
+}
