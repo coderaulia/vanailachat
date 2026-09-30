@@ -14,9 +14,13 @@ All notable changes to Vanaila Chat are documented here.
 - Optional `VANAILA_ACCESS_TOKEN` (and `HOST`) for using the web edition from other devices.
 - Automatic database backup before migrations (`data/backups`, newest five kept).
 - Shared API contract (`contracts/api-shapes.json`) tested against both backends.
+- Desktop now matches the web edition for chat: memories, skills, personas, project instructions, web search and URL reading as model tools, image attachments, and per-chat streaming.
+- Desktop: A/B model comparison, deep research with cited reports, .docx/.xlsx/.pdf attachments, the in-app folder picker, and project folders.
+- Desktop coding mode runs a built-in agent in the workspace (list, search, read, edit, write, allowlisted commands); writes and commands wait for your approval. The Pi and DeepSeek harnesses remain web-only.
 
 ### Fixed
 
+- Desktop: replies now reach the chat (the stream used to be dropped), Ollama tokens are no longer lost at chunk boundaries, cloud model ids resolve to the right provider, a fresh install no longer fails to save its first chat, provider settings apply without a restart, and web tools are blocked from internal addresses.
 - Regenerated or edited messages no longer reappear after reloading a chat.
 - Databases created before the migration table existed now receive every migration after v4.
 - Blockquotes, GitHub-style alerts and formatted link text render as markdown instead of raw text.

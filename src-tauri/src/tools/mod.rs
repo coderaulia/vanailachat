@@ -4,6 +4,7 @@ pub mod net_guard;
 pub mod read_file;
 pub mod read_url;
 pub mod run_command;
+pub mod search_files;
 pub mod search_web;
 pub mod write_file;
 
@@ -71,6 +72,23 @@ pub async fn execute_tool(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| AppError::InvalidRequest("Missing new_string argument".to_string()))?;
             edit_file::edit_file(path, old_str, new_str, project_root).await
+        }
+        "search_files" => {
+            let query = args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| AppError::InvalidRequest("Missing query argument".to_string()))?;
+            search_files::search_files(
+                search_files::SearchOptions {
+                    query,
+                    path: args.get("path").and_then(|v| v.as_str()).unwrap_or("."),
+                    file_pattern: args.get("file_pattern").and_then(|v| v.as_str()),
+                    case_sensitive: args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(false),
+                    max_results: args.get("max_results").and_then(|v| v.as_u64()).unwrap_or(100) as usize,
+                },
+                project_root,
+            )
+            .await
         }
         "run_command" => {
             let command = args

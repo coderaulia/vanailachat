@@ -216,4 +216,28 @@ describe('desktop commands behind the shared API', () => {
     expect(invoke).toHaveBeenCalledWith('browse_directory', { path: null });
     expect(invoke).toHaveBeenCalledWith('browse_directory', { path: '/tmp' });
   });
+
+  it('runs a coding turn as a chat stream with history, and surfaces its failure', async () => {
+    const { api, invoke, emit } = await loadDesktopApi();
+    const received: Array<Record<string, unknown>> = [];
+    let finish!: () => void;
+    invoke.mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+
+    const done = api.runNativeCoding(
+      { chatId: 'code1', prompt: 'add a flag', model: 'qwen3', history: [{ role: 'user', content: 'hi' }] },
+      (chunk) => received.push(chunk as Record<string, unknown>),
+    );
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('run_coding', { request: { chat_id: 'code1', prompt: 'add a flag', model: 'qwen3', history: [{ role: 'user', content: 'hi' }] } });
+
+    emit({ chat_id: 'code1', approval_request: { id: 'a1', tool: 'write_file', summary: 'Write x' } });
+    emit({ chat_id: 'other', message: { role: 'assistant', content: 'not mine' } });
+    emit({ chat_id: 'code1', tool_event: true, tool: 'write_file', status: 'done' });
+    finish();
+    await done;
+    expect(received.map((c) => Object.keys(c).filter((k) => k !== 'chat_id')[0])).toEqual(['approval_request', 'tool_event']);
+
+    invoke.mockRejectedValue('Invalid request: Create a coding workspace first');
+    await expect(api.runNativeCoding({ chatId: 'code1', prompt: 'x', model: 'm' }, () => {})).rejects.toThrow('Create a coding workspace first');
+  });
 });

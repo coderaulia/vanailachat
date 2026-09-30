@@ -517,17 +517,18 @@ export function useSendMessage(deps: SendMessageDeps) {
         );
         assistantContentForSave = fullContent;
       } else if (useCodingHarness && isTauri) {
-        await runNativeCoding({ chatId, prompt: finalPrompt, model: resolvedModel, systemPrompt }, (chunk) => {
-          const native = chunk as ReturnType<typeof parseStreamLine>;
-          const coding = (native as unknown as { coding_event?: { type?: string; text?: string } }).coding_event;
-          if (coding?.type === 'text' && coding.text) {
-            fullContent += coding.text;
-            assistantContentForSave = fullContent;
-          }
-        }, abortController.signal);
+        // Same event stream as chat: text, tool activity and approval requests.
+        await runNativeCoding(
+          {
+            chatId,
+            prompt: finalPrompt,
+            model: resolvedModel,
+            history: recentConversation.map(m => ({ role: m.role, content: m.content })),
+          },
+          (chunk) => { applyEvent(chunk as unknown as ReturnType<typeof parseStreamLine>); },
+          abortController.signal,
+        );
         assistantContentForSave = fullContent;
-        setContextWindow(prev => ({ ...prev, current: finalUsage }));
-        finalUsage = finalUsage || Math.max(1, Math.ceil((finalPrompt.length + fullContent.length) / 4));
       } else {
         const response = useCodingHarness
           ? await fetch('/api/coding/run', {

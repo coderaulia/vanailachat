@@ -2,6 +2,7 @@
 
 pub mod ab;
 pub mod agent;
+pub mod coding;
 pub mod memory;
 pub mod personas;
 pub mod prompt;

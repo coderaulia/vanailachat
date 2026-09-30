@@ -710,25 +710,57 @@ export async function apiCreateCodingSession(request: { chatId: string; harness:
   return data.session;
 }
 
+/**
+ * Runs a desktop command that streams `chat-stream` events for one chat. Events are
+ * tagged with their chat, so a second chat streaming at the same time cannot write
+ * into this one's message. Resolves when the command does; a failure rejects.
+ */
+async function invokeChatStream(
+  command: string,
+  payload: Record<string, unknown>,
+  chatId: string | undefined,
+  onChunk: (chunk: StreamChunk) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { invoke } = await getTauriCore();
+  const { listen } = await getTauriEvent();
+
+  const unlisten = await listen<StreamChunk>('chat-stream', (event) => {
+    const chunk = event.payload;
+    if (chatId && chunk.chat_id && chunk.chat_id !== chatId) return;
+    onChunk(chunk);
+  });
+  const abortHandler = () => { invoke('cancel_chat', { chatId: chatId ?? null }).catch(() => {}); };
+  signal?.addEventListener('abort', abortHandler, { once: true });
+
+  try {
+    await invoke(command, payload);
+  } catch (error) {
+    if (signal?.aborted) return;
+    throw commandError(error, 'Chat failed');
+  } finally {
+    unlisten();
+    signal?.removeEventListener('abort', abortHandler);
+  }
+}
+
+/**
+ * One coding turn in the session's workspace: the desktop app's own agent, which
+ * streams the same text, tool and approval events as a chat.
+ */
 export async function runNativeCoding(
-  request: { chatId: string; prompt: string; model: string; systemPrompt?: string },
+  request: { chatId: string; prompt: string; model: string; history?: Array<{ role: string; content: string }> },
   onChunk: (chunk: StreamChunk) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   if (!isTauri) throw new Error('Native coding is only available in Tauri');
-  const { invoke } = await getTauriCore();
-  const { listen } = await getTauriEvent();
-  let unlisten: (() => void) | null = await listen<StreamChunk>('chat-stream', (event) => onChunk(event.payload));
-  const abortHandler = () => { void invoke('cancel_chat'); };
-  signal?.addEventListener('abort', abortHandler, { once: true });
-  try {
-    await invoke('run_coding', { request: {
-      chat_id: request.chatId, prompt: request.prompt, model: request.model, system_prompt: request.systemPrompt ?? null,
-    } });
-  } finally {
-    unlisten?.(); unlisten = null;
-    signal?.removeEventListener('abort', abortHandler);
-  }
+  await invokeChatStream(
+    'run_coding',
+    { request: { chat_id: request.chatId, prompt: request.prompt, model: request.model, history: request.history ?? [] } },
+    request.chatId,
+    onChunk,
+    signal,
+  );
 }
 
 // ── Streaming Chat Completions ────────────────────────────────────────
@@ -783,37 +815,15 @@ export async function streamChatCompletion(
   signal?: AbortSignal
 ): Promise<void> {
   if (isTauri) {
-    const { invoke } = await getTauriCore();
-    const { listen } = await getTauriEvent();
     const { systemPrompt, maxTokens, ...nativeRequest } = body;
-    const chatId = body.chatId;
     const nativeBody = {
       ...nativeRequest,
       messages: body.messages.map(toNativeMessage),
       system_prompt: systemPrompt,
       max_tokens: maxTokens,
     };
-
-    // Events are tagged with their chat, so a second chat streaming at the same
-    // time cannot write into this one's message.
-    const unlisten = await listen<StreamChunk>('chat-stream', (event) => {
-      const payload = event.payload;
-      if (chatId && payload.chat_id && payload.chat_id !== chatId) return;
-      onChunk(payload);
-    });
-    const abortHandler = () => { invoke('cancel_chat', { chatId: chatId ?? null }).catch(() => {}); };
-    signal?.addEventListener('abort', abortHandler, { once: true });
-
-    try {
-      // Resolves when the reply is complete; a provider error rejects.
-      await invoke('start_chat', { request: nativeBody });
-    } catch (error) {
-      if (signal?.aborted) return;
-      throw new Error(typeof error === 'string' ? error : error instanceof Error ? error.message : 'Chat failed');
-    } finally {
-      unlisten();
-      signal?.removeEventListener('abort', abortHandler);
-    }
+    // Resolves when the reply is complete; a provider error rejects.
+    await invokeChatStream('start_chat', { request: nativeBody }, body.chatId, onChunk, signal);
     return;
   }
 

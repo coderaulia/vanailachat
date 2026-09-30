@@ -28,7 +28,7 @@ impl EventSink for TauriSink {
 }
 
 /// Registers a cancel handle for a chat; the returned receiver fires when the user stops it.
-async fn register_cancel(state: &AppState, chat_id: &str) -> watch::Receiver<bool> {
+pub async fn register_cancel(state: &AppState, chat_id: &str) -> watch::Receiver<bool> {
     let (tx, rx) = watch::channel(false);
     state.active_streams.lock().await.insert(chat_id.to_string(), tx);
     rx
