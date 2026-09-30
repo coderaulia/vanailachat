@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ToolService, executableForPlatform, isAllowedCommand } from '../services/tools.js';
+import { ToolService, childProcessEnv, executableForPlatform, isAllowedCommand } from '../services/tools.js';
 
 describe('write_file / edit_file', () => {
   let root: string;
@@ -99,6 +99,26 @@ describe('write_file / edit_file', () => {
     expect(result).toMatch(/exceeds/);
     expect(fs.existsSync(path.join(root, 'big.txt'))).toBe(false);
   });
+
+  it('refuses to create a file through a symlinked directory that leaves the root', async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'vanaila-outside-'));
+    try {
+      fs.symlinkSync(outside, path.join(root, 'link'));
+      const result = await ToolService.executeTool('write_file', { path: 'link/sub/new.txt', content: 'x' }, root);
+      expect(result).toMatch(/outside project directory/i);
+      expect(fs.existsSync(path.join(outside, 'sub', 'new.txt'))).toBe(false);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('still creates new nested files through an in-root symlink', async () => {
+    fs.mkdirSync(path.join(root, 'real'));
+    fs.symlinkSync(path.join(root, 'real'), path.join(root, 'alias'));
+    const result = await ToolService.executeTool('write_file', { path: 'alias/deep/new.txt', content: 'ok' }, root);
+    expect(result).toContain('Created');
+    expect(fs.readFileSync(path.join(root, 'real', 'deep', 'new.txt'), 'utf-8')).toBe('ok');
+  });
 });
 
 describe('git allowlist', () => {
@@ -127,5 +147,33 @@ describe('git allowlist', () => {
       const result = await ToolService.executeTool('run_command', { command: 'git', args }, null);
       expect(result).toMatch(/not on allowlist/);
     }
+  });
+
+  it('blocks git flags that write files, read outside the repo, or run configured programs', () => {
+    for (const args of [
+      ['diff', '--output=/tmp/x'],
+      ['log', '--output', '/tmp/x'],
+      ['diff', '--no-index', '/etc/passwd', '/dev/null'],
+      ['diff', '--ext-diff'],
+      ['show', '--textconv', 'HEAD:file'],
+      ['blame', '--contents', '/etc/passwd', 'README.md'],
+    ]) {
+      expect(isAllowedCommand('git', args)).toBe(false);
+    }
+    expect(isAllowedCommand('git', ['log', '-C', '--oneline'])).toBe(true);
+  });
+});
+
+describe('child process environment', () => {
+  it('drops provider secrets but keeps ordinary variables', () => {
+    const env = childProcessEnv({
+      PATH: '/usr/bin',
+      HOME: '/home/u',
+      OPENAI_API_KEY: 'sk-1',
+      GITHUB_TOKEN: 'ghp',
+      DB_PASSWORD: 'pw',
+      CLIENT_SECRET: 's',
+    });
+    expect(env).toEqual({ PATH: '/usr/bin', HOME: '/home/u' });
   });
 });

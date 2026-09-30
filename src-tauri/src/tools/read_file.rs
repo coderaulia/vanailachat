@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use tokio::fs;
 
 pub async fn read_file(file_path: &str, project_root: Option<&str>) -> AppResult<String> {
@@ -14,6 +14,10 @@ pub async fn read_file(file_path: &str, project_root: Option<&str>) -> AppResult
     Ok(content)
 }
 
+/// Resolves `target` inside the project root, rejecting anything that leaves it
+/// lexically (`..`, absolute paths) or through a symlink. For paths that do not
+/// exist yet, the nearest existing ancestor is canonicalized and checked, so a
+/// new file cannot be created through a symlinked directory.
 pub fn resolve_path(target: &str, project_root: Option<&str>) -> AppResult<PathBuf> {
     let root = match project_root {
         Some(r) if !r.is_empty() => PathBuf::from(r),
@@ -30,32 +34,46 @@ pub fn resolve_path(target: &str, project_root: Option<&str>) -> AppResult<PathB
         canonical_root.join(target)
     };
 
-    // If target exists, canonicalize and verify containment
-    if joined.exists() {
-        let canonical_target = joined
-            .canonicalize()
-            .map_err(|e| AppError::InvalidRequest(format!("Invalid path: {}", e)))?;
+    let outside = || AppError::Security("Access denied: path is outside workspace directory".to_string());
 
-        if !canonical_target.starts_with(&canonical_root) {
-            return Err(AppError::Security(
-                "Access denied: path is outside workspace directory".to_string(),
-            ));
-        }
-        Ok(canonical_target)
-    } else {
-        // If file doesn't exist yet (for write_file), verify parent directory
-        if let Some(parent) = joined.parent() {
-            if parent.exists() {
-                let canonical_parent = parent
-                    .canonicalize()
-                    .map_err(|e| AppError::InvalidRequest(format!("Invalid path: {}", e)))?;
-                if !canonical_parent.starts_with(&canonical_root) {
-                    return Err(AppError::Security(
-                        "Access denied: parent directory is outside workspace".to_string(),
-                    ));
+    let mut normalized = PathBuf::new();
+    for component in joined.components() {
+        match component {
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err(outside());
                 }
             }
+            Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
         }
-        Ok(joined)
     }
+    if !normalized.starts_with(&canonical_root) {
+        return Err(outside());
+    }
+
+    // symlink_metadata so a dangling link counts as existing and is then
+    // rejected by canonicalize, instead of being written through.
+    let mut existing = normalized.clone();
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    while std::fs::symlink_metadata(&existing).is_err() {
+        match existing.file_name() {
+            Some(name) => missing.push(name.to_owned()),
+            None => return Err(outside()),
+        }
+        if !existing.pop() {
+            return Err(outside());
+        }
+    }
+
+    let mut resolved = existing
+        .canonicalize()
+        .map_err(|e| AppError::InvalidRequest(format!("Invalid path: {}", e)))?;
+    if !resolved.starts_with(&canonical_root) {
+        return Err(outside());
+    }
+    for name in missing.iter().rev() {
+        resolved.push(name);
+    }
+    Ok(resolved)
 }
