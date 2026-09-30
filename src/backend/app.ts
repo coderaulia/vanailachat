@@ -17,6 +17,7 @@ import { PiHarness } from './services/piHarness.js';
 import { DeepseekHarness } from './services/deepseekHarness.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { LOOPBACK_ORIGIN, originGuard } from './middleware/originGuard.js';
+import { accessToken, registerAccessRoutes } from './middleware/accessToken.js';
 import { sanitizeError } from './helpers/index.js';
 import type { AppDependencies } from './types.js';
 
@@ -194,7 +195,13 @@ function buildProviderRegistry(
   return registry;
 }
 
-export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
+export interface AppOptions {
+  /** Shared secret required on /api when set; defaults to VANAILA_ACCESS_TOKEN. */
+  accessToken?: string | null;
+}
+
+export function createApp(overrides: Partial<AppDependencies> = {}, options: AppOptions = {}): Hono {
+  const token = (options.accessToken === undefined ? process.env.VANAILA_ACCESS_TOKEN : options.accessToken)?.trim() || null;
   // Merge non-registry deps first so fetchFn override is visible when building registry
   const baseDeps = { ...defaultDependencies, ...overrides };
   const registry =
@@ -247,7 +254,10 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Hono {
 
   // Blocks cross-site writes that CORS alone does not stop — CORS gates reading
   // the response, not sending the request.
-  app.use('*', originGuard());
+  app.use('*', originGuard({ trustSameOrigin: Boolean(token) }));
+
+  registerAccessRoutes(app, token);
+  if (token) app.use('/api/*', accessToken(token));
 
   app.on(['GET', 'HEAD'], '/api/health', (context) => context.json({ status: 'ok' }));
   app.on(['GET', 'HEAD'], '/api/hello', (context) => context.json({ status: 'ok' }));

@@ -234,6 +234,17 @@ pnpm desktop:dev
 
 Open `http://localhost:5173` in your browser.
 
+### 🔐 Using it from another device (LAN)
+
+By default the API only listens on `127.0.0.1`. The app can read your files and run allowlisted commands, so exposing it on a network needs an access token:
+
+```bash
+HOST=0.0.0.0 VANAILA_ACCESS_TOKEN="$(openssl rand -hex 24)" pnpm dev:backend
+pnpm dev:frontend --host
+```
+
+Open `http://<your-ip>:5173/?token=<the token>` once; the browser keeps an HttpOnly cookie for 30 days. The server refuses to start on a non-loopback `HOST` without a token.
+
 ---
 
 ## ⌨️ CLI Developer & Packaging Commands

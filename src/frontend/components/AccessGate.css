@@ -1,0 +1,65 @@
+.access-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--bg-app);
+  color: var(--text-main);
+}
+
+.access-gate__card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+}
+
+.access-gate__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.access-gate__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.access-gate__input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  background: var(--bg-surface-subtle);
+  color: var(--text-main);
+  font: inherit;
+}
+
+.access-gate__error {
+  margin: 0;
+  color: #c0392b;
+  font-size: 0.875rem;
+}
+
+.access-gate__button {
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-accent);
+  color: var(--text-on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.access-gate__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
