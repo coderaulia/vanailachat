@@ -117,6 +117,7 @@ describe('Sidebar', () => {
   });
 
   it('pins and deletes without selecting the chat', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const value = mockChat();
     render(<Sidebar />);
     fireEvent.click(screen.getAllByLabelText('Pin chat')[0]);
@@ -124,6 +125,15 @@ describe('Sidebar', () => {
     expect(value.handleTogglePin).toHaveBeenCalledWith('c1');
     expect(value.handleDeleteChat).toHaveBeenCalledWith('c2');
     expect(value.handleSelectChat).not.toHaveBeenCalled();
+  });
+
+  it('keeps the chat when the delete confirmation is declined', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const value = mockChat();
+    render(<Sidebar />);
+    fireEvent.click(screen.getAllByLabelText('Delete chat')[0]);
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(value.handleDeleteChat).not.toHaveBeenCalled();
   });
 
   it('creates a project from the inline input', () => {

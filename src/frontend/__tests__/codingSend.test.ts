@@ -164,8 +164,8 @@ describe('coding role routes through the coding harness', () => {
       const urlStr = String(url);
       const parsedBody = init?.body ? JSON.parse(String(init.body)) : undefined;
       calls.push({ url: urlStr, body: parsedBody });
-      if (urlStr.includes('/api/settings/coding_harness')) {
-        return { ok: true, json: async () => ({ value: 'deepseek-harness' }) };
+      if (urlStr.endsWith('/api/settings')) {
+        return { ok: true, json: async () => ({ settings: { coding_harness: 'deepseek-harness' } }) };
       }
       if (urlStr.includes('/api/coding/sessions')) {
         return { ok: true, json: async () => ({ session: {} }) };

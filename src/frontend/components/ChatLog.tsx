@@ -462,7 +462,7 @@ export function ChatLog({ showTokens, renderMarkdown }: ChatLogProps) {
         {conversation.length === 0 ? (
           <div className="chat-empty">
             <strong>No messages yet</strong>
-            <p>Start a new conversation with the local model.</p>
+            <p>Start a new conversation below.</p>
           </div>
         ) : (
           conversation.map((message, index) => (

@@ -39,6 +39,8 @@ export interface StreamChunk {
   prompt_eval_count?: number;
   eval_count?: number;
   error?: string;
+  /** Desktop only: which chat this event belongs to. */
+  chat_id?: string;
 }
 
 export interface ChatStreamRequest {
@@ -70,6 +72,8 @@ export interface ApiProjectDto {
   instructions?: string | null;
   memory?: string | null;
   pinned?: boolean;
+  projectRoot?: string | null;
+  project_root?: string | null;
   created_at?: number;
   createdAt?: number;
   updated_at?: number;
@@ -192,7 +196,7 @@ export async function apiGetProject(id: string): Promise<ApiProjectDto | null> {
   return data.project ?? null;
 }
 
-export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string }): Promise<ApiProjectDto> {
+export async function apiCreateProject(payload: { id: string; name: string; description?: string; instructions?: string; projectRoot?: string }): Promise<ApiProjectDto> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
     return await invoke<ApiProjectDto>('create_project', { payload });
@@ -207,7 +211,7 @@ export async function apiCreateProject(payload: { id: string; name: string; desc
 
 export async function apiUpdateProject(
   id: string,
-  payload: { name?: string; description?: string; instructions?: string; memory?: string; pinned?: boolean }
+  payload: { name?: string; description?: string; instructions?: string; memory?: string; pinned?: boolean; projectRoot?: string | null }
 ): Promise<ApiProjectDto | null> {
   if (isTauri) {
     const { invoke } = await getTauriCore();
@@ -499,6 +503,38 @@ export async function apiFetchModels(): Promise<Array<{
   return Array.isArray(data.models) ? data.models : [];
 }
 
+/** Names of every model the configured providers can serve (used by "Test connection"). */
+export async function apiListModelNames(): Promise<string[]> {
+  if (isTauri) {
+    return (await apiFetchModels()).map((model) => model.name);
+  }
+  const data = await requestApi<{ models?: string[] }>('/api/models');
+  return Array.isArray(data.models) ? data.models : [];
+}
+
+export interface CodingHarnessStatus {
+  id: string;
+  label: string;
+  available: boolean;
+  reason?: string;
+}
+
+/** Whether each web coding harness can run here. The desktop app has its own built-in agent, so it reports none. */
+export async function apiFetchCodingHarnesses(): Promise<CodingHarnessStatus[]> {
+  if (isTauri) return [];
+  const data = await requestApi<{ harnesses?: CodingHarnessStatus[] }>('/api/coding/harnesses');
+  return Array.isArray(data.harnesses) ? data.harnesses : [];
+}
+
+/** Which provider serves each model; "Test connection" uses it to check only the provider being edited. */
+export async function apiListModelProviders(): Promise<Array<{ name: string; provider: string }>> {
+  if (isTauri) {
+    return (await apiFetchModels()).map(({ name, provider }) => ({ name, provider }));
+  }
+  const data = await requestApi<{ providers?: Array<{ name: string; provider: string }> }>('/api/models');
+  return Array.isArray(data.providers) ? data.providers : [];
+}
+
 /** One line of Ollama's pull progress. */
 export interface PullProgress {
   status?: string;
@@ -697,28 +733,104 @@ export async function apiCreateCodingSession(request: { chatId: string; harness:
   return data.session;
 }
 
-export async function runNativeCoding(
-  request: { chatId: string; prompt: string; model: string; systemPrompt?: string },
+/**
+ * Runs a desktop command that streams `chat-stream` events for one chat. Events are
+ * tagged with their chat, so a second chat streaming at the same time cannot write
+ * into this one's message. Resolves when the command does; a failure rejects.
+ */
+async function invokeChatStream(
+  command: string,
+  payload: Record<string, unknown>,
+  chatId: string | undefined,
   onChunk: (chunk: StreamChunk) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (!isTauri) throw new Error('Native coding is only available in Tauri');
   const { invoke } = await getTauriCore();
   const { listen } = await getTauriEvent();
-  let unlisten: (() => void) | null = await listen<StreamChunk>('chat-stream', (event) => onChunk(event.payload));
-  const abortHandler = () => { void invoke('cancel_chat'); };
+
+  const unlisten = await listen<StreamChunk>('chat-stream', (event) => {
+    const chunk = event.payload;
+    if (chatId && chunk.chat_id && chunk.chat_id !== chatId) return;
+    onChunk(chunk);
+  });
+  const abortHandler = () => { invoke('cancel_chat', { chatId: chatId ?? null }).catch(() => {}); };
   signal?.addEventListener('abort', abortHandler, { once: true });
+
   try {
-    await invoke('run_coding', { request: {
-      chat_id: request.chatId, prompt: request.prompt, model: request.model, system_prompt: request.systemPrompt ?? null,
-    } });
+    await invoke(command, payload);
+  } catch (error) {
+    if (signal?.aborted) return;
+    throw commandError(error, 'Chat failed');
   } finally {
-    unlisten?.(); unlisten = null;
+    unlisten();
     signal?.removeEventListener('abort', abortHandler);
   }
 }
 
+/**
+ * One coding turn in the session's workspace: the desktop app's own agent, which
+ * streams the same text, tool and approval events as a chat.
+ */
+export async function runNativeCoding(
+  request: { chatId: string; prompt: string; model: string; history?: Array<{ role: string; content: string }> },
+  onChunk: (chunk: StreamChunk) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!isTauri) throw new Error('Native coding is only available in Tauri');
+  await invokeChatStream(
+    'run_coding',
+    { request: { chat_id: request.chatId, prompt: request.prompt, model: request.model, history: request.history ?? [] } },
+    request.chatId,
+    onChunk,
+    signal,
+  );
+}
+
 // ── Streaming Chat Completions ────────────────────────────────────────
+
+type ContentPart = string | { type?: string; text?: string; image_url?: { url?: string } };
+
+/** Desktop messages carry plain text plus a separate list of images. */
+export function toNativeMessage(message: ChatStreamRequest['messages'][number]) {
+  const { content, ...rest } = message;
+  if (typeof content === 'string') return { ...rest, content };
+  const parts: ContentPart[] = Array.isArray(content) ? content : [String(content ?? '')];
+  const text = parts
+    .map((part) => (typeof part === 'string' ? part : part.text ?? ''))
+    .filter(Boolean)
+    .join('\n');
+  const images = parts
+    .map((part) => (typeof part === 'string' ? undefined : part.image_url?.url))
+    .filter((url): url is string => Boolean(url));
+  return { ...rest, content: text, ...(images.length > 0 ? { images } : {}) };
+}
+
+/**
+ * One non-streaming completion (chat titles and the like). Skips the profile,
+ * memories and tools. Returns the reply text, or null when it fails.
+ */
+export async function apiChatOnce(model: string, prompt: string): Promise<string | null> {
+  try {
+    if (isTauri) {
+      const { invoke } = await getTauriCore();
+      return await invoke<string>('chat_once', { request: { model, messages: [{ role: 'user', content: prompt }], skip_memory: true } });
+    }
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], stream: false, skipMemory: true }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json() as Record<string, unknown>;
+    // Ollama and OpenAI response shapes
+    const ollama = (data as { message?: { content?: string } }).message?.content;
+    const openai = (data as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content;
+    return ollama ?? openai ?? null;
+  } catch {
+    return null;
+  }
+}
+
 
 export async function streamChatCompletion(
   body: ChatStreamRequest,
@@ -726,50 +838,16 @@ export async function streamChatCompletion(
   signal?: AbortSignal
 ): Promise<void> {
   if (isTauri) {
-    try {
-      const { invoke } = await getTauriCore();
-      const { listen } = await getTauriEvent();
-      const { systemPrompt, maxTokens, ...nativeRequest } = body;
-      const nativeBody = {
-        ...nativeRequest,
-        messages: body.messages.map((message) => ({
-          ...message,
-          content: typeof message.content === 'string' ? message.content : Array.isArray(message.content)
-            ? message.content.map((part: unknown) => typeof part === 'string' ? part : (part as { text?: string }).text ?? '').join('')
-            : String(message.content),
-        })),
-        system_prompt: systemPrompt,
-        max_tokens: maxTokens,
-      };
-
-      let unlisten: (() => void) | null = null;
-      unlisten = await listen<StreamChunk>('chat-stream', (event) => {
-        onChunk(event.payload);
-      });
-
-      const abortHandler = () => {
-        invoke('cancel_chat').catch(() => {});
-        if (unlisten) {
-          unlisten();
-          unlisten = null;
-        }
-      };
-
-      signal?.addEventListener('abort', abortHandler, { once: true });
-
-      try {
-        await invoke('start_chat', { request: nativeBody });
-      } finally {
-        if (unlisten) {
-          unlisten();
-        }
-        signal?.removeEventListener('abort', abortHandler);
-      }
-      return;
-    } catch (err) {
-      console.error('[api] Tauri IPC chat stream failed:', err);
-      throw err;
-    }
+    const { systemPrompt, maxTokens, ...nativeRequest } = body;
+    const nativeBody = {
+      ...nativeRequest,
+      messages: body.messages.map(toNativeMessage),
+      system_prompt: systemPrompt,
+      max_tokens: maxTokens,
+    };
+    // Resolves when the reply is complete; a provider error rejects.
+    await invokeChatStream('start_chat', { request: nativeBody }, body.chatId, onChunk, signal);
+    return;
   }
 
   // Web fallback: HTTP fetch with ReadableStream NDJSON line reader
@@ -829,44 +907,58 @@ export async function streamChatCompletion(
 
 // ── Deep Research Stream ──────────────────────────────────────────────
 
+export interface ResearchStreamRequest {
+  query: string;
+  model: string;
+  maxSources?: number;
+  depth?: 'quick' | 'standard' | 'deep';
+  /** Identifies this run so the desktop app can cancel it and route its events. */
+  researchId?: string;
+}
+
+/** Streams the stage events (`searching` … `chunk` … `done`) of a research run. */
 export async function streamResearch(
-  query: string,
+  request: ResearchStreamRequest,
   onEvent: (event: Record<string, unknown>) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<void> {
   if (isTauri) {
+    const { invoke } = await getTauriCore();
+    const { listen } = await getTauriEvent();
+    const id = request.researchId;
+
+    const unlisten = await listen<Record<string, unknown>>('research-stage', (event) => {
+      if (id && event.payload.chat_id && event.payload.chat_id !== id) return;
+      onEvent(event.payload);
+    });
+    const abortHandler = () => { invoke('cancel_chat', { chatId: id ?? null }).catch(() => {}); };
+    signal?.addEventListener('abort', abortHandler, { once: true });
     try {
-      const { invoke } = await getTauriCore();
-      const { listen } = await getTauriEvent();
-
-      let unlisten: (() => void) | null = null;
-      unlisten = await listen('research-status', (event) => {
-        onEvent(event.payload as Record<string, unknown>);
+      // Resolves once the report is complete; failures arrive as an `error` stage.
+      await invoke('start_research', {
+        request: { query: request.query, model: request.model, max_sources: request.maxSources, depth: request.depth, research_id: id },
       });
-
-      try {
-        const res = await invoke<string[]>('start_research', { query });
-        onEvent({ status: 'complete', results: res });
-      } finally {
-        if (unlisten) unlisten();
-      }
-      return;
-    } catch (err) {
-      console.warn('[api] Tauri research IPC failed, falling back to HTTP:', err);
+    } catch (error) {
+      if (!signal?.aborted) throw commandError(error, 'Research failed');
+    } finally {
+      unlisten();
+      signal?.removeEventListener('abort', abortHandler);
     }
+    return;
   }
 
+  const { researchId: _researchId, ...body } = request;
   const response = await fetch('/api/research', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(body),
     signal,
   });
 
-  if (!response.ok) throw new Error(`Research request failed: ${response.status}`);
+  if (!response.ok) throw new Error((await response.text().catch(() => '')) || `Research request failed: ${response.status}`);
 
   const reader = response.body?.getReader();
-  if (!reader) return;
+  if (!reader) throw new Error('No response body');
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -883,13 +975,122 @@ export async function streamResearch(
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        const parsed = JSON.parse(trimmed);
-        onEvent(parsed);
+        onEvent(JSON.parse(trimmed));
       } catch {
         // ignore malformed line
       }
     }
   }
+}
+
+// ── A/B comparison ────────────────────────────────────────────────────
+
+export interface AbRunRequest {
+  prompt: string;
+  modelA: string;
+  modelB: string;
+  systemPrompt?: string;
+  search?: boolean;
+  deepResearch?: boolean;
+  attachments?: Array<{ type?: string; name?: string; content?: string }>;
+}
+
+export interface AbSideResult {
+  model: string;
+  content: string;
+  latencyMs: number;
+}
+
+export interface AbPickRequest {
+  userContent: string;
+  winnerContent: string;
+  winnerModel: string;
+  loserModel?: string;
+}
+
+async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? `${fallback} (HTTP ${response.status})`);
+  return data;
+}
+
+export async function apiRunAb(request: AbRunRequest): Promise<{ a: AbSideResult; b: AbSideResult }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke('run_ab', { request });
+    } catch (error) {
+      throw commandError(error, 'Comparison failed');
+    }
+  }
+  return postJson('/api/ab', request, 'Comparison failed');
+}
+
+export async function apiPickAb(pick: AbPickRequest): Promise<{ chatId: string; messageId: string }> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke('pick_ab', { pick });
+    } catch (error) {
+      throw commandError(error, 'Failed to save pick');
+    }
+  }
+  return postJson('/api/ab/pick', pick, 'Failed to save pick');
+}
+
+// ── Attachments & folders ─────────────────────────────────────────────
+
+export interface ExtractedDocument {
+  name?: string;
+  kind?: string;
+  characters?: number;
+  text?: string;
+}
+
+/** Unpacks a .docx/.xlsx/.pdf into plain text for the model. */
+export async function apiExtractAttachment(file: File): Promise<ExtractedDocument> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      // The bytes go as the raw request body; the name rides in a header.
+      return await invoke<ExtractedDocument>('extract_attachment', new Uint8Array(await file.arrayBuffer()), {
+        headers: { 'x-file-name': encodeURIComponent(file.name), 'x-file-type': file.type },
+      });
+    } catch (error) {
+      throw commandError(error, 'Extraction failed');
+    }
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch('/api/attachments/extract', { method: 'POST', body: formData });
+  const data = (await response.json().catch(() => ({}))) as ExtractedDocument & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Extraction failed');
+  return data;
+}
+
+export interface DirectoryListing {
+  path: string;
+  parent: string | null;
+  directories: Array<{ name: string; path: string }>;
+  drives: string[];
+  home: string;
+}
+
+export async function apiBrowseDirectory(target?: string): Promise<DirectoryListing> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke<DirectoryListing>('browse_directory', { path: target ?? null });
+    } catch (error) {
+      throw commandError(error, 'Unable to read that folder');
+    }
+  }
+  const query = target ? `?path=${encodeURIComponent(target)}` : '';
+  const response = await fetch(`/api/fs/browse${query}`);
+  const data = (await response.json().catch(() => ({}))) as DirectoryListing & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Unable to read that folder');
+  return data;
 }
 
 // ── Data Backup & Restore ─────────────────────────────────────────────
@@ -999,4 +1200,143 @@ export async function onDesktopNewChat(handler: () => void): Promise<() => void>
   if (!isTauri) return () => {};
   const { listen } = await getTauriEvent();
   return await listen('vanaila://new-chat', handler);
+}
+
+// ── Skills ────────────────────────────────────────────────────────────
+
+export interface SkillCatalogEntry {
+  name: string;
+  rawUrl: string;
+  installed: boolean;
+  enabled: boolean;
+  id: string | null;
+  description: string | null;
+}
+
+/** Turns a rejected desktop command (a plain string) into an Error. */
+function commandError(error: unknown, fallback: string): Error {
+  if (error instanceof Error) return error;
+  return new Error(typeof error === 'string' && error ? error : fallback);
+}
+
+export async function apiFetchSkillCatalog(): Promise<SkillCatalogEntry[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<SkillCatalogEntry[]>('get_skill_catalog');
+  }
+  const data = await requestApi<{ catalog: SkillCatalogEntry[] }>('/api/skills/catalog');
+  return data.catalog;
+}
+
+export async function apiInstallSkill(name: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      await invoke('install_catalog_skill', { name });
+    } catch (error) {
+      throw commandError(error, 'Install failed');
+    }
+    return;
+  }
+  await requestApi('/api/skills/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function apiInstallCustomSkill(content: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      await invoke('install_custom_skill', { content });
+    } catch (error) {
+      throw commandError(error, 'Upload failed');
+    }
+    return;
+  }
+  await requestApi('/api/skills/custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function apiSetSkillEnabled(id: string, enabled: boolean): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('set_skill_enabled', { id, enabled });
+    return;
+  }
+  await requestApi(`/api/skills/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function apiDeleteSkill(id: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('delete_skill', { id });
+    return;
+  }
+  await requestApi(`/api/skills/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ── Memories ──────────────────────────────────────────────────────────
+
+export interface MemoryEntryDto {
+  id: string;
+  type: string;
+  content: string;
+  embedding: string;
+  metadata: string | null;
+  sourceId: string | null;
+  createdAt: number;
+}
+
+export async function apiFetchMemories(): Promise<MemoryEntryDto[]> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    return await invoke<MemoryEntryDto[]>('get_memories');
+  }
+  const data = await requestApi<{ memories?: MemoryEntryDto[] }>('/api/memory');
+  return data.memories ?? [];
+}
+
+export async function apiAddMemory(content: string): Promise<MemoryEntryDto> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    try {
+      return await invoke<MemoryEntryDto>('add_memory', { payload: { content, type: 'manual' } });
+    } catch (error) {
+      throw commandError(error, 'Could not save memory');
+    }
+  }
+  const data = await requestApi<{ memory: MemoryEntryDto }>('/api/memory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, type: 'manual' }),
+  });
+  return data.memory;
+}
+
+export async function apiDeleteMemory(id: string): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('delete_memory', { id });
+    return;
+  }
+  await requestApi(`/api/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Forgets every memory; chats are untouched. */
+export async function apiClearMemories(): Promise<void> {
+  if (isTauri) {
+    const { invoke } = await getTauriCore();
+    await invoke('clear_memories');
+    return;
+  }
+  await requestApi('/api/memory', { method: 'DELETE' });
 }

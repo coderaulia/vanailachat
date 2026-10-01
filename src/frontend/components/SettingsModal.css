@@ -56,6 +56,11 @@
   animation: settingsFadeIn 0.15s ease-out;
 }
 
+.settings-saved-badge.is-error {
+  color: var(--color-danger);
+  background: rgba(var(--color-danger-rgb), 0.12);
+}
+
 .settings-close {
   width: 32px;
   height: 32px;
@@ -94,8 +99,10 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   flex-shrink: 0;
-  padding-right: 48px;
 }
+
+.settings-tabs.has-right { padding-right: 48px; }
+.settings-tabs.has-left { padding-left: 48px; }
 
 .settings-tabs-arrow {
   position: absolute;
@@ -114,6 +121,12 @@
   color: var(--text-secondary);
   cursor: pointer;
   box-shadow: -8px 0 12px var(--bg-surface);
+}
+
+.settings-tabs-arrow--left {
+  right: auto;
+  left: 14px;
+  box-shadow: 8px 0 12px var(--bg-surface);
 }
 
 .settings-tabs-arrow:hover {
@@ -275,18 +288,18 @@
   font-weight: 600;
 }
 
-.settings-custom-pill-del {
-  opacity: 0.5;
-  font-size: 10px;
-  padding: 1px 3px;
-  line-height: 1;
+.settings-llm-tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
   border-radius: 50%;
-  cursor: pointer;
+  background: var(--color-success);
+  vertical-align: middle;
 }
 
-.settings-custom-pill-del:hover {
-  opacity: 1;
-  color: var(--color-danger);
+.settings-llm-hint {
+  margin: -4px 0 12px;
 }
 
 .settings-custom-add-btn {
@@ -1200,3 +1213,8 @@
   .settings-model-pull__bar span { transition: none; }
   .settings-model-pull__bar span.is-indeterminate { animation: none; }
 }
+
+.settings-harness-status-row { margin: 6px 0 2px; }
+.settings-harness-status { font-size: 12px; font-weight: 600; }
+.settings-harness-status.is-ready { color: var(--color-success); }
+.settings-harness-status.is-missing { color: var(--color-danger); }

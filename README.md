@@ -27,6 +27,25 @@
 
 ---
 
+## 📸 Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/chat.png" alt="VanailaChat chat view with a streamed answer, code block and token meter" width="900">
+</p>
+<p align="center"><em>Chat with live streaming, rendered markdown and code, a context meter and per-chat token usage.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings dialog on the AI Connection tab with a custom OpenAI-compatible provider" width="900">
+</p>
+<p align="center"><em>Settings → AI Connection: Ollama, OpenAI, OpenRouter, 9Router or any OpenAI-compatible server. Keys are stored locally and shown masked.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/chat-dark-teal.png" alt="VanailaChat in dark mode with the Catppuccin Teal color scheme" width="900">
+</p>
+<p align="center"><em>Dark mode with the Catppuccin Teal scheme (Settings → Appearance).</em></p>
+
+---
+
 ## 📦 Downloads & Distribution
 
 Get started in seconds! Download the native Linux desktop installer for your distribution or launch the automated cross-platform web edition.
@@ -50,7 +69,8 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 - 🏠 **100% Free & Offline-Ready**: Connect to free local AI models via [Ollama](https://ollama.com/) (Llama 3.2, DeepSeek-R1, Qwen 2.5, Mistral, Phi-4) with zero subscription fees.
 - 🆓 **Zero-Cost Cloud Models**: Free-tier cloud LLMs through OpenRouter Free Models (Gemini Flash, DeepSeek-R1 Free, and Llama 3.3 70B Free).
 - ☁️ **Universal Cloud AI Support**: Plug in your API keys for OpenAI (GPT-4o, o1, o3-mini), 9Router, Anthropic Claude, DeepSeek, or any custom OpenAI-compatible server.
-- 💻 **Live Coding Workspace Engines**: Swappable Pi and DeepSeek coding harnesses with live diff reviews, terminal execution, approval prompts, and read-only mode. Harnesses reuse the provider/model configuration from Settings, including Ollama, OpenRouter, 9Router, and custom OpenAI-compatible endpoints.
+- 💻 **Live Coding Workspace Engines**: On the web edition, swappable Pi and DeepSeek coding harnesses with live diff reviews, terminal execution, approval prompts, and read-only mode. The desktop app ships a built-in coding agent (list, search, read, edit and write files, run allowlisted commands) confined to your workspace, with every write or command waiting for your approval. All engines reuse the provider/model configuration from Settings, including Ollama, OpenRouter, 9Router, and custom OpenAI-compatible endpoints.
+- 🖥️ **Desktop = Web**: The native Linux app runs the same chat pipeline as the web edition — memories, skills, personas, project instructions, web search and URL reading as model tools, A/B model comparison, deep research, and `.docx` / `.xlsx` / `.pdf` attachments.
 - ⚡ **Live Codebase Activity Panel**: Dedicated right drawer to inspect touched files, view line-by-line diffs, watch command feeds, and respond to tool approvals inline.
 - 🌿 **Git Branch Status & Safety Creator**: Real-time branch monitoring in the workspace bar with warning badges on production branches and 1-click safety branch creation.
 - 📁 **Automated Workspace Organization**: Selecting a workspace folder automatically groups chats into dedicated project workspaces to keep your chat history tidy.
@@ -67,7 +87,7 @@ Get started in seconds! Download the native Linux desktop installer for your dis
 
 ## 🔌 Comprehensive AI Providers & Setup Guide
 
-VanailaChat supports both **100% offline local AI** and **cloud LLM providers**. You can configure your keys directly in **Settings (⚙️) → AI Connection** or via the `.env` file.
+VanailaChat supports both **100% offline local AI** and **cloud LLM providers**. You can configure your keys directly in **Settings (⚙️) → AI Connection** or via the `.env` file. Saved keys are never sent back to the browser: the UI shows only a mask such as `••••abcd`, and typing a new key replaces it.
 
 ### 1. 🏠 Ollama (100% Free, Private & Offline Local AI)
 
@@ -128,7 +148,7 @@ Want high-end cloud models without paying for subscriptions? You can use free cl
    - `qwen/qwen-2.5-72b-instruct:free` (Coding & math)
 
 #### B. Coding Workspace Engines
-Open Settings (⚙️) → Coding Engine and select Pi Harness or DeepSeek Harness. The selected harness uses the provider and model configured in AI Connection; prefix a model with openrouter:, ollama:, or 9router: when you need to route a coding run explicitly. Mutating tools remain approval-gated unless Auto-Approve is enabled.
+On the web edition, open Settings (⚙️) → Behaviour → Coding and select Pi Harness or DeepSeek Harness; the panel shows whether the chosen harness is ready. The selected harness uses the provider and model configured in AI Connection; prefix a model with openrouter:, ollama:, or 9router: when you need to route a coding run explicitly. The desktop app uses its built-in agent instead. Mutating tools remain approval-gated unless Auto-Approve is enabled (turning it on asks for confirmation).
 
 ---
 

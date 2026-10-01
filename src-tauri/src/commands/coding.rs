@@ -1,11 +1,13 @@
 use crate::db::models::CodingSessionRecord;
 use crate::error::{AppError, AppResult};
-use crate::providers::traits::{ChatMessage, ChatRequest, StreamChunk};
+use crate::chat::agent::{run_agent, AgentDeps, APPROVAL_TIMEOUT};
+use crate::chat::coding::{prepare_coding, CodingTools, CodingTurn};
+use crate::commands::chat::{register_cancel, TauriSink};
+use crate::providers::traits::ChatMessage;
 use crate::state::AppState;
 use serde::Deserialize;
 use std::path::Path;
-use tauri::{AppHandle, Emitter, State};
-use futures::StreamExt;
+use tauri::{AppHandle, State};
 
 #[derive(Deserialize)]
 pub struct CreateCodingSessionRequest {
@@ -53,76 +55,61 @@ pub struct CodingRunRequest {
     pub chat_id: String,
     pub prompt: String,
     pub model: String,
-    pub system_prompt: Option<String>,
+    /// The conversation so far, so a follow-up ("now add tests") has its context.
+    #[serde(default)]
+    pub history: Vec<ChatMessage>,
 }
 
-fn coding_event(event_type: &str, text: Option<String>, usage: Option<serde_json::Value>) -> serde_json::Value {
-    let mut event = serde_json::json!({ "type": event_type });
-    if let Some(text) = text { event["text"] = serde_json::Value::String(text); }
-    if let Some(usage) = usage { event["usage"] = usage; }
-    event
-}
-
+/// Runs one coding turn in the session's workspace. Events stream as ordinary chat
+/// events (text, tool events, approval requests); the command returns when the turn
+/// is complete and rejects if it failed.
 #[tauri::command]
-pub async fn run_coding(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    request: CodingRunRequest,
-) -> AppResult<()> {
-    let session = {
-        let db = state.db.lock();
-        db.get_coding_session(&request.chat_id)?
-            .ok_or_else(|| AppError::InvalidRequest("Create a coding workspace first".into()))?
-    };
-    let provider = {
-        let registry = state.provider_registry.lock();
-        registry.resolve_provider_for_model(&request.model)
-            .ok_or_else(|| AppError::NotFound(format!("No provider registered for model {}", request.model)))?
-    };
-    {
-        let db = state.db.lock();
-        db.upsert_coding_session(&CodingSessionRecord { status: "running".into(), ..session.clone() })?;
+pub async fn run_coding(app: AppHandle, state: State<'_, AppState>, request: CodingRunRequest) -> AppResult<()> {
+    let session = state
+        .db
+        .lock()
+        .get_coding_session(&request.chat_id)?
+        .ok_or_else(|| AppError::InvalidRequest("Create a coding workspace first".into()))?;
+    if !Path::new(&session.workspace_path).is_dir() {
+        return Err(AppError::InvalidRequest("The workspace folder no longer exists".into()));
     }
-    let chat_request = ChatRequest {
-        messages: vec![ChatMessage { role: "user".into(), content: request.prompt, tool_calls: None, tool_call_id: None }],
-        model: request.model,
-        system_prompt: request.system_prompt,
-        temperature: Some(0.7),
-        max_tokens: None,
+
+    let registry = state.provider_registry.lock().clone();
+    if registry.resolve_model(&request.model).is_some_and(|(provider, _)| provider.id() == "ollama") {
+        state.ollama_manager.ensure_running().await;
+    }
+    let set_status = |status: &str| {
+        let _ = state.db.lock().upsert_coding_session(&CodingSessionRecord { status: status.into(), ..session.clone() });
     };
-    let mut stream = provider.chat(chat_request).await?;
-    let app_handle = app.clone();
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(StreamChunk { message: Some(message), prompt_eval_count, eval_count, done, .. }) => {
-                if !message.content.is_empty() {
-                    let _ = app_handle.emit("chat-stream", serde_json::json!({
-                        "coding_event": coding_event("text", Some(message.content), None)
-                    }));
-                }
-                if prompt_eval_count.is_some() || eval_count.is_some() {
-                    let _ = app_handle.emit("chat-stream", serde_json::json!({
-                        "coding_event": coding_event("usage", None, Some(serde_json::json!({
-                            "prompt_tokens": prompt_eval_count,
-                            "completion_tokens": eval_count,
-                            "total_tokens": prompt_eval_count.unwrap_or(0) + eval_count.unwrap_or(0)
-                        })))
-                    }));
-                }
-                if done { break; }
-            }
-            Ok(StreamChunk { done: true, .. }) => break,
-            Ok(_) => {}
-            Err(error) => {
-                let _ = app_handle.emit("chat-stream", serde_json::json!({ "error": error.to_string() }));
-                break;
-            }
-        }
-    }
-    {
-        let db = state.db.lock();
-        db.upsert_coding_session(&CodingSessionRecord { status: "ready".into(), ..session })?;
-    }
-    let _ = app_handle.emit("chat-stream", serde_json::json!({ "done": true }));
-    Ok(())
+
+    let prepared = prepare_coding(
+        &state.db,
+        &registry,
+        CodingTurn {
+            chat_id: request.chat_id.clone(),
+            model: request.model,
+            workspace: session.workspace_path.clone(),
+            history: request.history,
+            prompt: request.prompt,
+        },
+    )
+    .await?;
+
+    set_status("running");
+    let cancel = register_cancel(&state, &request.chat_id).await;
+    let runner = CodingTools::new(state.db.clone(), session.workspace_path.clone());
+    let sink = TauriSink { app, chat_id: request.chat_id.clone() };
+    let deps = AgentDeps {
+        provider: prepared.provider.as_ref(),
+        runner: &runner,
+        sink: &sink,
+        approvals: &state.approval_service,
+        approval_required: prepared.approval_required,
+        approval_timeout: APPROVAL_TIMEOUT,
+    };
+    let outcome = run_agent(&deps, prepared.request, cancel).await;
+    state.active_streams.lock().await.remove(&request.chat_id);
+
+    set_status(if outcome.is_ok() { "ready" } else { "error" });
+    outcome.map(|_| ())
 }

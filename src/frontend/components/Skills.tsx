@@ -1,16 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import {
+  apiDeleteSkill,
+  apiFetchSkillCatalog,
+  apiInstallCustomSkill,
+  apiInstallSkill,
+  apiSetSkillEnabled,
+} from '../lib/api';
+import type { SkillCatalogEntry } from '../lib/api';
 import './Skills.css';
 
-interface CatalogEntry {
-  name: string;
-  rawUrl: string;
-  installed: boolean;
-  enabled: boolean;
-  id: string | null;
-  description: string | null;
-}
-
-const API = '/api/skills';
+type CatalogEntry = SkillCatalogEntry;
 
 const SKILL_META: Record<string, { emoji: string; category: string }> = {
   'frontend-design':       { emoji: '🎨', category: 'Design' },
@@ -43,9 +42,7 @@ export function Skills() {
   const refreshCatalog = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/catalog`);
-      const data = await res.json() as { catalog: CatalogEntry[] };
-      setCatalog(data.catalog);
+      setCatalog(await apiFetchSkillCatalog());
     } catch {
       setError('Failed to load skills catalog.');
     } finally {
@@ -59,19 +56,10 @@ export function Skills() {
     setInstalling((prev) => new Set(prev).add(name));
     setError(null);
     try {
-      const res = await fetch(`${API}/install`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      if (!res.ok) {
-        const d = await res.json() as { error?: string };
-        setError(d.error ?? 'Install failed');
-      } else {
-        await refreshCatalog();
-      }
-    } catch {
-      setError('Network error during install.');
+      await apiInstallSkill(name);
+      await refreshCatalog();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Install failed');
     } finally {
       setInstalling((prev) => { const s = new Set(prev); s.delete(name); return s; });
     }
@@ -81,16 +69,22 @@ export function Skills() {
     if (!entry.id) return;
     const next = !entry.enabled;
     setCatalog((prev) => prev.map((e) => (e.id === entry.id ? { ...e, enabled: next } : e)));
-    await fetch(`${API}/${entry.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    });
+    try {
+      await apiSetSkillEnabled(entry.id, next);
+    } catch {
+      // Put the switch back if the change did not save.
+      setCatalog((prev) => prev.map((e) => (e.id === entry.id ? { ...e, enabled: entry.enabled } : e)));
+      setError('Could not update the skill.');
+    }
   };
 
   const uninstall = async (entry: CatalogEntry) => {
     if (!entry.id) return;
-    await fetch(`${API}/${entry.id}`, { method: 'DELETE' });
+    try {
+      await apiDeleteSkill(entry.id);
+    } catch {
+      setError('Could not remove the skill.');
+    }
     await refreshCatalog();
   };
 
@@ -99,21 +93,12 @@ export function Skills() {
     setUploading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/custom`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: raw }),
-      });
-      if (!res.ok) {
-        const d = await res.json() as { error?: string };
-        setError(d.error ?? 'Upload failed');
-      } else {
-        setCustomContent('');
-        setTab('catalog');
-        await refreshCatalog();
-      }
-    } catch {
-      setError('Network error during upload.');
+      await apiInstallCustomSkill(raw);
+      setCustomContent('');
+      setTab('catalog');
+      await refreshCatalog();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Upload failed');
     } finally {
       setUploading(false);
     }

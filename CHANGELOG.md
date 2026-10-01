@@ -14,9 +14,21 @@ All notable changes to Vanaila Chat are documented here.
 - Optional `VANAILA_ACCESS_TOKEN` (and `HOST`) for using the web edition from other devices.
 - Automatic database backup before migrations (`data/backups`, newest five kept).
 - Shared API contract (`contracts/api-shapes.json`) tested against both backends.
+- Desktop now matches the web edition for chat: memories, skills, personas, project instructions, web search and URL reading as model tools, image attachments, and per-chat streaming.
+- Desktop: A/B model comparison, deep research with cited reports, .docx/.xlsx/.pdf attachments, the in-app folder picker, and project folders.
+- Desktop coding mode runs a built-in agent in the workspace (list, search, read, edit, write, allowlisted commands); writes and commands wait for your approval. The Pi and DeepSeek harnesses remain web-only.
 
 ### Fixed
 
+- Sending while a reply is still streaming is refused instead of mixing both answers into one message and losing the second.
+- The chat column no longer overflows (clipping Send and timestamps) on 1025–1366px windows.
+- Local providers (Ollama, LM Studio, 9Router) are reached directly when a proxy is configured; `NO_PROXY` is honoured.
+- Deleting a chat, removing a custom provider, turning on Auto-Approve and re-running setup now ask first.
+- Settings: pricing saves as you type and survives closing the dialog, failed saves show as errors, Test Connection checks only the provider being edited, the dialog is keyboard-accessible, and the coding engine settings moved to Behaviour (and are hidden on desktop, which has its own agent).
+- API keys are masked in settings responses and desktop exports; a masked value sent back leaves the stored key alone.
+- The app no longer loads a web font from a third-party CDN.
+- Header shows the real state (no model selected, ready) instead of "Connected"; "Clear" is now "New chat"; the context meter marks estimated sizes with "~".
+- Desktop: replies now reach the chat (the stream used to be dropped), Ollama tokens are no longer lost at chunk boundaries, cloud model ids resolve to the right provider, a fresh install no longer fails to save its first chat, provider settings apply without a restart, and web tools are blocked from internal addresses.
 - Regenerated or edited messages no longer reappear after reloading a chat.
 - Databases created before the migration table existed now receive every migration after v4.
 - Blockquotes, GitHub-style alerts and formatted link text render as markdown instead of raw text.

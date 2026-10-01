@@ -15,10 +15,10 @@ pub async fn pull_model(
     _state: State<'_, AppState>,
     name: String,
 ) -> AppResult<()> {
-    use crate::providers::ollama::OllamaProvider;
     use tauri::Emitter;
 
-    let ollama = OllamaProvider::new(None);
+    // The provider the registry holds, so the configured Ollama host is used.
+    let ollama = _state.provider_registry.lock().ollama();
     let app_handle = app.clone();
     
     ollama

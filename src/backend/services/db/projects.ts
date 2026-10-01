@@ -11,13 +11,14 @@ export function mapProject(row: ProjectRow): ProjectRecord {
     memory: row.memory ?? null,
     pinned: row.pinned === 1,
     createdAt: row.created_at,
+    projectRoot: row.project_root ?? null,
   };
 }
 
 export function ensureDefaultProject(): ProjectRecord {
   const db = getDb();
   const existing = db
-    .prepare('SELECT id, name, description, instructions, memory, created_at FROM projects ORDER BY created_at ASC LIMIT 1')
+    .prepare('SELECT id, name, description, instructions, memory, pinned, created_at, project_root FROM projects ORDER BY created_at ASC LIMIT 1')
     .get() as ProjectRow | undefined;
 
   if (existing) {
@@ -32,16 +33,18 @@ export function ensureDefaultProject(): ProjectRecord {
     memory: null,
     pinned: 0,
     created_at: Date.now(),
+    project_root: null,
   };
 
-  db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at, project_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
     project.id,
     project.name,
     project.description,
     project.instructions,
     project.memory,
     project.pinned,
-    project.created_at
+    project.created_at,
+    project.project_root
   );
 
   return mapProject(project);
@@ -50,7 +53,7 @@ export function ensureDefaultProject(): ProjectRecord {
 export function listProjects(): ProjectRecord[] {
   const db = getDb();
   const rows = db
-    .prepare('SELECT id, name, description, instructions, memory, pinned, created_at FROM projects ORDER BY created_at ASC')
+    .prepare('SELECT id, name, description, instructions, memory, pinned, created_at, project_root FROM projects ORDER BY created_at ASC')
     .all() as ProjectRow[];
 
   return rows.map((row) => mapProject(row));
@@ -71,16 +74,18 @@ export function createProject(input: CreateProjectInput): ProjectRecord {
     memory: input.memory ?? null,
     pinned: input.pinned ? 1 : 0,
     created_at: normalizeTimestamp(input.createdAt),
+    project_root: input.projectRoot?.trim() || null,
   };
 
-  db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO projects (id, name, description, instructions, memory, pinned, created_at, project_root) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
     project.id,
     project.name,
     project.description,
     project.instructions,
     project.memory,
     project.pinned,
-    project.created_at
+    project.created_at,
+    project.project_root
   );
 
   return mapProject(project);
@@ -89,7 +94,7 @@ export function createProject(input: CreateProjectInput): ProjectRecord {
 export function getProject(id: string): ProjectRecord | null {
   const db = getDb();
   const row = db
-    .prepare('SELECT id, name, description, instructions, memory, pinned, created_at FROM projects WHERE id = ?')
+    .prepare('SELECT id, name, description, instructions, memory, pinned, created_at, project_root FROM projects WHERE id = ?')
     .get(id) as ProjectRow | undefined;
 
   return row ? mapProject(row) : null;
@@ -108,12 +113,13 @@ export function updateProject(id: string, input: UpdateProjectInput): ProjectRec
   const memory = input.memory !== undefined ? input.memory : existing.memory;
 
   const pinned = input.pinned !== undefined ? (input.pinned ? 1 : 0) : (existing.pinned ? 1 : 0);
- 
+  const projectRoot = input.projectRoot !== undefined ? (input.projectRoot?.trim() || null) : existing.projectRoot;
+
   db.prepare(`
-    UPDATE projects 
-    SET name = ?, description = ?, instructions = ?, memory = ?, pinned = ?
+    UPDATE projects
+    SET name = ?, description = ?, instructions = ?, memory = ?, pinned = ?, project_root = ?
     WHERE id = ?
-  `).run(name, description, instructions, memory, pinned, id);
+  `).run(name, description, instructions, memory, pinned, projectRoot, id);
 
   const updated = getProject(id);
   if (!updated) {

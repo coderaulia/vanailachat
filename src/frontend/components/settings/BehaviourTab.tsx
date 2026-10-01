@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CodingEngineSettings } from './CodingEngineSettings';
 import type { SettingsStore } from './useSettingsStore';
 import type { SettingKey } from './types';
 
@@ -11,19 +12,21 @@ export function BehaviourTab({ store }: { store: SettingsStore }) {
     void store.saveNow({ [key]: value }, [[key, value]]);
   };
 
-  // Saved only when it parses, so a half-typed object cannot break cost display.
-  const saveModelPricing = () => {
-    const raw = (values.model_pricing ?? '').trim();
+  // Saved as you type, but only when it parses, so a half-typed object cannot
+  // break cost display; closing the modal flushes whatever is pending.
+  const editModelPricing = (value: string) => {
+    const raw = value.trim();
     if (raw) {
       try {
         JSON.parse(raw);
       } catch (error) {
+        store.setLocal({ model_pricing: value });
         setPricingError(error instanceof Error ? error.message : 'Invalid JSON');
         return;
       }
     }
     setPricingError(null);
-    void store.persist([['model_pricing', raw]]);
+    store.edit({ model_pricing: value }, [['model_pricing', raw]], 'model_pricing');
   };
 
   return (
@@ -54,6 +57,9 @@ export function BehaviourTab({ store }: { store: SettingsStore }) {
         </p>
       </div>
 
+      <h3 className="settings-subsection-title">Coding</h3>
+      <CodingEngineSettings store={store} />
+
       <h3 className="settings-subsection-title">Instructions</h3>
       <div className="settings-field">
         <label className="settings-toggle">
@@ -81,11 +87,11 @@ export function BehaviourTab({ store }: { store: SettingsStore }) {
           rows={6}
           spellCheck={false}
           value={values.model_pricing ?? ''}
-          onChange={(e) => store.setLocal({ model_pricing: e.target.value })}
-          onBlur={saveModelPricing}
+          onChange={(e) => editModelPricing(e.target.value)}
+          onBlur={() => void store.flush('model_pricing')}
           placeholder={'{\n  "deepseek-v4-flash": { "input": 0.27, "output": 1.1 }\n}'}
         />
-        {pricingError && <p className="settings-error">Not saved — {pricingError}</p>}
+        {pricingError && <p className="settings-error" role="alert">Not saved yet — {pricingError}</p>}
         <p className="settings-hint">
           Optional: enter USD per 1M tokens, keyed by model id without the provider
           prefix. This only affects cost estimates in the interface; it never changes

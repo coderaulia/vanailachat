@@ -110,18 +110,18 @@ export function useModelManager(prompt: string, hasImageAttachment: boolean = fa
   const fetchModels = useCallback(async () => {
     try {
       if (isTauri) {
+        // An empty list is an answer too (nothing installed yet), not a reason
+        // to ask a web server that does not exist on desktop.
         const data = await apiFetchModels();
-        if (Array.isArray(data) && data.length > 0) {
-          const { models, metadata } = normalizeModelsResponse({ models: data });
-          setAvailableModels(models);
-          setModelMetadata(metadata);
-          setProviders(data.map((m) => ({
-            name: m.name,
-            provider: m.provider,
-            providerLabel: m.providerLabel,
-          })));
-          return;
-        }
+        const { models, metadata } = normalizeModelsResponse({ models: Array.isArray(data) ? data : [] });
+        setAvailableModels(models);
+        setModelMetadata(metadata);
+        setProviders((Array.isArray(data) ? data : []).map((m) => ({
+          name: m.name,
+          provider: m.provider,
+          providerLabel: m.providerLabel,
+        })));
+        return;
       }
 
       const response = await fetch('/api/models');

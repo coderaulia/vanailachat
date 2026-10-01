@@ -33,6 +33,29 @@ src/backend/ (Node.js)                      src-tauri/src/ (Rust)
 
 ---
 
+### 1.1 Current module layout (supersedes the file names above where they differ)
+
+The chat pipeline now lives in `src-tauri/src/` as follows; `contracts/*.json` keeps the two backends in step.
+
+| Area | Rust module | Web counterpart |
+| :--- | :--- | :--- |
+| Chat turn, system prompt, memory recall | `chat/mod.rs`, `chat/prompt.rs`, `chat/memory.rs`, `chat/personas.rs` | `routes/chat.ts` |
+| Tool-calling loop with approvals | `chat/agent.rs` (`run_agent`, `ToolRunner`, `EventSink`) | `routes/chat.ts` agent loop |
+| Chat tools (search, read URL, skills) | `chat/tools.rs` | `services/tools.ts` |
+| Native coding agent (workspace-confined) | `chat/coding.rs`, `commands/coding.rs` | Pi / DeepSeek harnesses |
+| A/B comparison | `chat/ab.rs`, `commands/ab.rs` | `routes/ab.ts` |
+| Deep research (stage events) | `services/research.rs`, `commands/research.rs` | `routes/research.ts` |
+| Document text extraction | `services/documents.rs`, `commands/attachments.rs` | `services/documentExtractor.ts` |
+| Folder picker listing | `commands/fs.rs` | `routes/filesystem.ts` |
+| Providers (Ollama, OpenAI-compatible) | `providers/ollama.rs`, `providers/openai_compat.rs`, `providers/registry.rs` | `services/*Provider.ts` |
+| Memory scoring, skills catalog | `services/memory.rs`, `services/skills.rs` | `services/embedding.ts`, `routes/skills.ts` |
+| Credential masking | `services/secrets.rs` | `services/secrets.ts` |
+| SSRF guard for web tools | `tools/net_guard.rs` | `services/tools.ts` |
+
+Stream events are tagged with `chat_id` so concurrent chats do not mix; `start_chat`, `run_coding` and `start_research` resolve when the turn is complete and reject on failure.
+
+---
+
 ## 2. Core Traits and Interfaces
 
 ### 2.1 LLM Provider Trait (`src-tauri/src/providers/traits.rs`)

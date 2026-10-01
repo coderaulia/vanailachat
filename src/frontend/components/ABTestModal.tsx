@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import './ABTestModal.css';
+import { apiPickAb, apiRunAb } from '../lib/api';
 import { getMarkdownRenderer, renderMarkdownFallback, type MarkdownRenderFn } from '../lib/markdownRenderer';
 
 interface ABResult {
@@ -105,21 +106,15 @@ export function ABTestModal({ availableModels, defaultModel, onClose }: ABTestMo
     setPickError(null);
 
     try {
-      const res = await fetch('/api/ab', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          modelA,
-          modelB,
-          systemPrompt: showSystemPrompt && systemPrompt.trim() ? systemPrompt.trim() : undefined,
-          search,
-          deepResearch,
-          attachments,
-        }),
+      const data = await apiRunAb({
+        prompt: prompt.trim(),
+        modelA,
+        modelB,
+        systemPrompt: showSystemPrompt && systemPrompt.trim() ? systemPrompt.trim() : undefined,
+        search,
+        deepResearch,
+        attachments,
       });
-      const data = (await res.json()) as ABResponse & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setResults(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Comparison failed');
@@ -138,18 +133,12 @@ export function ABTestModal({ availableModels, defaultModel, onClose }: ABTestMo
       const loser = results[side === 'a' ? 'b' : 'a'];
 
       try {
-        const res = await fetch('/api/ab/pick', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userContent: prompt.trim(),
-            winnerContent: winner.content,
-            winnerModel: winner.model,
-            loserModel: loser.model,
-          }),
+        await apiPickAb({
+          userContent: prompt.trim(),
+          winnerContent: winner.content,
+          winnerModel: winner.model,
+          loserModel: loser.model,
         });
-        const data = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         setPickedSide(side);
         setSavedPair(true);
       } catch (err) {

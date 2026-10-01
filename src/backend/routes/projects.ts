@@ -23,6 +23,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
         description?: unknown;
         instructions?: unknown;
         memory?: unknown;
+        projectRoot?: unknown;
         createdAt?: unknown 
       };
       if (typeof body.name !== 'string' || !body.name.trim()) {
@@ -35,6 +36,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
         description: typeof body.description === 'string' ? body.description : undefined,
         instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
         memory: typeof body.memory === 'string' ? body.memory : undefined,
+        projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : undefined,
         createdAt: toOptionalNumber(body.createdAt),
       });
 
@@ -67,6 +69,7 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
         description?: unknown;
         instructions?: unknown;
         memory?: unknown;
+        projectRoot?: unknown;
         pinned?: unknown;
       };
 
@@ -75,6 +78,8 @@ export function projectsRouter(dependencies: AppDependencies): Hono {
         description: typeof body.description === 'string' ? body.description : undefined,
         instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
         memory: typeof body.memory === 'string' ? body.memory : undefined,
+        // null unbinds the workspace; absent leaves it alone.
+        projectRoot: typeof body.projectRoot === 'string' ? body.projectRoot : body.projectRoot === null ? null : undefined,
         pinned: typeof body.pinned === 'boolean' ? body.pinned : undefined,
       });
 

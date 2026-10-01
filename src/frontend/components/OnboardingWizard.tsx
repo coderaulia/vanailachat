@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiFetchSettings, apiUpdateSetting } from '../lib/api';
 import './OnboardingWizard.css';
 
 interface OnboardingStep {
@@ -19,15 +20,10 @@ const STEPS: OnboardingStep[] = [
 const STORAGE_KEY = 'vanaila_onboarding_done';
 
 async function saveSetting(key: string, value: string) {
+  // Best-effort, but a silent failure here looks like setup simply not
+  // sticking — so at least leave a trace when the backend rejects the write.
   try {
-    const response = await fetch(`/api/settings/${key}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value }),
-    });
-    // Best-effort, but a silent failure here looks like setup simply not
-    // sticking — so at least leave a trace when the backend rejects the write.
-    if (!response.ok) console.error(`[SETUP] Failed to save ${key} (HTTP ${response.status})`);
+    await apiUpdateSetting(key, value);
   } catch (error) {
     console.error(`[SETUP] Failed to save ${key}`, error);
   }
@@ -371,10 +367,9 @@ export function useOnboarding() {
       return;
     }
     // Slow path: check backend settings
-    fetch('/api/settings/onboarding_done')
-      .then((r) => r.json())
-      .then((data: { value?: string }) => {
-        if (data.value === 'true') {
+    apiFetchSettings()
+      .then((settings) => {
+        if (settings.onboarding_done === 'true') {
           localStorage.setItem(STORAGE_KEY, 'true');
           setChecked(true);
         } else {

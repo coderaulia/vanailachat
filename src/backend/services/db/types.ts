@@ -6,6 +6,7 @@ export interface ProjectRow {
   memory: string | null;
   pinned: number;
   created_at: number;
+  project_root?: string | null;
 }
 
 export interface ChatRow {
@@ -43,6 +44,8 @@ export interface ProjectRecord {
   memory: string | null;
   pinned: boolean;
   createdAt: number;
+  /** Workspace directory this project is bound to, if any. */
+  projectRoot: string | null;
 }
 
 export interface CreateProjectInput {
@@ -53,6 +56,7 @@ export interface CreateProjectInput {
   memory?: string | null;
   pinned?: boolean;
   createdAt?: number;
+  projectRoot?: string | null;
 }
 
 export interface UpdateProjectInput {
@@ -61,6 +65,7 @@ export interface UpdateProjectInput {
   instructions?: string | null;
   memory?: string | null;
   pinned?: boolean;
+  projectRoot?: string | null;
 }
 
 export interface ChatRecord {

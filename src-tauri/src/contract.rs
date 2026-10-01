@@ -29,7 +29,7 @@ mod tests {
     fn project() -> ProjectRecord {
         ProjectRecord {
             id: "p".into(), name: "P".into(), description: None, instructions: None,
-            memory: None, pinned: false, created_at: 1, updated_at: 1,
+            memory: None, pinned: false, created_at: 1, updated_at: 1, project_root: None,
         }
     }
 
@@ -67,6 +67,13 @@ mod tests {
         assert_shape("codingSession", CodingSessionRecord {
             chat_id: "c".into(), harness: "pi-harness".into(), harness_session_id: None,
             workspace_path: "/tmp".into(), status: "ready".into(), created_at: 1, updated_at: 1,
+        });
+        assert_shape("memory", MemoryRecord {
+            id: "m".into(), r#type: "manual".into(), content: "x".into(), embedding: String::new(),
+            metadata: None, source_id: None, created_at: 1,
+        });
+        assert_shape("skillCatalogEntry", crate::commands::skills::CatalogRow {
+            name: "n".into(), raw_url: "u".into(), installed: false, enabled: false, id: None, description: None,
         });
         assert_shape("messageVersion", MessageVersion {
             id: "m".into(), content: "a".into(), created_at: 1, current: true,

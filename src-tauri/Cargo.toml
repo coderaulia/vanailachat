@@ -47,6 +47,8 @@ dotenvy = "0.15"
 parking_lot = "0.12"
 async-trait = "0.1"
 regex = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+pdf-extract = "0.9"
 thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
@@ -56,4 +58,6 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = 3
-panic = "abort"
+# Unwind rather than abort: a malformed PDF can panic inside the parser, and that must fail one
+# attachment, not close the app.
+panic = "unwind"

@@ -4,7 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiCreateCodingSession, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
+import { apiChatOnce, apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -52,27 +52,11 @@ async function generateChatTitle(
   updateHistories: SendMessageDeps['updateHistories'],
 ): Promise<void> {
   try {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [{
-          role: 'user',
-          content: `Generate a concise 3-6 word title for this conversation. Reply with ONLY the title — no quotes, no punctuation, no explanation:\n\n${userContent.slice(0, 300)}`,
-        }],
-        stream: false,
-        skipMemory: true,
-      }),
-    });
-    if (!response.ok) return;
-
-    const data = await response.json() as Record<string, unknown>;
-    // Handle Ollama and OpenAI response shapes
-    const ollamaContent = (data as { message?: { content?: string } }).message?.content;
-    const openaiContent = (data as { choices?: Array<{ message?: { content?: string } }> })
-      .choices?.[0]?.message?.content;
-    const title = (ollamaContent ?? openaiContent ?? '').trim().replace(/^["']|["']$/g, '');
+    const reply = await apiChatOnce(
+      model,
+      `Generate a concise 3-6 word title for this conversation. Reply with ONLY the title — no quotes, no punctuation, no explanation:\n\n${userContent.slice(0, 300)}`,
+    );
+    const title = (reply ?? '').trim().replace(/^["']|["']$/g, '');
     if (!title || title.length > 80) return;
 
     await patchChat(chatId, { title, updatedAt: Date.now() });
@@ -136,6 +120,13 @@ export function useSendMessage(deps: SendMessageDeps) {
       selectedModel || (currentChatId ? chatHistories[currentChatId]?.model : null) || null;
     if (!resolvedModel) {
       setStatusText('No model selected. Please wait for models to load or pick one.');
+      return;
+    }
+
+    // A second request would abort the first mid-stream and write both answers
+    // into the same message, so wait until this chat's reply is finished or stopped.
+    if (currentChatId && abortControllersMapRef.current.has(currentChatId)) {
+      setStatusText('Still replying — wait for it to finish or press Stop.');
       return;
     }
     lastSentPromptRef.current = effectivePrompt;
@@ -266,17 +257,12 @@ export function useSendMessage(deps: SendMessageDeps) {
         } else if (!activeProjectId || activeProjectId === 'default') {
           const folderName = workspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
           try {
-            const pRes = await fetch('/api/projects', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: folderName, projectRoot: workspacePath }),
+            const created = await apiCreateProject({
+              id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              name: folderName,
+              projectRoot: workspacePath,
             });
-            if (pRes.ok) {
-              const pData = (await pRes.json()) as { project?: ApiProject };
-              if (pData.project) {
-                resolvedProjectId = pData.project.id;
-              }
-            }
+            resolvedProjectId = created.id;
           } catch (e) {
             console.warn('[WORKSPACE PROJECT] Failed to auto-create project:', e);
           }
@@ -295,28 +281,11 @@ export function useSendMessage(deps: SendMessageDeps) {
         } as Parameters<typeof upsertChat>[0]);
 
         try {
-          const settings = isTauri ? await apiFetchSettings() : null;
-          const configuredHarness = settings?.coding_harness;
+          const configuredHarness = (await apiFetchSettings()).coding_harness;
           if (configuredHarness === 'deepseek-harness' || configuredHarness === 'pi-harness') chosenHarness = configuredHarness;
-          else if (!isTauri) {
-            const harnessRes = await fetch('/api/settings/coding_harness');
-            const hData = harnessRes.ok ? await harnessRes.json() as { value?: string } : {};
-            if (hData.value === 'deepseek-harness' || hData.value === 'pi-harness') chosenHarness = hData.value;
-          }
         } catch { /* default to Pi Harness */ }
 
-        if (isTauri) {
-          await apiCreateCodingSession({ chatId, harness: chosenHarness, workspacePath });
-        } else {
-          const sessionResponse = await fetch('/api/coding/sessions', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chatId, harness: chosenHarness, workspacePath }),
-          });
-          if (!sessionResponse.ok) {
-            const detail = await sessionResponse.json().catch(() => null) as { error?: string } | null;
-            throw new Error(detail?.error ?? 'Could not open the coding workspace');
-          }
-        }
+        await apiCreateCodingSession({ chatId, harness: chosenHarness, workspacePath });
       }
 
       const syncUIAndHistory = () => {
@@ -555,17 +524,18 @@ export function useSendMessage(deps: SendMessageDeps) {
         );
         assistantContentForSave = fullContent;
       } else if (useCodingHarness && isTauri) {
-        await runNativeCoding({ chatId, prompt: finalPrompt, model: resolvedModel, systemPrompt }, (chunk) => {
-          const native = chunk as ReturnType<typeof parseStreamLine>;
-          const coding = (native as unknown as { coding_event?: { type?: string; text?: string } }).coding_event;
-          if (coding?.type === 'text' && coding.text) {
-            fullContent += coding.text;
-            assistantContentForSave = fullContent;
-          }
-        }, abortController.signal);
+        // Same event stream as chat: text, tool activity and approval requests.
+        await runNativeCoding(
+          {
+            chatId,
+            prompt: finalPrompt,
+            model: resolvedModel,
+            history: recentConversation.map(m => ({ role: m.role, content: m.content })),
+          },
+          (chunk) => { applyEvent(chunk as unknown as ReturnType<typeof parseStreamLine>); },
+          abortController.signal,
+        );
         assistantContentForSave = fullContent;
-        setContextWindow(prev => ({ ...prev, current: finalUsage }));
-        finalUsage = finalUsage || Math.max(1, Math.ceil((finalPrompt.length + fullContent.length) / 4));
       } else {
         const response = useCodingHarness
           ? await fetch('/api/coding/run', {

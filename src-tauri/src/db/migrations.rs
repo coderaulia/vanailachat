@@ -154,5 +154,15 @@ fn migration_list() -> Vec<M<'static>> {
             ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS idx_messages_version_of ON messages(version_of);
         "),
+        // V17: project_workspace_root
+        M::up("
+            ALTER TABLE projects ADD COLUMN project_root TEXT;
+        "),
+        // V18: memory_metadata_and_source
+        M::up("
+            ALTER TABLE memories ADD COLUMN metadata TEXT;
+            ALTER TABLE memories ADD COLUMN source_id TEXT;
+            CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source_id);
+        "),
     ]
 }

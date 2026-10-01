@@ -73,7 +73,8 @@ pub async fn export_data(state: State<'_, AppState>) -> AppResult<ExportBundle> 
         messages.extend(chat_msgs);
     }
 
-    let settings = db.get_all_settings()?;
+    // An export is a file people share, so credentials are masked in it too.
+    let settings = crate::services::secrets::mask_settings(&db.get_all_settings()?);
 
     Ok(ExportBundle {
         exported_at: chrono::Utc::now().timestamp_millis(),
@@ -107,6 +108,7 @@ pub async fn import_data(
                     &p.name,
                     p.description.as_deref(),
                     p.instructions.as_deref(),
+                    p.project_root.as_deref(),
                 );
                 imported_projects += 1;
             }

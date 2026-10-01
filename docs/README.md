@@ -17,6 +17,10 @@ The native Linux desktop edition (`com.vanaila.chat`) runs as a dedicated, high-
 
 ---
 
+> The web and desktop editions share one frontend and one set of API shapes (`contracts/`). A feature added to one backend needs its counterpart in the other; see the module table in the [Rust backend mapping](architecture/rust-backend-mapping.md).
+
+---
+
 ## 🌐 Web Edition Architecture
 
 - `src/frontend/`: React 19 + Vite 6 client application.

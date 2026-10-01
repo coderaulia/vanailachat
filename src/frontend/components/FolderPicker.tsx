@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { apiBrowseDirectory } from '../lib/api';
+import type { DirectoryListing } from '../lib/api';
 import './FolderPicker.css';
 
-interface BrowseResponse {
-  path: string;
-  parent: string | null;
-  directories: Array<{ name: string; path: string }>;
-  drives: string[];
-  home: string;
-  error?: string;
-}
+type BrowseResponse = DirectoryListing;
 
 interface FolderPickerProps {
   /** Where to open. Falls back to the home directory when empty. */
@@ -34,10 +29,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
     setLoading(true);
     setError(null);
     try {
-      const query = target ? `?path=${encodeURIComponent(target)}` : '';
-      const response = await fetch(`/api/fs/browse${query}`);
-      const body = await response.json() as BrowseResponse;
-      if (!response.ok) throw new Error(body.error ?? 'Unable to read that folder');
+      const body = await apiBrowseDirectory(target);
       setData(body);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to read that folder');

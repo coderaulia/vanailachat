@@ -5,7 +5,7 @@ import { ROLE_TO_PERSONA, getPersonaForRole } from '../config/personas';
 import { ModelSelector } from './ModelSelector';
 import { ABTestModal } from './ABTestModal';
 import { FolderPicker } from './FolderPicker';
-import { formatTokensCompact } from '../config/modelMetadata';
+import { formatTokensCompact, hasKnownContextWindow } from '../config/modelMetadata';
 import './Composer.css';
 import { apiCreateGitBranch, apiGetGitStatus } from '../lib/api';
 
@@ -94,6 +94,11 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
     handleAbort: onAbort,
     setViewMode,
   } = useChat();
+
+  // Sending can be refused silently otherwise: say why right under the box.
+  const composerNotice = !selectedModel
+    ? 'No model available. Connect a provider in Settings → AI Connection, or pick one from the model list.'
+    : statusText.startsWith('Still replying') ? statusText : null;
 
   const [gitStatus, setGitStatus] = useState<{
     isGit: boolean;
@@ -239,6 +244,8 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 onBlur={onSaveSystemPrompt}
                 placeholder={activePersona.systemPrompt}
               ></textarea>
+
+          {composerNotice && <p className="composer-notice" role="status">{composerNotice}</p>}
               <div className="system-prompt-hint">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -423,9 +430,12 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 {contextWindow && (
                   <div className="composer-context">
                     <label>Context</label>
-                    <div className="context-status" title={`${contextWindow.current.toLocaleString()} / ${contextWindow.total.toLocaleString()} tokens`}>
+                    <div
+                      className="context-status"
+                      title={`${contextWindow.current.toLocaleString()} / ${contextWindow.total.toLocaleString()} tokens${hasKnownContextWindow(selectedModel, modelMetadata?.[selectedModel]) ? '' : ' (estimate: this model does not report its context size)'}`}
+                    >
                       <span className="context-status__text">
-                        {contextWindow.current.toLocaleString()} / {formatTokensCompact(contextWindow.total)}
+                        {contextWindow.current.toLocaleString()} / {hasKnownContextWindow(selectedModel, modelMetadata?.[selectedModel]) ? '' : '~'}{formatTokensCompact(contextWindow.total)}
                       </span>
                       <span className="context-status__meter">
                         <span className="context-status__meter-fill" style={{ width: `${contextPercentage ?? 0}%` }}></span>
@@ -525,8 +535,8 @@ export function Composer({ thinkingSeconds }: ComposerProps) {
                 />
 
                 {/* Clear + Send */}
-                <button type="button" className="btn btn-secondary composer-clear-btn" onClick={onNewChat} title="Clear current chat">
-                  Clear
+                <button type="button" className="btn btn-secondary composer-clear-btn" onClick={onNewChat} title="Start a new chat">
+                  New chat
                 </button>
 
                 {isCurrentChatSending ? (

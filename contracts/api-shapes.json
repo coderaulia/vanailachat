@@ -1,6 +1,6 @@
 {
   "$comment": "Keys both backends must emit for each entity the frontend reads. The web API (src/backend) and the desktop IPC (src-tauri) are checked against this file by src/backend/__tests__/api-contract.test.ts and src-tauri/src/contract.rs. Extra keys are allowed; missing or differently-cased keys fail.",
-  "project": ["id", "name", "description", "instructions", "memory", "pinned", "createdAt"],
+  "project": ["id", "name", "description", "instructions", "memory", "pinned", "createdAt", "projectRoot"],
   "chat": ["id", "title", "projectId", "projectRoot", "systemPrompt", "pinned", "archived", "model", "role", "createdAt", "updatedAt"],
   "message": ["id", "chatId", "role", "content", "createdAt", "versionOf", "versionCount"],
   "messageVersion": ["id", "content", "createdAt", "current"],
@@ -9,5 +9,7 @@
   "trainingStats": ["pairs", "explicit", "edited", "implicit", "distillation", "topChats", "oldest", "newest"],
   "codingSession": ["chatId", "harness", "harnessSessionId", "workspacePath", "status", "createdAt", "updatedAt"],
   "exportBundle": ["projects", "chats", "messages"],
+  "memory": ["id", "type", "content", "embedding", "metadata", "sourceId", "createdAt"],
+  "skillCatalogEntry": ["name", "rawUrl", "installed", "enabled", "id", "description"],
   "messageSearchHit": ["chatId", "chatTitle", "projectId", "messageId", "role", "snippet", "createdAt"]
 }

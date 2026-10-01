@@ -1,111 +1,101 @@
-use crate::error::{AppError, AppResult};
-use crate::providers::traits::*;
+use crate::chat::agent::{complete_once, run_agent, AgentDeps, EventSink, Outcome, APPROVAL_TIMEOUT};
+use crate::chat::prepare_chat;
+use crate::chat::tools::ChatTools;
+use crate::error::AppResult;
+use crate::providers::traits::ChatRequest;
 use crate::state::AppState;
-use futures::StreamExt;
-use serde::Deserialize;
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::oneshot;
+use tokio::sync::watch;
 
-#[derive(Deserialize)]
-pub struct StartChatPayload {
-    pub request: ChatRequest,
+/// Key for turns that arrive without a chat id.
+const ANONYMOUS_CHAT: &str = "__anonymous__";
+
+/// Forwards events to the webview, tagged with the chat they belong to so two
+/// chats streaming at once do not write into each other's message.
+pub struct TauriSink {
+    pub app: AppHandle,
+    pub chat_id: String,
+}
+
+impl EventSink for TauriSink {
+    fn emit(&self, mut event: Value) {
+        if let Some(object) = event.as_object_mut() {
+            object.insert("chat_id".into(), Value::String(self.chat_id.clone()));
+        }
+        let _ = self.app.emit("chat-stream", event);
+    }
+}
+
+/// Registers a cancel handle for a chat; the returned receiver fires when the user stops it.
+pub async fn register_cancel(state: &AppState, chat_id: &str) -> watch::Receiver<bool> {
+    let (tx, rx) = watch::channel(false);
+    state.active_streams.lock().await.insert(chat_id.to_string(), tx);
+    rx
 }
 
 #[tauri::command]
-pub async fn start_chat(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    request: ChatRequest,
-) -> AppResult<()> {
-    // 1. Ensure Ollama is running if model targets Ollama
-    if request.model.starts_with("ollama:") || !request.model.contains(':') {
+pub async fn start_chat(app: AppHandle, state: State<'_, AppState>, request: ChatRequest) -> AppResult<()> {
+    let chat_id = request.chat_id.clone().unwrap_or_else(|| ANONYMOUS_CHAT.to_string());
+    let registry = state.provider_registry.lock().clone();
+
+    if registry.resolve_model(&request.model).is_some_and(|(provider, _)| provider.id() == "ollama") {
         state.ollama_manager.ensure_running().await;
     }
 
-    // 2. Resolve provider for model
-    let provider = {
-        let registry = state.provider_registry.lock();
-        registry
-            .resolve_provider_for_model(&request.model)
-            .ok_or_else(|| AppError::NotFound(format!("No provider registered for model {}", request.model)))?
+    let prepared = prepare_chat(&state.db, &registry, request).await?;
+    let cancel = register_cancel(&state, &chat_id).await;
+
+    let runner = ChatTools { db: state.db.clone() };
+    let sink = TauriSink { app, chat_id: chat_id.clone() };
+    let deps = AgentDeps {
+        provider: prepared.provider.as_ref(),
+        runner: &runner,
+        sink: &sink,
+        approvals: &state.approval_service,
+        approval_required: prepared.approval_required,
+        approval_timeout: APPROVAL_TIMEOUT,
     };
 
-    // 3. Initiate stream from provider
-    let mut stream = provider.chat(request).await?;
-
-    // 4. Setup abort channel
-    let (abort_tx, mut abort_rx) = oneshot::channel::<()>();
-    {
-        let mut active = state.active_stream_abort.lock().await;
-        *active = Some(abort_tx);
+    // The command only returns once the reply is complete, so the frontend
+    // keeps listening for exactly as long as the stream runs.
+    let outcome = run_agent(&deps, prepared.request, cancel).await;
+    state.active_streams.lock().await.remove(&chat_id);
+    match outcome? {
+        Outcome::Finished | Outcome::Cancelled => Ok(()),
     }
+}
 
-    // 5. Spawn background task to emit chunks to frontend
-    let app_handle = app.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = &mut abort_rx => {
-                    let _ = app_handle.emit("chat-stream", StreamChunk {
-                        message: None,
-                        tool_calls: None,
-                        tool_event: None,
-                        approval_request: None,
-                        done: true,
-                        prompt_eval_count: None,
-                        eval_count: None,
-                        error: Some("Stream cancelled by user".to_string()),
-                    });
-                    break;
-                }
-                item = stream.next() => {
-                    match item {
-                        Some(Ok(chunk)) => {
-                            let is_done = chunk.done;
-                            let _ = app_handle.emit("chat-stream", &chunk);
-                            if is_done {
-                                break;
-                            }
-                        }
-                        Some(Err(e)) => {
-                            let _ = app_handle.emit("chat-stream", StreamChunk {
-                                message: None,
-                                tool_calls: None,
-                                tool_event: None,
-                                approval_request: None,
-                                done: true,
-                                prompt_eval_count: None,
-                                eval_count: None,
-                                error: Some(e.to_string()),
-                            });
-                            break;
-                        }
-                        None => {
-                            break;
-                        }
-                    }
-                }
+/// A single non-streaming completion, e.g. for chat titles. Skips profile, memory and tools.
+#[tauri::command]
+pub async fn chat_once(state: State<'_, AppState>, mut request: ChatRequest) -> AppResult<String> {
+    request.skip_memory = true;
+    let registry = state.provider_registry.lock().clone();
+    if registry.resolve_model(&request.model).is_some_and(|(provider, _)| provider.id() == "ollama") {
+        state.ollama_manager.ensure_running().await;
+    }
+    let prepared = prepare_chat(&state.db, &registry, request).await?;
+    complete_once(prepared.provider.as_ref(), prepared.request).await
+}
+
+/// Stops the stream of `chat_id`, or every stream when no id is given.
+#[tauri::command]
+pub async fn cancel_chat(state: State<'_, AppState>, chat_id: Option<String>) -> AppResult<()> {
+    let streams = state.active_streams.lock().await;
+    match chat_id {
+        Some(id) => {
+            if let Some(tx) = streams.get(&id) {
+                let _ = tx.send(true);
             }
         }
-    });
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn cancel_chat(state: State<'_, AppState>) -> AppResult<()> {
-    let mut active = state.active_stream_abort.lock().await;
-    if let Some(tx) = active.take() {
-        let _ = tx.send(());
+        None => streams.values().for_each(|tx| {
+            let _ = tx.send(true);
+        }),
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn approve_tool(
-    state: State<'_, AppState>,
-    id: String,
-    approved: bool,
-) -> AppResult<bool> {
+pub async fn approve_tool(state: State<'_, AppState>, id: String, approved: bool) -> AppResult<bool> {
     Ok(state.approval_service.resolve(&id, approved).await)
 }

@@ -41,7 +41,7 @@ export function dataRouter(dependencies: AppDependencies): Hono {
   app.post('/import', async (context) => {
     try {
       const body = (await context.req.json()) as {
-        projects?: Array<{ id?: unknown; name?: unknown; createdAt?: unknown }>;
+        projects?: Array<{ id?: unknown; name?: unknown; createdAt?: unknown; projectRoot?: unknown }>;
         chats?: Array<{
           id?: unknown;
           projectId?: unknown;
@@ -84,6 +84,7 @@ export function dataRouter(dependencies: AppDependencies): Hono {
           id,
           name,
           createdAt: toOptionalNumber(project.createdAt),
+          projectRoot: typeof project.projectRoot === 'string' ? project.projectRoot : undefined,
         });
         existingProjects.add(id);
       }

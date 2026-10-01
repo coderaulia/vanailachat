@@ -396,6 +396,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings?: () => void }) {
                       aria-label="Delete chat"
                       onClick={(event) => {
                         event.stopPropagation();
+                        if (!window.confirm(`Delete "${chat.title || 'this chat'}"? This cannot be undone.`)) return;
                         onDeleteChat(id);
                       }}
                     >
