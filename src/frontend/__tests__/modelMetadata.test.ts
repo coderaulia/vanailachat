@@ -53,3 +53,13 @@ describe('modelMetadata dynamic context resolution', () => {
     expect(info.description).toContain('1,000,000 context');
   });
 });
+
+describe('hasKnownContextWindow', () => {
+  it('is true for provider metadata and known families, false for the 32K guess', async () => {
+    const { hasKnownContextWindow } = await import('../config/modelMetadata');
+    expect(hasKnownContextWindow('anything', { contextWindow: 4096 })).toBe(true);
+    expect(hasKnownContextWindow('deepseek-chat')).toBe(true);
+    expect(hasKnownContextWindow('totally-unknown-model')).toBe(false);
+    expect(hasKnownContextWindow(null)).toBe(false);
+  });
+});

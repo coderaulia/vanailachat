@@ -205,6 +205,12 @@ const KNOWN_MODEL_CONTEXT_WINDOWS: Array<{ pattern: RegExp; contextWindow: numbe
   { pattern: /gpt-4\b/i, contextWindow: 8_192 },
 ];
 
+/** Whether the window comes from the provider or a known model family, rather than the 32K guess. */
+export function hasKnownContextWindow(modelName?: string | null, metadata?: ModelMetadata): boolean {
+  if (typeof metadata?.contextWindow === 'number' && metadata.contextWindow > 0) return true;
+  return Boolean(modelName) && KNOWN_MODEL_CONTEXT_WINDOWS.some((entry) => entry.pattern.test(modelName as string));
+}
+
 /**
  * Returns the effective context window (in tokens) for a given model.
  * Prioritizes actual metadata provided by Ollama/OpenRouter/OpenAI before falling back

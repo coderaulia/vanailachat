@@ -115,7 +115,21 @@ describe('useChatSession', () => {
     await waitFor(() => expect(deps.patchChat).toHaveBeenCalledWith('c1', expect.objectContaining({ systemPrompt: DEFAULT_SYSTEM_PROMPT })));
   });
 
+  it('does not turn auto-approve on unless the user confirms', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const deps = makeDeps();
+    const { result } = renderHook(() => useChatSession(deps));
+    await waitFor(() => expect(api.apiFetchSettings).toHaveBeenCalled());
+
+    await act(async () => { await result.current.toggleAutoApprove(); });
+    expect(confirm).toHaveBeenCalled();
+    expect(result.current.isAutoApprove).toBe(false);
+    expect(api.apiUpdateSetting).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it('loads and toggles auto-approve through the settings API', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const deps = makeDeps();
     const { result } = renderHook(() => useChatSession(deps));
     await waitFor(() => expect(api.apiFetchSettings).toHaveBeenCalled());

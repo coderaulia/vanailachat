@@ -20,6 +20,14 @@ All notable changes to Vanaila Chat are documented here.
 
 ### Fixed
 
+- Sending while a reply is still streaming is refused instead of mixing both answers into one message and losing the second.
+- The chat column no longer overflows (clipping Send and timestamps) on 1025–1366px windows.
+- Local providers (Ollama, LM Studio, 9Router) are reached directly when a proxy is configured; `NO_PROXY` is honoured.
+- Deleting a chat, removing a custom provider, turning on Auto-Approve and re-running setup now ask first.
+- Settings: pricing saves as you type and survives closing the dialog, failed saves show as errors, Test Connection checks only the provider being edited, the dialog is keyboard-accessible, and the coding engine settings moved to Behaviour (and are hidden on desktop, which has its own agent).
+- API keys are masked in settings responses and desktop exports; a masked value sent back leaves the stored key alone.
+- The app no longer loads a web font from a third-party CDN.
+- Header shows the real state (no model selected, ready) instead of "Connected"; "Clear" is now "New chat"; the context meter marks estimated sizes with "~".
 - Desktop: replies now reach the chat (the stream used to be dropped), Ollama tokens are no longer lost at chunk boundaries, cloud model ids resolve to the right provider, a fresh install no longer fails to save its first chat, provider settings apply without a restart, and web tools are blocked from internal addresses.
 - Regenerated or edited messages no longer reappear after reloading a chat.
 - Databases created before the migration table existed now receive every migration after v4.

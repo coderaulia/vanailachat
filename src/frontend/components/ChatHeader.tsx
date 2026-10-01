@@ -75,9 +75,9 @@ export function ChatHeader({
               <span className="status-pill__value">{selectedModel || 'Not selected'}</span>
             </div>
             <div className="status-pill">
-              <span className="status-pill__label">{providerLabel}</span>
+              <span className="status-pill__label">{selectedModel ? providerLabel : 'Status'}</span>
               <span className="status-pill__value">
-                {statusText === 'Ready' ? 'Connected' : statusText}
+                {!selectedModel ? 'No model selected' : statusText}
                 {isCurrentChatSending ? (
                   <span className="thinking-badge" aria-live="polite">
                     Thinking… {thinkingSeconds}s

@@ -65,6 +65,8 @@ export function useChatSession(deps: {
 
   const toggleAutoApprove = async () => {
     const next = !isAutoApprove;
+    // Turning it on removes the last check before files are changed or commands run.
+    if (next && !window.confirm('Auto-approve lets the assistant edit files and run commands without asking you first. Turn it on?')) return;
     setIsAutoApprove(next);
     try {
       await apiUpdateSetting('require_tool_approval', next ? 'false' : 'true');
