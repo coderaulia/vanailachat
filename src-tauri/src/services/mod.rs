@@ -3,6 +3,7 @@ pub mod documents;
 pub mod memory;
 pub mod ollama_manager;
 pub mod research;
+pub mod secrets;
 pub mod skills;
 
 pub use approvals::ApprovalService;

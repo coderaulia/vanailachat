@@ -86,6 +86,8 @@ export function useSettingsStore() {
   const [initialMode, setInitialMode] = useState<LlmMode>('ollama');
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState<string | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef(new Map<string, SettingWrites>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -99,10 +101,15 @@ export function useSettingsStore() {
       .finally(() => setLoading(false));
   }, []);
 
-  const flash = useCallback((label: string) => {
+  const flash = useCallback((label: string, failed = false) => {
     setSaved(label);
-    setTimeout(() => setSaved(null), 1800);
+    setSaveFailed(failed);
+    // One timer at a time, so an earlier message cannot clear a newer one.
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setSaved(null), failed ? 4000 : 1800);
   }, []);
+
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
   /** Runs a group of writes, reporting failure instead of dropping it. */
   const persist = useCallback(async (writes: SettingWrites) => {
@@ -110,7 +117,7 @@ export function useSettingsStore() {
       for (const [key, value] of writes) await apiUpdateSetting(key, value);
       flash('Saved');
     } catch (error) {
-      flash(error instanceof Error ? error.message : 'Save failed');
+      flash(error instanceof Error ? error.message : 'Save failed', true);
     }
   }, [flash]);
 
@@ -166,7 +173,7 @@ export function useSettingsStore() {
     };
   };
 
-  return { values, initialMode, loading, saved, persist, flush, setLocal, edit, saveNow, bindText };
+  return { values, initialMode, loading, saved, saveFailed, persist, flush, setLocal, edit, saveNow, bindText };
 }
 
 export type SettingsStore = ReturnType<typeof useSettingsStore>;

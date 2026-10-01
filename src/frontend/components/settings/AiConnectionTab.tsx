@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useChat } from '../../context/ChatContext';
-import { apiListModelNames } from '../../lib/api';
-import { CodingEngineSettings } from './CodingEngineSettings';
+import { apiListModelProviders } from '../../lib/api';
 import { ModelPull } from './ModelPull';
+import { SecretHint } from './SecretHint';
 import { customProviderWrites, parseCustomProviders } from './useSettingsStore';
 import type { SettingsStore } from './useSettingsStore';
 import type { CustomProviderConfig, LlmMode, SettingWrites } from './types';
@@ -27,6 +27,7 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
   const customProviders = useMemo(() => parseCustomProviders(values), [values]);
   const [activeCustomId, setActiveCustomId] = useState<string>(() => customProviders[0]?.id ?? 'custom');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [testedLabel, setTestedLabel] = useState('');
 
   const openaiWrites = (key: string): SettingWrites => [
     ['openai_api_key', key.trim()],
@@ -60,6 +61,8 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
 
   const removeCustomProvider = (idToRemove: string) => {
     if (customProviders.length <= 1) return;
+    const name = customProviders.find((p) => p.id === idToRemove)?.name || 'this provider';
+    if (!window.confirm(`Remove "${name}"? Its address, key and model list will be deleted.`)) return;
     const updated = customProviders.filter((p) => p.id !== idToRemove);
     saveCustomProviders(updated);
     if (activeCustomId === idToRemove) setActiveCustomId(updated[0]?.id || 'custom');
@@ -77,12 +80,28 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
       };
       await store.persist(modeWrites[llmMode]);
 
-      const models = await apiListModelNames();
-      setTestStatus(models.length > 0 ? 'ok' : 'fail');
+      // Only this provider's models count: another one answering must not make a broken one look fine.
+      const models = await apiListModelProviders();
+      const matches = (provider: string) => (llmMode === 'custom' ? provider.startsWith('custom') : provider === llmMode);
+      setTestedLabel(LLM_MODES.find((m) => m.id === llmMode)?.label ?? '');
+      const found = models.some((model) => matches(model.provider));
+      setTestStatus(found ? 'ok' : 'fail');
+      if (found) void handleRefreshModels();
     } catch {
       setTestStatus('fail');
     }
     setTimeout(() => setTestStatus('idle'), 3000);
+  };
+
+  // A dot on a provider tab means something is saved for it (Ollama needs nothing, so it has none).
+  const isConfigured = (mode: LlmMode): boolean => {
+    switch (mode) {
+      case 'openai': return Boolean(values.openai_api_key);
+      case 'openrouter': return Boolean(values.openrouter_api_key);
+      case '9router': return Boolean(values.nine_router_api_key);
+      case 'custom': return customProviders.some((p) => p.baseUrl.trim() || (p.models ?? '').trim());
+      default: return false;
+    }
   };
 
   const current = customProviders.find((p) => p.id === activeCustomId) || customProviders[0];
@@ -98,9 +117,13 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
             onClick={() => onLlmModeChange(mode.id)}
           >
             {mode.label}{mode.id === 'custom' && customProviders.length > 1 ? ` (${customProviders.length})` : ''}
+            {isConfigured(mode.id) && <span className="settings-llm-tab-dot" role="img" aria-label="configured" title="Configured" />}
           </button>
         ))}
       </div>
+      <p className="settings-hint settings-llm-hint">
+        Every provider you set up stays available in the model picker. These tabs only choose which provider's settings you are editing; a dot marks the ones that are configured.
+      </p>
 
       {llmMode === 'ollama' && (
         <div className="settings-field">
@@ -124,18 +147,6 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
                   onClick={() => setActiveCustomId(p.id)}
                 >
                   <span>{p.name || `Provider ${idx + 1}`}</span>
-                  {customProviders.length > 1 && (
-                    <span
-                      className="settings-custom-pill-del"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeCustomProvider(p.id);
-                      }}
-                      title="Remove provider"
-                    >
-                      ✕
-                    </span>
-                  )}
                 </button>
               ))}
             </div>
@@ -150,6 +161,13 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
           </div>
 
           <div className="settings-custom-fields">
+            {customProviders.length > 1 && (
+              <div className="settings-button-row">
+                <button type="button" className="settings-secondary-btn" onClick={() => removeCustomProvider(current.id)}>
+                  Remove this provider
+                </button>
+              </div>
+            )}
             <div className="settings-field">
               <label className="settings-label">Provider Name</label>
               <input
@@ -180,11 +198,13 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
               <input
                 className="settings-input"
                 type="password"
+                onFocus={(e) => e.currentTarget.select()}
                 value={current.apiKey || ''}
                 onChange={(e) => updateCurrentCustomProvider('apiKey', e.target.value)}
                 onBlur={() => void store.flush('custom_providers')}
                 placeholder="sk-..."
               />
+              <SecretHint value={current.apiKey} />
             </div>
 
             <div className="settings-field">
@@ -223,12 +243,14 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
             <input
               className="settings-input"
               type="password"
+              onFocus={(e) => e.currentTarget.select()}
               {...store.bindText('nine_router_api_key', {
                 group: 'nine_router',
                 writes: (key) => nineRouterWrites(values.nine_router_host ?? '', key),
               })}
               placeholder="Copy from 9Router dashboard →"
             />
+            <SecretHint value={values.nine_router_api_key} />
             <p className="settings-hint">Get your API key at <a href="http://localhost:20128/dashboard" target="_blank" rel="noreferrer">9Router Dashboard</a></p>
           </div>
         </>
@@ -240,9 +262,11 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
           <input
             className="settings-input"
             type="password"
+            onFocus={(e) => e.currentTarget.select()}
             {...store.bindText('openrouter_api_key', { writes: openrouterWrites })}
             placeholder="sk-or-..."
           />
+          <SecretHint value={values.openrouter_api_key} />
           <p className="settings-hint">Access 100+ models at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai</a></p>
         </div>
       )}
@@ -253,14 +277,14 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
           <input
             className="settings-input"
             type="password"
+            onFocus={(e) => e.currentTarget.select()}
             {...store.bindText('openai_api_key', { writes: openaiWrites })}
             placeholder="sk-..."
           />
+          <SecretHint value={values.openai_api_key} />
           <p className="settings-hint">Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></p>
         </div>
       )}
-
-      <CodingEngineSettings store={store} />
 
       <button
         type="button"
@@ -271,7 +295,7 @@ export function AiConnectionTab({ store, llmMode, onLlmModeChange }: Props) {
         {testStatus === 'idle'    && '🔌 Test Connection'}
         {testStatus === 'testing' && '⏳ Testing…'}
         {testStatus === 'ok'      && '✅ Connected'}
-        {testStatus === 'fail'    && '❌ Failed — check settings'}
+        {testStatus === 'fail'    && `❌ No models from ${testedLabel || 'this provider'} — check the address and key`}
       </button>
     </div>
   );

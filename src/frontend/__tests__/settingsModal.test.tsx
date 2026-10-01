@@ -119,4 +119,89 @@ describe('SettingsModal', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
   });
+
+  const open = async (props: { onClose?: () => void } = {}) => {
+    const view = render(<SettingsModal onClose={props.onClose ?? vi.fn()} />);
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    return view;
+  };
+
+  it('saves valid pricing as you type and keeps it when the modal closes at once', async () => {
+    const { unmount } = await open();
+    fireEvent.click(screen.getByRole('tab', { name: /Behaviour/ }));
+    fireEvent.change(screen.getByPlaceholderText(/deepseek-v4-flash/), { target: { value: '{"a":{"input":1,"output":2}}' } });
+    act(() => unmount());
+    await waitFor(() => expect(updateSetting).toHaveBeenCalledWith('model_pricing', '{"a":{"input":1,"output":2}}'));
+  });
+
+  it('flags broken pricing while typing without saving it', async () => {
+    await open();
+    fireEvent.click(screen.getByRole('tab', { name: /Behaviour/ }));
+    fireEvent.change(screen.getByPlaceholderText(/deepseek-v4-flash/), { target: { value: '{ nope' } });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Not saved yet/);
+    expect(updateSetting).not.toHaveBeenCalledWith('model_pricing', expect.anything());
+  });
+
+  it('reports a failed save as an error, without a success tick', async () => {
+    updateSetting.mockRejectedValue(new Error('disk full'));
+    await open();
+    fireEvent.click(screen.getByRole('tab', { name: /Behaviour/ }));
+    fireEvent.click(screen.getByLabelText('Ask before making changes'));
+    const badge = await screen.findByRole('alert');
+    expect(badge.textContent).toBe('⚠ Not saved — disk full');
+    expect(badge.textContent).not.toContain('✓');
+  });
+
+  it('puts focus inside the dialog, keeps Tab in it and moves between tabs with the arrow keys', async () => {
+    await open();
+    const first = screen.getByRole('tab', { name: /AI Connection/ });
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: /Personalization/ }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('tab', { name: /Personalization/ }), { key: 'End' });
+    expect(screen.getByRole('tab', { name: /About/ }).getAttribute('aria-selected')).toBe('true');
+
+    // Shift+Tab on the first control wraps to the last one instead of leaving the dialog.
+    const dialog = screen.getByRole('dialog');
+    const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input, select, textarea, a[href]')].filter((el) => el.tabIndex >= 0);
+    focusable[0].focus();
+    fireEvent.keyDown(focusable[0], { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(focusable[focusable.length - 1]);
+  });
+
+  it('shows a masked key as saved and hidden', async () => {
+    vi.spyOn(api, 'apiFetchSettings').mockResolvedValue({ openai_api_key: '••••abcd' });
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: /^OpenAI/ }));
+    expect(screen.getByText(/ending in abcd/)).toBeDefined();
+    expect((screen.getByPlaceholderText('sk-...') as HTMLInputElement).value).toBe('••••abcd');
+  });
+
+  it('tests only the provider being edited', async () => {
+    const providers = vi.spyOn(api, 'apiListModelProviders').mockResolvedValue([{ name: 'custom:x', provider: 'custom' }]);
+    await open();
+    fireEvent.click(screen.getByText(/Test Connection/));
+    expect(await screen.findByText(/No models from Ollama/)).toBeDefined();
+    expect(providers).toHaveBeenCalled();
+  });
+
+  it('asks before removing a custom provider', async () => {
+    const list = JSON.stringify([
+      { id: 'custom', name: 'One', baseUrl: 'http://a' },
+      { id: 'custom_2', name: 'Two', baseUrl: 'http://b' },
+    ]);
+    vi.spyOn(api, 'apiFetchSettings').mockResolvedValue({ custom_openai_providers: list });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await open();
+    fireEvent.click(screen.getByText('Remove this provider'));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /One/ })).toBeDefined();
+    expect(updateSetting).not.toHaveBeenCalled();
+
+    // The provider being edited (the first) is the one removed.
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByText('Remove this provider'));
+    await waitFor(() => expect(updateSetting).toHaveBeenCalledWith('custom_openai_providers', expect.not.stringContaining('"One"')));
+  });
 });

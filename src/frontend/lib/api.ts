@@ -512,6 +512,29 @@ export async function apiListModelNames(): Promise<string[]> {
   return Array.isArray(data.models) ? data.models : [];
 }
 
+export interface CodingHarnessStatus {
+  id: string;
+  label: string;
+  available: boolean;
+  reason?: string;
+}
+
+/** Whether each web coding harness can run here. The desktop app has its own built-in agent, so it reports none. */
+export async function apiFetchCodingHarnesses(): Promise<CodingHarnessStatus[]> {
+  if (isTauri) return [];
+  const data = await requestApi<{ harnesses?: CodingHarnessStatus[] }>('/api/coding/harnesses');
+  return Array.isArray(data.harnesses) ? data.harnesses : [];
+}
+
+/** Which provider serves each model; "Test connection" uses it to check only the provider being edited. */
+export async function apiListModelProviders(): Promise<Array<{ name: string; provider: string }>> {
+  if (isTauri) {
+    return (await apiFetchModels()).map(({ name, provider }) => ({ name, provider }));
+  }
+  const data = await requestApi<{ providers?: Array<{ name: string; provider: string }> }>('/api/models');
+  return Array.isArray(data.providers) ? data.providers : [];
+}
+
 /** One line of Ollama's pull progress. */
 export interface PullProgress {
   status?: string;

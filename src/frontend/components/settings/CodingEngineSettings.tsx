@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { SecretHint } from './SecretHint';
+import { apiFetchCodingHarnesses, isTauri } from '../../lib/api';
+import type { CodingHarnessStatus } from '../../lib/api';
 import type { SettingsStore } from './useSettingsStore';
 
 type Harness = 'pi-harness' | 'deepseek-harness';
@@ -8,7 +11,36 @@ const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'ma
 export function CodingEngineSettings({ store }: { store: SettingsStore }) {
   const { values, bindText } = store;
   const [expanded, setExpanded] = useState(false);
+  const [availability, setAvailability] = useState<Record<string, CodingHarnessStatus>>({});
   const harness = values.coding_harness as Harness;
+
+  // Say up front whether the chosen harness can run, instead of failing on the first message.
+  useEffect(() => {
+    if (isTauri) return;
+    apiFetchCodingHarnesses()
+      .then((list) => setAvailability(Object.fromEntries(list.map((h) => [h.id, h]))))
+      .catch(() => {/* status is a hint only */});
+  }, []);
+
+  if (isTauri) {
+    return (
+      <div className="settings-field settings-field--harness">
+        <label className="settings-label">Coding Workspace Engine</label>
+        <p className="settings-hint">
+          The desktop app runs coding chats with its built-in agent: it can list, search, read, edit and write files in
+          your workspace and run allowlisted commands, asking for approval first (see "Ask before making changes").
+          The Pi and DeepSeek harnesses are only used by the web edition.
+        </p>
+      </div>
+    );
+  }
+  const harnessNote = (id: Harness) => {
+    const status = availability[id];
+    if (!status) return null;
+    return status.available
+      ? <span className="settings-harness-status is-ready">Ready</span>
+      : <span className="settings-harness-status is-missing" title={status.reason}>Unavailable{status.reason ? ` — ${status.reason}` : ''}</span>;
+  };
 
   const selectHarness = (next: Harness) => void store.saveNow({ coding_harness: next }, [['coding_harness', next]]);
 
@@ -44,6 +76,10 @@ export function CodingEngineSettings({ store }: { store: SettingsStore }) {
         </button>
       </div>
 
+      <div className="settings-harness-status-row">
+        {harnessNote(harness)}
+      </div>
+
       <button
         type="button"
         className="settings-setup-toggle"
@@ -75,7 +111,8 @@ export function CodingEngineSettings({ store }: { store: SettingsStore }) {
 
             <div className="settings-subfield" style={{ marginTop: '8px' }}>
               <label className="settings-sublabel">Pi API Key <span className="settings-optional">(optional)</span></label>
-              <input className="settings-input" type="password" {...bindText('pi_api_key')} placeholder="Leave blank to use Pi auth.json or environment" />
+              <input className="settings-input" type="password" onFocus={(e) => e.currentTarget.select()} {...bindText('pi_api_key')} placeholder="Leave blank to use Pi auth.json or environment" />
+              <SecretHint value={values.pi_api_key} />
             </div>
 
             <div className="settings-subfield" style={{ marginTop: '8px' }}>
@@ -140,9 +177,11 @@ export function CodingEngineSettings({ store }: { store: SettingsStore }) {
               <input
                 className="settings-input"
                 type="password"
+                onFocus={(e) => e.currentTarget.select()}
                 {...bindText('deepseek_api_key')}
                 placeholder="sk-... (leave blank to use active provider / environment)"
               />
+              <SecretHint value={values.deepseek_api_key} />
               <p className="settings-subhint">Get your key from <a href="https://platform.deepseek.com" target="_blank" rel="noreferrer">platform.deepseek.com</a></p>
             </div>
 
