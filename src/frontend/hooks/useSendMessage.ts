@@ -122,6 +122,13 @@ export function useSendMessage(deps: SendMessageDeps) {
       setStatusText('No model selected. Please wait for models to load or pick one.');
       return;
     }
+
+    // A second request would abort the first mid-stream and write both answers
+    // into the same message, so wait until this chat's reply is finished or stopped.
+    if (currentChatId && abortControllersMapRef.current.has(currentChatId)) {
+      setStatusText('Still replying — wait for it to finish or press Stop.');
+      return;
+    }
     lastSentPromptRef.current = effectivePrompt;
 
     const activeChatId = currentChatId;
