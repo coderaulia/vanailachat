@@ -4,6 +4,15 @@ All notable changes to Vanaila Chat are documented here.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-02
+
+### Changed
+
+- Updated dependencies (Tauri 2.12.x and others).
+- Added a Content Security Policy to the desktop app.
+- Fixed README download links.
+- Fixed update-notice tests on Node 25+.
+
 ### Added
 
 - Earlier answers stay available after Regenerate: step through them with the 1 / 2 switcher on the answer.
