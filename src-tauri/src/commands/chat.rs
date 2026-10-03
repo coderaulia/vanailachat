@@ -5,7 +5,7 @@ use crate::error::AppResult;
 use crate::providers::traits::ChatRequest;
 use crate::state::AppState;
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::watch;
 
 /// Key for turns that arrive without a chat id.
@@ -13,12 +13,12 @@ const ANONYMOUS_CHAT: &str = "__anonymous__";
 
 /// Forwards events to the webview, tagged with the chat they belong to so two
 /// chats streaming at once do not write into each other's message.
-pub struct TauriSink {
-    pub app: AppHandle,
+pub struct TauriSink<R: Runtime> {
+    pub app: AppHandle<R>,
     pub chat_id: String,
 }
 
-impl EventSink for TauriSink {
+impl<R: Runtime> EventSink for TauriSink<R> {
     fn emit(&self, mut event: Value) {
         if let Some(object) = event.as_object_mut() {
             object.insert("chat_id".into(), Value::String(self.chat_id.clone()));
@@ -35,7 +35,7 @@ pub async fn register_cancel(state: &AppState, chat_id: &str) -> watch::Receiver
 }
 
 #[tauri::command]
-pub async fn start_chat(app: AppHandle, state: State<'_, AppState>, request: ChatRequest) -> AppResult<()> {
+pub async fn start_chat<R: Runtime>(app: AppHandle<R>, state: State<'_, AppState>, request: ChatRequest) -> AppResult<()> {
     let chat_id = request.chat_id.clone().unwrap_or_else(|| ANONYMOUS_CHAT.to_string());
     let registry = state.provider_registry.lock().clone();
 
@@ -55,6 +55,7 @@ pub async fn start_chat(app: AppHandle, state: State<'_, AppState>, request: Cha
         approvals: &state.approval_service,
         approval_required: prepared.approval_required,
         approval_timeout: APPROVAL_TIMEOUT,
+        read_only: false,
     };
 
     // The command only returns once the reply is complete, so the frontend

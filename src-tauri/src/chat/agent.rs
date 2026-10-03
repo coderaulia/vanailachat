@@ -20,6 +20,11 @@ pub const APPROVAL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 #[async_trait]
 pub trait ToolRunner: Send + Sync {
     async fn run(&self, name: &str, args: &Value) -> Result<String, String>;
+
+    /// Extra context for the approval prompt, e.g. the text a write is about to replace.
+    async fn preview(&self, _name: &str, _args: &Value) -> Option<Value> {
+        None
+    }
 }
 
 /// Where stream events go (the webview in the app, a vector in tests).
@@ -105,6 +110,8 @@ pub struct AgentDeps<'a> {
     pub approvals: &'a ApprovalService,
     pub approval_required: bool,
     pub approval_timeout: Duration,
+    /// Plan mode: tools that change things are refused outright, whatever the model asks for.
+    pub read_only: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -219,14 +226,24 @@ fn tool_event(iteration: usize, call: &ToolCall, status: &str, detail: Option<St
 
 /// Runs one call, gating it behind approval when needed. `None` means cancelled.
 async fn run_one(deps: &AgentDeps<'_>, iteration: usize, call: &ToolCall, cancel: &mut watch::Receiver<bool>) -> AppResult<Option<String>> {
+    if deps.read_only && is_mutating_tool(&call.name) {
+        deps.sink.emit(tool_event(iteration, call, "error", Some("Blocked in plan mode".into())));
+        return Ok(Some(format!("Plan mode: {} is not available because nothing may be changed. Describe the change in your plan instead.", call.name)));
+    }
     if deps.approval_required && is_mutating_tool(&call.name) {
         let id = format!("apr_{}", uuid::Uuid::new_v4().simple());
         let (tx, rx) = oneshot::channel();
         deps.approvals.register(id.clone(), tx).await;
+        let mut details = normalize_details(&call.name, &call.arguments).details;
+        if let (Some(extra), Some(object)) = (deps.runner.preview(&call.name, &call.arguments).await, details.as_object_mut()) {
+            for (key, value) in extra.as_object().into_iter().flatten() {
+                object.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
         deps.sink.emit(json!({ "approval_request": {
             "id": id, "tool": call.name,
             "summary": describe_tool_call(&call.name, &call.arguments),
-            "details": normalize_details(&call.name, &call.arguments).details,
+            "details": details,
         }}));
 
         // Anything unanswered is denied: a timeout or a closed window must not become an approval.
@@ -403,7 +420,7 @@ mod tests {
         }
 
         async fn run_with(&self, provider: &ScriptedProvider, runner: &FnRunner, approval_required: bool, cancel: watch::Receiver<bool>, timeout: Duration) -> AppResult<Outcome> {
-            let deps = AgentDeps { provider, runner, sink: &self.sink, approvals: &self.approvals, approval_required, approval_timeout: timeout };
+            let deps = AgentDeps { provider, runner, sink: &self.sink, approvals: &self.approvals, approval_required, approval_timeout: timeout, read_only: false };
             run_agent(&deps, request(), cancel).await
         }
     }

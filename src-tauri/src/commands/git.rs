@@ -49,7 +49,8 @@ pub async fn get_git_status(workspace_root: String) -> AppResult<GitStatusResult
         .collect();
 
     let is_git = branch_output.status.success() && status_output.status.success();
-    let branch = if branch.is_empty() { "main".to_string() } else { branch };
+    // Detached HEAD has no branch name; calling it "main" would hide the production-branch warning logic.
+    let branch = if branch.is_empty() { "(detached HEAD)".to_string() } else { branch };
     Ok(GitStatusResult {
         is_git,
         branch: branch.clone(),
@@ -95,4 +96,48 @@ pub async fn create_git_branch(workspace_root: String, branch_name: String) -> A
         return Err(AppError::Provider(String::from_utf8_lossy(&output.stderr).trim().to_string()));
     }
     Ok(sanitized.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(ok, "git {args:?} failed");
+    }
+
+    #[tokio::test]
+    async fn reports_the_branch_dirty_files_and_a_detached_head() {
+        let dir = std::env::temp_dir().join(format!("vanaila-git-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "feature/x"]);
+        std::fs::write(dir.join("a.txt"), "1").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "first"]);
+        let root = dir.to_string_lossy().into_owned();
+
+        let clean = get_git_status(root.clone()).await.unwrap();
+        assert_eq!((clean.is_git, clean.branch.as_str(), clean.is_clean, clean.is_main_or_master), (true, "feature/x", true, false));
+
+        std::fs::write(dir.join("b.txt"), "2").unwrap();
+        assert_eq!(get_git_status(root.clone()).await.unwrap().uncommitted_count, 1);
+
+        git(&dir, &["checkout", "-q", "--detach"]);
+        let detached = get_git_status(root).await.unwrap();
+        assert_eq!(detached.branch, "(detached HEAD)");
+        assert!(!detached.is_main_or_master, "a detached HEAD is not 'main'");
+
+        let plain = std::env::temp_dir().join(format!("vanaila-nogit-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(!get_git_status(plain.to_string_lossy().into_owned()).await.unwrap().is_git);
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(plain);
+    }
 }

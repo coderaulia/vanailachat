@@ -4,7 +4,7 @@ import type { Attachment, ApiChat, ContextWindow, Message, ApiProject, Chat, Pen
 import type { ModelRole } from '../config/modelRoles';
 import { MAX_CONVERSATION_HISTORY } from '../config/constants';
 import { parseUsage, parseStreamLine } from '../utils/chatUtils';
-import { apiChatOnce, apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
+import { apiUndoCodingTurn, apiChatOnce, apiCreateCodingSession, apiCreateProject, apiFetchSettings, apiSupersedeMessages, isTauri, runNativeCoding, streamChatCompletion } from '../lib/api';
 
 export interface SendMessageDeps {
   // Model / project
@@ -127,6 +127,17 @@ export function useSendMessage(deps: SendMessageDeps) {
     // into the same message, so wait until this chat's reply is finished or stopped.
     if (currentChatId && abortControllersMapRef.current.has(currentChatId)) {
       setStatusText('Still replying — wait for it to finish or press Stop.');
+      return;
+    }
+    // Desktop coding chats understand two commands: `/undo` restores the last turn's file changes
+    // and `/plan <task>` investigates and proposes a plan without changing anything.
+    if (isTauri && selectedRole === 'coding' && currentChatId && /^\/undo\s*$/i.test(effectivePrompt.trim())) {
+      setPrompt('');
+      try {
+        setStatusText(await apiUndoCodingTurn(currentChatId));
+      } catch (error) {
+        setStatusText(error instanceof Error ? error.message : 'Nothing to undo');
+      }
       return;
     }
     lastSentPromptRef.current = effectivePrompt;
@@ -524,11 +535,14 @@ export function useSendMessage(deps: SendMessageDeps) {
         );
         assistantContentForSave = fullContent;
       } else if (useCodingHarness && isTauri) {
+        const planMode = /^\/plan(\s|$)/i.test(effectivePrompt.trim());
+        const runPrompt = planMode ? finalPrompt.replace(effectivePrompt, effectivePrompt.trim().replace(/^\/plan\s*/i, '') || 'Plan the next steps for this project.') : finalPrompt;
         // Same event stream as chat: text, tool activity and approval requests.
         await runNativeCoding(
           {
             chatId,
-            prompt: finalPrompt,
+            prompt: runPrompt,
+            mode: planMode ? 'plan' : 'implement',
             model: resolvedModel,
             history: recentConversation.map(m => ({ role: m.role, content: m.content })),
           },

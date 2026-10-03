@@ -42,7 +42,7 @@ The chat pipeline now lives in `src-tauri/src/` as follows; `contracts/*.json` k
 | Chat turn, system prompt, memory recall | `chat/mod.rs`, `chat/prompt.rs`, `chat/memory.rs`, `chat/personas.rs` | `routes/chat.ts` |
 | Tool-calling loop with approvals | `chat/agent.rs` (`run_agent`, `ToolRunner`, `EventSink`) | `routes/chat.ts` agent loop |
 | Chat tools (search, read URL, skills) | `chat/tools.rs` | `services/tools.ts` |
-| Native coding agent (workspace-confined) | `chat/coding.rs`, `commands/coding.rs` | Pi / DeepSeek harnesses |
+| Native coding agent (workspace-confined; plan mode, undo snapshots, extra allowed commands, turn memory) | `chat/coding.rs`, `commands/coding.rs`, `tools/run_command.rs`, `tools/search_files.rs` | Pi / DeepSeek harnesses |
 | A/B comparison | `chat/ab.rs`, `commands/ab.rs` | `routes/ab.ts` |
 | Deep research (stage events) | `services/research.rs`, `commands/research.rs` | `routes/research.ts` |
 | Document text extraction | `services/documents.rs`, `commands/attachments.rs` | `services/documentExtractor.ts` |

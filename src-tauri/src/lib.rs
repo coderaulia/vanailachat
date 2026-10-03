@@ -43,6 +43,9 @@ pub fn run() {
         }
     };
 
+    let _ = db.reset_running_coding_sessions();
+    chat::coding::set_undo_root(desktop_paths.data_dir.join("undo"));
+
     // Providers come from the saved settings, falling back to the environment.
     let all_settings = db.get_all_settings().unwrap_or_default();
     let provider_registry = ProviderRegistry::from_settings(&all_settings, &|key| std::env::var(key).ok());
@@ -134,6 +137,7 @@ pub fn run() {
             commands::coding::create_coding_session,
             commands::coding::update_coding_session,
             commands::coding::run_coding,
+            commands::coding::undo_coding_turn,
         ])
         .run(tauri::generate_context!())
         .expect("error while running vanaila chat tauri application");

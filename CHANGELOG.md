@@ -27,8 +27,11 @@ All notable changes to Vanaila Chat are documented here.
 - Desktop: A/B model comparison, deep research with cited reports, .docx/.xlsx/.pdf attachments, the in-app folder picker, and project folders.
 - Desktop coding mode runs a built-in agent in the workspace (list, search, read, edit, write, allowlisted commands); writes and commands wait for your approval. The Pi and DeepSeek harnesses remain web-only.
 
+- Desktop coding: `/plan <task>` investigates and proposes a plan without changing anything (write and command tools are refused, not just hidden); `/undo` steps back through the last 10 turns that changed files (kept on disk, so it works after a restart); overwriting an existing file shows before and after in the approval prompt; each finished turn is saved as a memory; extra allowed commands can be added in Settings → Behaviour; `read_file` takes line ranges and `list_directory` returns a depth-limited tree that skips ignored folders.
+
 ### Fixed
 
+- Desktop coding: a session left "running" by a crash or quit is reset on start, a second request on a chat that is still working is refused, command output is capped, and the git status bar no longer reports a detached HEAD as `main`.
 - Sending while a reply is still streaming is refused instead of mixing both answers into one message and losing the second.
 - The chat column no longer overflows (clipping Send and timestamps) on 1025–1366px windows.
 - Local providers (Ollama, LM Studio, 9Router) are reached directly when a proxy is configured; `NO_PROXY` is honoured.
