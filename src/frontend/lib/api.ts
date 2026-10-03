@@ -767,19 +767,30 @@ async function invokeChatStream(
   }
 }
 
+/** Puts back the files the last coding turn changed. Resolves to a sentence describing what was restored. */
+export async function apiUndoCodingTurn(chatId: string): Promise<string> {
+  if (!isTauri) throw new Error('Undo is only available in the desktop app');
+  const { invoke } = await getTauriCore();
+  try {
+    return await invoke<string>('undo_coding_turn', { chatId });
+  } catch (error) {
+    throw commandError(error, 'Nothing to undo');
+  }
+}
+
 /**
  * One coding turn in the session's workspace: the desktop app's own agent, which
  * streams the same text, tool and approval events as a chat.
  */
 export async function runNativeCoding(
-  request: { chatId: string; prompt: string; model: string; history?: Array<{ role: string; content: string }> },
+  request: { chatId: string; prompt: string; model: string; mode?: 'plan' | 'implement'; history?: Array<{ role: string; content: string }> },
   onChunk: (chunk: StreamChunk) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   if (!isTauri) throw new Error('Native coding is only available in Tauri');
   await invokeChatStream(
     'run_coding',
-    { request: { chat_id: request.chatId, prompt: request.prompt, model: request.model, history: request.history ?? [] } },
+    { request: { chat_id: request.chatId, prompt: request.prompt, model: request.model, mode: request.mode ?? 'implement', history: request.history ?? [] } },
     request.chatId,
     onChunk,
     signal,

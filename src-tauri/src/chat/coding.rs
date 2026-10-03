@@ -6,13 +6,18 @@
 //! user's approval, and the events match an ordinary chat turn.
 
 use super::agent::ToolRunner;
+use super::memory::Embedder;
 use super::tools::ChatTools;
 use super::{prepare_chat, PreparedChat};
 use crate::db::Database;
 use crate::error::AppResult;
 use crate::providers::traits::{ChatMessage, ChatRequest};
 use crate::providers::ProviderRegistry;
+use crate::tools::read_file::resolve_path;
+use crate::tools::run_command::{parse_extra_commands, run_command_with};
 use crate::tools::execute_tool;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use serde_json::{json, Value};
@@ -35,7 +40,10 @@ pub fn definitions() -> Vec<Value> {
         function(
             "list_directory",
             "List files and folders in a directory of the project",
-            json!({ "path": { "type": "string", "description": "Relative path to list (default: the project root)" } }),
+            json!({
+                "path": { "type": "string", "description": "Relative path to list (default: the project root)" },
+                "maxDepth": { "type": "number", "description": "How many levels to show (default 2, max 6)" },
+            }),
             &[],
         ),
         function(
@@ -53,7 +61,11 @@ pub fn definitions() -> Vec<Value> {
         function(
             "read_file",
             "Read the contents of a local file in the current project",
-            json!({ "path": { "type": "string", "description": "Relative path to the file" } }),
+            json!({
+                "path": { "type": "string", "description": "Relative path to the file" },
+                "start_line": { "type": "number", "description": "First line to return (1-based). Use with end_line for big files." },
+                "end_line": { "type": "number", "description": "Last line to return" },
+            }),
             &["path"],
         ),
         function(
@@ -84,6 +96,28 @@ pub fn definitions() -> Vec<Value> {
     ]
 }
 
+/// Tools that only look: all a plan-mode turn gets.
+pub fn read_only_definitions() -> Vec<Value> {
+    definitions().into_iter().filter(|t| matches!(t["function"]["name"].as_str(), Some("list_directory" | "search_files" | "read_file"))).collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    #[default]
+    Implement,
+    /// Investigate and propose a plan; nothing is changed.
+    Plan,
+}
+
+impl Mode {
+    pub fn parse(value: Option<&str>) -> Self {
+        if value.is_some_and(|v| v.eq_ignore_ascii_case("plan")) { Mode::Plan } else { Mode::Implement }
+    }
+}
+
+pub const PLAN_INSTRUCTIONS: &str = "[Plan Mode]\nDo not change anything and do not run commands: you only have tools that read. Investigate the code that matters, \
+then answer with a short numbered plan: what you would change, in which files, in what order, and how you would verify it. Mention risks or open questions at the end.";
+
 pub fn workspace_instructions(root: &str) -> String {
     format!(
         "[Coding Workspace]\nYou are working in the project at {root}. Every path is relative to that folder and nothing outside it is reachable.\n\
@@ -93,15 +127,147 @@ pub fn workspace_instructions(root: &str) -> String {
     )
 }
 
+// ── Undo history ──────────────────────────────────────────────────────
+//
+// Before a turn first touches a file, the file is copied into `<undo root>/<chat>/<turn>/`. Each turn that
+// changed something keeps one folder (newest 10 per chat), so `/undo` can step back through turns and still
+// works after the app was restarted.
+
+const KEPT_TURNS: usize = 10;
+
+static UNDO_ROOT: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+/// The turn folder each chat is currently writing into (created on its first change).
+static CURRENT_TURN: LazyLock<std::sync::Mutex<HashMap<String, std::path::PathBuf>>> = LazyLock::new(Default::default);
+
+/// Where undo history lives; set once at startup to the app data folder.
+pub fn set_undo_root(root: std::path::PathBuf) {
+    let _ = UNDO_ROOT.set(root);
+}
+
+fn undo_root() -> std::path::PathBuf {
+    UNDO_ROOT.get().cloned().unwrap_or_else(|| std::env::temp_dir().join("vanaila-undo"))
+}
+
+fn chat_dir(chat_id: &str) -> std::path::PathBuf {
+    let safe: String = chat_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    undo_root().join(safe)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Entry {
+    path: String,
+    /// File name of the saved copy; `None` when the file did not exist before the turn.
+    blob: Option<String>,
+}
+
+fn turn_numbers(dir: &std::path::Path) -> Vec<u64> {
+    let mut turns: Vec<u64> = std::fs::read_dir(dir)
+        .map(|entries| entries.filter_map(Result::ok).filter_map(|e| e.file_name().to_str()?.parse().ok()).collect())
+        .unwrap_or_default();
+    turns.sort_unstable();
+    turns
+}
+
+fn read_manifest(turn: &std::path::Path) -> Vec<Entry> {
+    std::fs::read_to_string(turn.join("manifest.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// A new turn starts: its first change opens a fresh history entry.
+pub fn begin_turn(chat_id: &str) {
+    CURRENT_TURN.lock().unwrap().remove(chat_id);
+}
+
+fn snapshot(chat_id: &str, path: &std::path::Path) {
+    let turn = {
+        let mut current = CURRENT_TURN.lock().unwrap();
+        match current.get(chat_id) {
+            Some(dir) => dir.clone(),
+            None => {
+                let dir = chat_dir(chat_id);
+                let turns = turn_numbers(&dir);
+                let next = dir.join(format!("{:06}", turns.last().map_or(1, |n| n + 1)));
+                if std::fs::create_dir_all(&next).is_err() {
+                    return;
+                }
+                // Keep only the newest turns.
+                for old in turns.iter().rev().skip(KEPT_TURNS - 1) {
+                    let _ = std::fs::remove_dir_all(dir.join(format!("{old:06}")));
+                }
+                current.insert(chat_id.to_string(), next.clone());
+                next
+            }
+        }
+    };
+    let mut entries = read_manifest(&turn);
+    let key = path.to_string_lossy().into_owned();
+    // Only the state before the turn's first touch matters.
+    if entries.iter().any(|e| e.path == key) {
+        return;
+    }
+    let blob = std::fs::read(path).ok().and_then(|bytes| {
+        let name = format!("blob{}", entries.len());
+        std::fs::write(turn.join(&name), bytes).ok().map(|_| name)
+    });
+    // A file that exists but could not be saved must not be recorded as "new": undo would delete it.
+    if blob.is_none() && path.exists() {
+        return;
+    }
+    entries.push(Entry { path: key, blob });
+    if let Ok(text) = serde_json::to_string(&entries) {
+        let _ = std::fs::write(turn.join("manifest.json"), text);
+    }
+}
+
+/// Puts back the files the latest recorded turn of `chat_id` changed, then drops that turn from the history.
+pub fn undo_turn(chat_id: &str) -> Result<String, String> {
+    let dir = chat_dir(chat_id);
+    let Some(latest) = turn_numbers(&dir).pop() else {
+        return Err("Nothing to undo: no coding turn has changed files in this chat.".into());
+    };
+    let turn = dir.join(format!("{latest:06}"));
+    let entries = read_manifest(&turn);
+    let mut restored = Vec::new();
+    for entry in entries.iter().rev() {
+        let path = std::path::Path::new(&entry.path);
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        match &entry.blob {
+            Some(blob) => {
+                let bytes = std::fs::read(turn.join(blob)).map_err(|e| format!("Could not read the saved copy of {name}: {e}"))?;
+                std::fs::write(path, bytes).map_err(|e| format!("Could not restore {name}: {e}"))?;
+            }
+            None => {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+        restored.push(name);
+    }
+    restored.reverse();
+    let _ = std::fs::remove_dir_all(&turn);
+    CURRENT_TURN.lock().unwrap().remove(chat_id);
+    let earlier = turn_numbers(&dir).len();
+    let more = if earlier > 0 { format!(" {earlier} earlier turn(s) can still be undone.") } else { String::new() };
+    Ok(format!("Restored {} file(s): {}.{more}", restored.len(), restored.join(", ")))
+}
+
 /// Runs the coding tools inside one workspace; skills and web tools fall through to the chat tools.
 pub struct CodingTools {
     pub root: String,
     pub chat: ChatTools,
+    pub chat_id: String,
+    /// Extra commands the user allowed in settings.
+    pub extra_commands: Vec<String>,
 }
 
 impl CodingTools {
     pub fn new(db: Arc<Mutex<Database>>, root: String) -> Self {
-        Self { root, chat: ChatTools { db } }
+        Self { root, chat: ChatTools { db }, chat_id: String::new(), extra_commands: vec![] }
+    }
+
+    /// Records undo snapshots under `chat_id` and honours the user's extra allowed commands.
+    pub fn for_chat(mut self, chat_id: &str, extra_commands: &str) -> Self {
+        self.chat_id = chat_id.to_string();
+        self.extra_commands = parse_extra_commands(extra_commands);
+        self
     }
 }
 
@@ -115,14 +281,33 @@ fn command_line(args: &Value) -> Option<String> {
 
 #[async_trait]
 impl ToolRunner for CodingTools {
+    /// An overwrite shows what it replaces, so the prompt can present a before/after instead of only the new text.
+    async fn preview(&self, name: &str, args: &Value) -> Option<Value> {
+        if name != "write_file" {
+            return None;
+        }
+        let path = resolve_path(args["path"].as_str()?, Some(&self.root)).ok()?;
+        let existing = std::fs::read_to_string(path).ok()?;
+        Some(json!({ "old_string": existing.chars().take(800).collect::<String>(), "overwrites": true }))
+    }
+
     async fn run(&self, name: &str, args: &Value) -> Result<String, String> {
         match name {
-            "list_directory" | "search_files" | "read_file" | "write_file" | "edit_file" => {
+            "write_file" | "edit_file" => {
+                if !self.chat_id.is_empty() {
+                    // Resolving also enforces the workspace boundary before anything is touched.
+                    if let Some(path) = args["path"].as_str().and_then(|p| resolve_path(p, Some(&self.root)).ok()) {
+                        snapshot(&self.chat_id, &path);
+                    }
+                }
+                execute_tool(name, args.clone(), Some(&self.root)).await.map_err(|e| e.to_string())
+            }
+            "list_directory" | "search_files" | "read_file" => {
                 execute_tool(name, args.clone(), Some(&self.root)).await.map_err(|e| e.to_string())
             }
             "run_command" => {
                 let line = command_line(args).ok_or("missing command")?;
-                execute_tool("run_command", json!({ "command": line }), Some(&self.root)).await.map_err(|e| e.to_string())
+                run_command_with(&line, Some(&self.root), &self.extra_commands).await.map_err(|e| e.to_string())
             }
             other => self.chat.run(other, args).await,
         }
@@ -136,6 +321,7 @@ pub struct CodingTurn {
     pub workspace: String,
     pub history: Vec<ChatMessage>,
     pub prompt: String,
+    pub mode: Mode,
 }
 
 /// Builds the request: the usual profile, skills and memories, plus the workspace
@@ -155,16 +341,42 @@ pub async fn prepare_coding(db: &Arc<Mutex<Database>>, registry: &ProviderRegist
     let mut prepared = prepare_chat(db, registry, request).await?;
 
     let system = prepared.request.system_prompt.take().unwrap_or_default();
-    prepared.request.system_prompt = Some(format!("{system}\n\n{}", workspace_instructions(&turn.workspace)));
+    let instructions = match turn.mode {
+        Mode::Plan => format!("{}\n\n{PLAN_INSTRUCTIONS}", workspace_instructions(&turn.workspace)),
+        Mode::Implement => workspace_instructions(&turn.workspace),
+    };
+    prepared.request.system_prompt = Some(format!("{system}\n\n{instructions}"));
 
     let supports = prepared.provider.supports_tools(&prepared.request.model).await;
     prepared.request.tools = supports.then(|| {
-        let mut tools = definitions();
+        let mut tools = if turn.mode == Mode::Plan { read_only_definitions() } else { definitions() };
         // Skills stay reachable, exactly as in chat.
         tools.extend(prepared.request.tools.take().unwrap_or_default().into_iter().filter(|t| t["function"]["name"] == "load_skill"));
         tools
     });
     Ok(prepared)
+}
+
+/// Remembers what a coding turn did, like the web edition, so later chats can recall it. Best effort.
+pub async fn remember_turn(db: &Arc<Mutex<Database>>, embedder: &dyn Embedder, chat_id: &str, summary: &str) {
+    let text = summary.trim();
+    if text.chars().count() < 40 {
+        return;
+    }
+    let (enabled, title) = {
+        let db = db.lock();
+        let enabled = db.get_setting("memory_enabled").ok().flatten().map(|v| v.trim() != "false").unwrap_or(true);
+        (enabled, db.get_chat(chat_id).ok().flatten().map(|c| c.title))
+    };
+    if !enabled {
+        return;
+    }
+    let content: String = text.chars().take(4000).collect();
+    let embedding = embedder.embed(&content.chars().take(2000).collect::<String>()).await;
+    let metadata = json!({ "role": "assistant", "mode": "coding", "chatId": chat_id, "chatTitle": title }).to_string();
+    if let Err(error) = db.lock().upsert_memory("conversation", &content, embedding.as_deref(), Some(&metadata), Some(chat_id)) {
+        eprintln!("[CODING MEMORY] Store failed: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -195,7 +407,7 @@ mod tests {
         let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone());
 
         let listing = tools.run("list_directory", &json!({})).await.unwrap();
-        assert!(listing.contains("\"src\""), "{listing}");
+        assert!(listing.contains("- src/") && listing.contains("  - main.rs"), "{listing}");
         assert!(tools.run("read_file", &json!({ "path": "src/main.rs" })).await.unwrap().contains("println"));
 
         tools.run("edit_file", &json!({ "path": "src/main.rs", "old_string": "\"hi\"", "new_string": "\"hello\"" })).await.unwrap();
@@ -247,6 +459,7 @@ mod tests {
             workspace: root.into(),
             history: vec![ChatMessage::new("user", "earlier question"), ChatMessage::new("assistant", "earlier answer")],
             prompt: "add a flag".into(),
+            mode: Mode::Implement,
         }
     }
 
@@ -338,6 +551,7 @@ mod tests {
             approvals: &approvals,
             approval_required: prepared.approval_required,
             approval_timeout: APPROVAL_TIMEOUT,
+            read_only: false,
         };
         let (_tx, cancel) = tokio::sync::watch::channel(false);
         run_agent(&deps, prepared.request, cancel).await.unwrap();
@@ -364,6 +578,146 @@ mod tests {
         assert!(!std::path::Path::new(&format!("{root}/hello.txt")).exists());
         assert!(events.iter().any(|e| e["approval_resolved"]["approved"] == false));
         assert!(events.iter().any(|e| e["tool_event"] == true && e["detail"] == "Declined by user"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn plan_mode_offers_only_read_tools_and_says_not_to_change_anything() {
+        let server = ollama(true).await;
+        let registry = ProviderRegistry::from_settings(&HashMap::from([("ollama_host".to_string(), server.url())]), &|_| None);
+        let db = Arc::new(Mutex::new(Database::in_memory().unwrap()));
+        let mut plan = turn("/work/app");
+        plan.mode = Mode::Plan;
+        let prepared = prepare_coding(&db, &registry, plan).await.unwrap();
+        assert_eq!(names(prepared.request.tools.as_ref().unwrap()), vec!["list_directory", "search_files", "read_file"]);
+        let system = prepared.request.system_prompt.unwrap();
+        assert!(system.contains("[Plan Mode]") && system.contains("numbered plan"), "{system}");
+        assert_eq!(Mode::parse(Some("PLAN")), Mode::Plan);
+        assert_eq!(Mode::parse(Some("implement")), Mode::Implement);
+        assert_eq!(Mode::parse(None), Mode::Implement);
+    }
+
+    #[tokio::test]
+    async fn undo_restores_edited_files_and_removes_new_ones() {
+        let root = workspace();
+        let chat = format!("undo-{}", uuid::Uuid::new_v4());
+        let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone()).for_chat(&chat, "");
+        assert!(undo_turn(&chat).is_err(), "nothing to undo before any change");
+
+        begin_turn(&chat);
+        tools.run("edit_file", &json!({ "path": "src/main.rs", "old_string": "\"hi\"", "new_string": "\"yo\"" })).await.unwrap();
+        tools.run("edit_file", &json!({ "path": "src/main.rs", "old_string": "\"yo\"", "new_string": "\"hey\"" })).await.unwrap();
+        tools.run("write_file", &json!({ "path": "new/file.txt", "content": "x" })).await.unwrap();
+
+        let message = undo_turn(&chat).unwrap();
+        assert!(message.starts_with("Restored 2 file(s)"), "{message}");
+        assert!(std::fs::read_to_string(format!("{root}/src/main.rs")).unwrap().contains("\"hi\""), "back to the state before the first edit");
+        assert!(!std::path::Path::new(&format!("{root}/new/file.txt")).exists());
+        assert!(undo_turn(&chat).is_err(), "undo works once");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn undo_steps_back_through_turns_newest_first() {
+        let root = workspace();
+        let chat = format!("undo-{}", uuid::Uuid::new_v4());
+        let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone()).for_chat(&chat, "");
+        let file = format!("{root}/a.txt");
+
+        begin_turn(&chat);
+        tools.run("write_file", &json!({ "path": "a.txt", "content": "one" })).await.unwrap();
+        begin_turn(&chat);
+        tools.run("write_file", &json!({ "path": "a.txt", "content": "two" })).await.unwrap();
+        begin_turn(&chat); // a turn that changes nothing adds no history entry
+
+        let first = undo_turn(&chat).unwrap();
+        assert!(first.contains("1 earlier turn(s) can still be undone"), "{first}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "one");
+        undo_turn(&chat).unwrap();
+        assert!(!std::path::Path::new(&file).exists(), "the first turn created it");
+        assert!(undo_turn(&chat).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn undo_history_survives_a_restart_and_keeps_only_recent_turns() {
+        let root = workspace();
+        let chat = format!("undo-{}", uuid::Uuid::new_v4());
+        let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone()).for_chat(&chat, "");
+        for n in 0..(KEPT_TURNS + 3) {
+            begin_turn(&chat);
+            tools.run("write_file", &json!({ "path": "a.txt", "content": n.to_string() })).await.unwrap();
+        }
+        assert_eq!(turn_numbers(&chat_dir(&chat)).len(), KEPT_TURNS);
+
+        // A restart forgets the in-memory "current turn" but not the files on disk.
+        CURRENT_TURN.lock().unwrap().clear();
+        undo_turn(&chat).unwrap();
+        assert_eq!(std::fs::read_to_string(format!("{root}/a.txt")).unwrap(), (KEPT_TURNS + 1).to_string());
+        let _ = std::fs::remove_dir_all(chat_dir(&chat));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn extra_allowed_commands_run_and_others_are_still_refused() {
+        let root = workspace();
+        let db = || Arc::new(Mutex::new(Database::in_memory().unwrap()));
+        let denied = CodingTools::new(db(), root.clone()).run("run_command", &json!({ "command": "uname" })).await.unwrap_err();
+        assert!(denied.contains("not in the security allowlist"), "{denied}");
+
+        let allowed = CodingTools::new(db(), root.clone()).for_chat("c", "uname\nbash");
+        assert!(!allowed.run("run_command", &json!({ "command": "uname" })).await.unwrap().is_empty());
+        assert!(allowed.run("run_command", &json!({ "command": "bash", "args": ["-c", "id"] })).await.is_err(), "shells stay refused");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    struct Fixed;
+    #[async_trait]
+    impl Embedder for Fixed {
+        async fn embed(&self, _: &str) -> Option<Vec<f32>> {
+            Some(vec![1.0, 0.0])
+        }
+    }
+
+    #[tokio::test]
+    async fn a_turn_summary_is_remembered_unless_short_or_memory_is_off() {
+        let db = Arc::new(Mutex::new(Database::in_memory().unwrap()));
+        db.lock().upsert_chat("c1", "Add flag", None, None, None, None, None).unwrap();
+
+        remember_turn(&db, &Fixed, "c1", "ok").await;
+        assert!(db.lock().list_memories(None).unwrap().is_empty(), "too short");
+
+        let summary = "Added a --verbose flag to the CLI parser and covered it with two tests.";
+        remember_turn(&db, &Fixed, "c1", summary).await;
+        let memories = db.lock().list_memories(None).unwrap();
+        assert_eq!(memories.len(), 1);
+        assert!(memories[0].metadata.as_deref().unwrap().contains("\"mode\":\"coding\""));
+        assert_eq!(memories[0].source_id.as_deref(), Some("c1"));
+
+        db.lock().set_setting("memory_enabled", "false").unwrap();
+        remember_turn(&db, &Fixed, "c1", "A completely different and sufficiently long summary of work done.").await;
+        assert_eq!(db.lock().list_memories(None).unwrap().len(), 1, "memory switched off");
+    }
+
+    #[tokio::test]
+    async fn read_file_takes_a_line_range() {
+        let root = workspace();
+        let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone());
+        let out = tools.run("read_file", &json!({ "path": "src/main.rs", "start_line": 2, "end_line": 2 })).await.unwrap();
+        assert_eq!(out, "[lines 2-2 of 3]\n    println!(\"hi\");");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn an_overwrite_previews_what_it_replaces_but_a_new_file_does_not() {
+        let root = workspace();
+        let tools = CodingTools::new(Arc::new(Mutex::new(Database::in_memory().unwrap())), root.clone());
+        let over = tools.preview("write_file", &json!({ "path": "src/main.rs", "content": "x" })).await.unwrap();
+        assert!(over["old_string"].as_str().unwrap().contains("println"));
+        assert_eq!(over["overwrites"], true);
+        assert!(tools.preview("write_file", &json!({ "path": "fresh.txt", "content": "x" })).await.is_none());
+        assert!(tools.preview("edit_file", &json!({ "path": "src/main.rs" })).await.is_none());
+        assert!(tools.preview("write_file", &json!({ "path": "../out.txt", "content": "x" })).await.is_none(), "outside the workspace");
         let _ = std::fs::remove_dir_all(root);
     }
 }

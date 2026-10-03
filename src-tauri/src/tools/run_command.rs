@@ -45,6 +45,40 @@ pub fn is_allowed(program: &str, args: &[&str]) -> bool {
     }
 }
 
+/// Programs that must never be added to the allowlist: they run arbitrary code or escalate.
+const NEVER_ALLOWED: &[&str] = &["sh", "bash", "zsh", "fish", "dash", "cmd", "powershell", "pwsh", "sudo", "su", "doas", "env", "eval", "exec", "xargs", "ssh", "rm"];
+/// A command's output is cut here so a chatty build cannot flood the model's context.
+const MAX_OUTPUT_CHARS: usize = 20_000;
+
+/// Extra allowed commands from settings: one `program [subcommand…]` per entry, matched as a token prefix
+/// (`cargo build` allows `cargo build --release`; `make` allows any `make` target).
+pub fn extra_allows(program: &str, args: &[&str], extra: &[String]) -> bool {
+    extra.iter().any(|entry| {
+        let tokens: Vec<&str> = entry.split_whitespace().collect();
+        let Some((head, rest)) = tokens.split_first() else { return false };
+        !NEVER_ALLOWED.contains(head)
+            && *head == program
+            && rest.len() <= args.len()
+            && rest.iter().zip(args).all(|(want, got)| want == got)
+    })
+}
+
+/// Parses the `coding_extra_commands` setting (comma or newline separated), dropping entries that can never be allowed.
+pub fn parse_extra_commands(raw: &str) -> Vec<String> {
+    raw.split([',', '\n'])
+        .map(|e| e.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|e| e.split(' ').next().is_some_and(|head| !head.is_empty() && !NEVER_ALLOWED.contains(&head)))
+        .collect()
+}
+
+fn cap_output(text: String) -> String {
+    if text.chars().count() <= MAX_OUTPUT_CHARS {
+        return text;
+    }
+    let cut: String = text.chars().take(MAX_OUTPUT_CHARS).collect();
+    format!("{cut}\n[output cut at {MAX_OUTPUT_CHARS} characters]")
+}
+
 /// File operands of the read-only file commands must stay inside the project.
 fn check_operands(program: &str, args: &[&str], project_root: Option<&str>) -> AppResult<()> {
     if !matches!(program, "ls" | "cat" | "grep" | "find" | "head" | "tail" | "wc") {
@@ -68,6 +102,11 @@ fn child_env() -> impl Iterator<Item = (String, String)> {
 }
 
 pub async fn run_command(command_str: &str, project_root: Option<&str>) -> AppResult<String> {
+    run_command_with(command_str, project_root, &[]).await
+}
+
+/// Like `run_command`, with extra commands the user allowed in settings.
+pub async fn run_command_with(command_str: &str, project_root: Option<&str>, extra: &[String]) -> AppResult<String> {
     let parts: Vec<&str> = command_str.split_whitespace().collect();
     if parts.is_empty() {
         return Err(AppError::InvalidRequest("Empty command".to_string()));
@@ -76,7 +115,7 @@ pub async fn run_command(command_str: &str, project_root: Option<&str>) -> AppRe
     let program = parts[0];
     let args = &parts[1..];
 
-    if !is_allowed(program, args) {
+    if !is_allowed(program, args) && !extra_allows(program, args, extra) {
         return Err(AppError::Security(format!(
             "Command '{}' is not in the security allowlist",
             program
@@ -109,18 +148,19 @@ pub async fn run_command(command_str: &str, project_root: Option<&str>) -> AppRe
     let stdout = String::from_utf8_lossy(&output_res.stdout);
     let stderr = String::from_utf8_lossy(&output_res.stderr);
 
-    if !output_res.status.success() {
-        Ok(format!(
+    let text = if !output_res.status.success() {
+        format!(
             "Exit code {}:\nSTDOUT:\n{}\nSTDERR:\n{}",
             output_res.status.code().unwrap_or(-1),
             stdout,
             stderr
-        ))
+        )
     } else if !stderr.is_empty() {
-        Ok(format!("{}\n{}", stdout, stderr))
+        format!("{}\n{}", stdout, stderr)
     } else {
-        Ok(stdout.to_string())
-    }
+        stdout.to_string()
+    };
+    Ok(cap_output(text))
 }
 
 #[cfg(test)]
@@ -164,5 +204,24 @@ mod tests {
         assert!(!child_env().any(|(key, _)| key == "VANAILA_TEST_API_KEY"));
         assert!(child_env().any(|(key, _)| key == "PATH"));
         std::env::remove_var("VANAILA_TEST_API_KEY");
+    }
+
+    #[test]
+    fn extra_commands_extend_the_allowlist_but_never_to_shells() {
+        let extra = parse_extra_commands("cargo build, make\n bash , sudo ls ,  pnpm   install");
+        assert_eq!(extra, vec!["cargo build", "make", "pnpm install"]);
+        assert!(extra_allows("cargo", &["build", "--release"], &extra));
+        assert!(!extra_allows("cargo", &["publish"], &extra));
+        assert!(extra_allows("make", &["test"], &extra));
+        assert!(extra_allows("pnpm", &["install"], &extra));
+        assert!(!extra_allows("pnpm", &["add", "x"], &extra));
+        assert!(!extra_allows("bash", &["-c", "id"], &["bash".to_string()]), "shells are refused even if listed");
+    }
+
+    #[tokio::test]
+    async fn long_output_is_cut() {
+        let out = cap_output("x".repeat(MAX_OUTPUT_CHARS + 5));
+        assert!(out.ends_with("characters]") && out.chars().count() < MAX_OUTPUT_CHARS + 60);
+        assert_eq!(cap_output("short".into()), "short");
     }
 }

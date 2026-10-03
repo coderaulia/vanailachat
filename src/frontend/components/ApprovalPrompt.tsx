@@ -31,7 +31,9 @@ export function ApprovalPrompt() {
   const filePath = details.path || (typeof details.file_path === 'string' ? details.file_path : null);
   const content = preview(details.content || (typeof details.text === 'string' ? details.text : null));
   const oldString = preview(details.old_string || (typeof details.oldString === 'string' ? details.oldString : null));
-  const newString = preview(details.new_string || (typeof details.newString === 'string' ? details.newString : null));
+  // An overwrite carries the text it replaces, so the new content is shown as the "after".
+  const newString = preview(details.new_string || (typeof details.newString === 'string' ? details.newString : null))
+    ?? (oldString ? content : null);
 
   const categoryLabels: Record<string, { label: string; icon: string; badgeClass: string }> = {
     command: { label: 'Terminal Command', icon: '⚡', badgeClass: 'is-command' },
