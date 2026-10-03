@@ -40,3 +40,7 @@ src-tauri/target/
 src-tauri/gen/
 
 dist-release/
+
+# Playwright
+test-results/
+playwright-report/
