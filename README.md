@@ -274,7 +274,8 @@ pnpm dev            # Start backend and frontend development servers
 pnpm dev:backend    # Start backend only
 pnpm dev:frontend   # Start frontend Vite server only
 pnpm build          # Build production web bundle
-pnpm test           # Run full Vitest test suite (240 tests)
+pnpm test           # Integrity tests (API contract, shared data, DB migrations)
+pnpm test:e2e       # Playwright end-to-end tests
 pnpm type-check     # Run TypeScript type validation
 pnpm lint           # Run ESLint validation (--max-warnings=0)
 pnpm desktop:dev    # Launch native Tauri 2.0 Linux desktop client

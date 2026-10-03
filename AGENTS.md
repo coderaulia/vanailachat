@@ -63,7 +63,7 @@ A new desktop update (`v0.X.Y`) should be triggered when **ANY** of the followin
    - **Protocol breakage**: Major upstream API breakage (e.g., Ollama or OpenAI payload schema change).
    - **Database corruption**: SQLite migration bug affecting message storage.
 3. **🧪 Quality & Verification Gates Passed**:
-   - 100% of Vitest unit/integration tests pass (`pnpm test` -> 410+ tests).
+   - 100% of Vitest integrity tests pass (`pnpm test`) and Playwright E2E passes (`pnpm test:e2e`).
    - 100% of Rust tests pass (`cargo test --manifest-path src-tauri/Cargo.toml`).
    - Lint & type safety check: `eslint . --max-warnings=0` and `tsc --noEmit`.
    - Tauri Linux packaging check: `pnpm desktop:build` completes without bundle warnings.

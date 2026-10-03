@@ -110,11 +110,6 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
     setupFiles: ['./src/test-setup.ts'],
-    // Node 25+ exposes its own (unusable) localStorage global that shadows jsdom's.
-    poolOptions: {
-      forks: { execArgv: ['--no-experimental-webstorage'] },
-      threads: { execArgv: ['--no-experimental-webstorage'] },
-    },
     coverage: {
       reporter: ['text', 'html'],
     },
