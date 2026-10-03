@@ -31,6 +31,21 @@ export function CodingEngineSettings({ store }: { store: SettingsStore }) {
           your workspace and run allowlisted commands, asking for approval first (see "Ask before making changes").
           The Pi and DeepSeek harnesses are only used by the web edition.
         </p>
+        <p className="settings-hint">
+          Type <code>/plan your task</code> in a coding chat to get a plan without any changes, and <code>/undo</code> to put back the files the last turn changed.
+        </p>
+        <label className="settings-label" htmlFor="coding-extra-commands">Extra allowed commands <span className="settings-optional">(optional)</span></label>
+        <textarea
+          id="coding-extra-commands"
+          className="settings-input"
+          rows={3}
+          spellCheck={false}
+          {...bindText('coding_extra_commands')}
+          placeholder={'cargo build\nmake\npnpm install'}
+        />
+        <p className="settings-subhint">
+          One command per line, matched from the start (<code>cargo build</code> also allows <code>cargo build --release</code>). Each run still waits for your approval. Shells, <code>sudo</code> and <code>rm</code> are never allowed.
+        </p>
       </div>
     );
   }

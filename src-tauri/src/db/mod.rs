@@ -608,6 +608,11 @@ impl Database {
         self.get_coding_session(&session.chat_id)?.ok_or_else(|| crate::error::AppError::NotFound("Coding session was not saved".into()))
     }
 
+    /// A turn that was running when the app closed or crashed never finished; without this its session stays "running" forever.
+    pub fn reset_running_coding_sessions(&self) -> AppResult<usize> {
+        Ok(self.conn.execute("UPDATE coding_sessions SET status = 'ready' WHERE status = 'running'", [])?)
+    }
+
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ export interface AllSettings {
   custom_openai_api_key?: string;
   custom_openai_models?: string;
   coding_harness?: string;
+  coding_extra_commands?: string;
   pi_agent_dir?: string;
   pi_api_key?: string;
   pi_base_url?: string;

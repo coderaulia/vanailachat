@@ -105,6 +105,8 @@ pub struct AgentDeps<'a> {
     pub approvals: &'a ApprovalService,
     pub approval_required: bool,
     pub approval_timeout: Duration,
+    /// Plan mode: tools that change things are refused outright, whatever the model asks for.
+    pub read_only: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -219,6 +221,10 @@ fn tool_event(iteration: usize, call: &ToolCall, status: &str, detail: Option<St
 
 /// Runs one call, gating it behind approval when needed. `None` means cancelled.
 async fn run_one(deps: &AgentDeps<'_>, iteration: usize, call: &ToolCall, cancel: &mut watch::Receiver<bool>) -> AppResult<Option<String>> {
+    if deps.read_only && is_mutating_tool(&call.name) {
+        deps.sink.emit(tool_event(iteration, call, "error", Some("Blocked in plan mode".into())));
+        return Ok(Some(format!("Plan mode: {} is not available because nothing may be changed. Describe the change in your plan instead.", call.name)));
+    }
     if deps.approval_required && is_mutating_tool(&call.name) {
         let id = format!("apr_{}", uuid::Uuid::new_v4().simple());
         let (tx, rx) = oneshot::channel();
@@ -403,7 +409,7 @@ mod tests {
         }
 
         async fn run_with(&self, provider: &ScriptedProvider, runner: &FnRunner, approval_required: bool, cancel: watch::Receiver<bool>, timeout: Duration) -> AppResult<Outcome> {
-            let deps = AgentDeps { provider, runner, sink: &self.sink, approvals: &self.approvals, approval_required, approval_timeout: timeout };
+            let deps = AgentDeps { provider, runner, sink: &self.sink, approvals: &self.approvals, approval_required, approval_timeout: timeout, read_only: false };
             run_agent(&deps, request(), cancel).await
         }
     }

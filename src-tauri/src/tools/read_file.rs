@@ -2,6 +2,22 @@ use crate::error::{AppError, AppResult};
 use std::path::{Component, Path, PathBuf};
 use tokio::fs;
 
+/// Reads a whole file, or just lines `start..=end` (1-based) so a big file does not flood the context.
+pub async fn read_file_range(file_path: &str, start: Option<usize>, end: Option<usize>, project_root: Option<&str>) -> AppResult<String> {
+    let content = read_file(file_path, project_root).await?;
+    if start.is_none() && end.is_none() {
+        return Ok(content);
+    }
+    let total = content.lines().count();
+    let first = start.unwrap_or(1).max(1);
+    let last = end.unwrap_or(total).min(total);
+    if first > last {
+        return Ok(format!("[file has {total} lines; nothing at {first}-{last}]"));
+    }
+    let body: Vec<&str> = content.lines().skip(first - 1).take(last - first + 1).collect();
+    Ok(format!("[lines {first}-{last} of {total}]\n{}", body.join("\n")))
+}
+
 pub async fn read_file(file_path: &str, project_root: Option<&str>) -> AppResult<String> {
     let resolved = resolve_path(file_path, project_root)?;
 

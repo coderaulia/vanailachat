@@ -228,7 +228,7 @@ describe('desktop commands behind the shared API', () => {
       (chunk) => received.push(chunk as Record<string, unknown>),
     );
     await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
-    expect(invoke).toHaveBeenCalledWith('run_coding', { request: { chat_id: 'code1', prompt: 'add a flag', model: 'qwen3', history: [{ role: 'user', content: 'hi' }] } });
+    expect(invoke).toHaveBeenCalledWith('run_coding', { request: { chat_id: 'code1', prompt: 'add a flag', model: 'qwen3', mode: 'implement', history: [{ role: 'user', content: 'hi' }] } });
 
     emit({ chat_id: 'code1', approval_request: { id: 'a1', tool: 'write_file', summary: 'Write x' } });
     emit({ chat_id: 'other', message: { role: 'assistant', content: 'not mine' } });
@@ -239,5 +239,19 @@ describe('desktop commands behind the shared API', () => {
 
     invoke.mockRejectedValue('Invalid request: Create a coding workspace first');
     await expect(api.runNativeCoding({ chatId: 'code1', prompt: 'x', model: 'm' }, () => {})).rejects.toThrow('Create a coding workspace first');
+  });
+
+  it('sends plan mode through and undoes a coding turn by chat id', async () => {
+    const { api, invoke } = await loadDesktopApi();
+    invoke.mockResolvedValue(undefined);
+    await api.runNativeCoding({ chatId: 'c1', prompt: 'x', model: 'm', mode: 'plan' }, () => {});
+    expect(invoke).toHaveBeenCalledWith('run_coding', { request: expect.objectContaining({ mode: 'plan' }) });
+
+    invoke.mockResolvedValue('Restored 1 file(s): a.txt');
+    expect(await api.apiUndoCodingTurn('c1')).toBe('Restored 1 file(s): a.txt');
+    expect(invoke).toHaveBeenCalledWith('undo_coding_turn', { chatId: 'c1' });
+
+    invoke.mockRejectedValue('Invalid request: Nothing to undo');
+    await expect(api.apiUndoCodingTurn('c1')).rejects.toThrow('Nothing to undo');
   });
 });

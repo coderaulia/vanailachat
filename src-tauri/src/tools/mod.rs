@@ -41,11 +41,13 @@ pub async fn execute_tool(
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| AppError::InvalidRequest("Missing path argument".to_string()))?;
-            read_file::read_file(path, project_root).await
+            let line = |key: &str| args.get(key).and_then(|v| v.as_u64()).map(|n| n as usize);
+            read_file::read_file_range(path, line("start_line"), line("end_line"), project_root).await
         }
         "list_directory" => {
             let path = args.get("path").and_then(|v| v.as_str());
-            list_directory::list_directory(path, project_root).await
+            let depth = args.get("maxDepth").or_else(|| args.get("max_depth")).and_then(|v| v.as_u64()).map(|n| n as usize);
+            list_directory::list_directory(path, depth, project_root).await
         }
         "write_file" => {
             let path = args
