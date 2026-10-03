@@ -44,6 +44,7 @@ pub fn run() {
     };
 
     let _ = db.reset_running_coding_sessions();
+    chat::coding::set_undo_root(desktop_paths.data_dir.join("undo"));
 
     // Providers come from the saved settings, falling back to the environment.
     let all_settings = db.get_all_settings().unwrap_or_default();

@@ -20,6 +20,11 @@ pub const APPROVAL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 #[async_trait]
 pub trait ToolRunner: Send + Sync {
     async fn run(&self, name: &str, args: &Value) -> Result<String, String>;
+
+    /// Extra context for the approval prompt, e.g. the text a write is about to replace.
+    async fn preview(&self, _name: &str, _args: &Value) -> Option<Value> {
+        None
+    }
 }
 
 /// Where stream events go (the webview in the app, a vector in tests).
@@ -229,10 +234,16 @@ async fn run_one(deps: &AgentDeps<'_>, iteration: usize, call: &ToolCall, cancel
         let id = format!("apr_{}", uuid::Uuid::new_v4().simple());
         let (tx, rx) = oneshot::channel();
         deps.approvals.register(id.clone(), tx).await;
+        let mut details = normalize_details(&call.name, &call.arguments).details;
+        if let (Some(extra), Some(object)) = (deps.runner.preview(&call.name, &call.arguments).await, details.as_object_mut()) {
+            for (key, value) in extra.as_object().into_iter().flatten() {
+                object.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
         deps.sink.emit(json!({ "approval_request": {
             "id": id, "tool": call.name,
             "summary": describe_tool_call(&call.name, &call.arguments),
-            "details": normalize_details(&call.name, &call.arguments).details,
+            "details": details,
         }}));
 
         // Anything unanswered is denied: a timeout or a closed window must not become an approval.
